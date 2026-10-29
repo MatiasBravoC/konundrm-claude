@@ -3,27 +3,8 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[3]
-AGENTS_DIR = PLUGIN_ROOT / "agents"
-
-
-def read_frontmatter(path: Path) -> dict[str, str]:
-    """Return the top-level `name: value` keys of an agent file's frontmatter.
-
-    The frontmatter is the block between the first two lines that are exactly `---`. Indented lines
-    (items of list values such as `skills:`) are ignored.
-    """
-    lines = path.read_text(encoding="utf-8").splitlines()
-    fences = [index for index, line in enumerate(lines) if line == "---"][:2]
-    fields: dict[str, str] = {}
-    for line in lines[fences[0] + 1 : fences[1]]:
-        if line[:1].isspace() or ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        fields[key.strip()] = value.strip()
-    return fields
+from .plugin_files import AGENTS_DIR, read_frontmatter
 
 
 class AgentModelsTest(unittest.TestCase):

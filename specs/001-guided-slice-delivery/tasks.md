@@ -23,11 +23,12 @@ de cada archivo (algunos son CRLF). -->
   - Depends on: —
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T2** Solo la skill de planificación declara esfuerzo (xhigh) y ninguna skill declara modelo · `behavior` · Risk: low · Covers: R1.5, R1.6
+- [x] **T2** Solo la skill de planificación declara esfuerzo (xhigh) y ninguna skill declara modelo · `behavior` · Risk: low · Covers: R1.5, R1.6
   - Test: `P/hooks/tests/contract/test_skills.py::test_only_the_planning_skill_declares_effort`
   - Files: `P/skills/writing-plans/SKILL.md` (modify frontmatter)
   - Verify: `... -k test_only_the_planning_skill_declares_effort`
   - Depends on: T1
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T3** develop-feature sobreescribe modelo y esfuerzo solo en arreglos, tareas de riesgo alto y la revisión de spec de toda la feature · `behavior` · Risk: low · Covers: R1.2, R1.3, R1.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_overrides_model_and_effort_where_agreed` (sección `## Model and effort` con las tres filas en `opus`/`high` y la regla de omitir los parámetros en el resto; `reference/dispatch-prompts.md` remite a ella)

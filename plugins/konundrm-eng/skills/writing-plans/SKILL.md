@@ -2,6 +2,7 @@
 name: writing-plans
 description: Turns an approved requirements.md into a technical design and a list of small test-first tasks grouped into pull-request-sized slices. Explores the codebase to decide which module owns each responsibility, writes specs/<NNN-slug>/design.md (ownership, interfaces, threats for high-risk work, how the slices reach users) and tasks.md, where every task is one red-green-refactor cycle of 2–5 minutes with exact files, the test to write, its risk level and the command that verifies it. Use after writing-specs, or when the user says "planifiquemos", "cómo lo implementamos", "divide esto en tareas", "write a plan" or "break this down". Does not write production code or tests.
 argument-hint: "[path to requirements.md]"
+effort: xhigh
 ---
 
 # Writing Plans
