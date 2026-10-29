@@ -30,11 +30,12 @@ de cada archivo (algunos son CRLF). -->
   - Depends on: T1
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T3** develop-feature sobreescribe modelo y esfuerzo solo en arreglos, tareas de riesgo alto y la revisión de spec de toda la feature · `behavior` · Risk: low · Covers: R1.2, R1.3, R1.4
+- [x] **T3** develop-feature sobreescribe modelo y esfuerzo solo en arreglos, tareas de riesgo alto y la revisión de spec de toda la feature · `behavior` · Risk: low · Covers: R1.2, R1.3, R1.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_overrides_model_and_effort_where_agreed` (sección `## Model and effort` con las tres filas en `opus`/`high` y la regla de omitir los parámetros en el resto; `reference/dispatch-prompts.md` remite a ella)
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/develop-feature/reference/dispatch-prompts.md` (modify)
   - Verify: `... -k test_develop_feature_overrides_model_and_effort_where_agreed`
   - Depends on: T1
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T4** fix-bug, reviewing-pull-requests y migrate-code aplican las mismas sobreescrituras · `behavior` · Risk: low · Covers: R1.2, R1.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_other_flows_override_model_and_effort_where_agreed`

@@ -2,7 +2,8 @@
 
 Fill the `<…>` placeholders and paste the task block and requirement lines **verbatim** from
 `tasks.md` and `requirements.md`. Subagents start with a clean context: everything they need must
-be in the prompt or in a file the prompt names.
+be in the prompt or in a file the prompt names. Pass the Agent tool's `model` and `effort` only
+where [Model and effort](../SKILL.md#model-and-effort) lists them.
 
 ## Contents
 

@@ -31,6 +31,24 @@ Request: $ARGUMENTS
 | Pull requests | you, with the `opening-pull-requests` skill | the user approves the push; one pull request per slice |
 
 Dispatch prompts for every subagent: [reference/dispatch-prompts.md](reference/dispatch-prompts.md).
+Model and effort for each dispatch: [Model and effort](#model-and-effort).
+
+## Model and effort
+
+Each subagent's frontmatter sets its default: Opus at `medium` for the test-writer and the
+implementer, Sonnet at `high` for the per-task spec review, Opus at `high` for the code review and
+the finding check, and Opus at `xhigh` for the security review. Omit the Agent tool's `model` and
+`effort` parameters so those defaults apply, except in these cases, where you pass the values
+listed (Claude Code sets `effort` only when told a level):
+
+| Dispatch | `model` | `effort` |
+| --- | --- | --- |
+| Any fix round: `test-writer` or `implementer` sent back after a FAIL, a Critical finding, a red for the wrong reason, a flaky run or a red check | `opus` | `high` |
+| `test-writer`, `implementer` and `spec-reviewer` on a `high` task | `opus` | `high` |
+| `spec-reviewer` over the whole feature (Phase 4) | `opus` | `high` |
+
+First attempts run at `medium` and only failures go up to `high`: in Anthropic's Opus 5.5 coding
+runs this solved slightly more tasks than running everything at `high`, for less.
 
 ## Phase 0: Prepare
 
@@ -65,7 +83,8 @@ Track the tasks in your todo list. For each task in order, start **fresh subagen
 one across tasks, and run konundrm-eng subagents **one at a time**: the plugin attributes file
 changes to the subagent that was running. To build several features at once, run each in its own
 Git worktree and session (`claude --worktree`, or a new worktree session in the desktop app):
-the gates and the audit work per working tree.
+the gates and the audit work per working tree. Pass `model` and `effort` only as
+[Model and effort](#model-and-effort) lists; fix rounds always run on `opus` at `high`.
 
 Keep a tally per task: spec review rounds, code review rounds and escalations. It goes into
 `tasks.md` at the gate.
@@ -128,9 +147,10 @@ restored automatically.
 ## Phase 4: Finish
 
 1. Run the check command on the whole project.
-2. Dispatch `spec-reviewer` once more over the full feature diff (`git diff <base>..HEAD`) against
-   every acceptance criterion, to catch gaps between tasks. On FAIL, propose one new task per gap
-   (a plan change, so ask the user), then run the approved tasks through Phase 3.
+2. Dispatch `spec-reviewer`, with `model: opus` and `effort: high`, once more over the full
+   feature diff (`git diff <base>..HEAD`) against every acceptance criterion, to catch gaps
+   between tasks. On FAIL, propose one new task per gap (a plan change, so ask the user), then
+   run the approved tasks through Phase 3.
 3. Perform the final verification from `requirements.md` against the real application. Run it
    when it can be automated and save the evidence in `specs/<NNN-slug>/evidence/final.md`;
    otherwise give the user the exact steps.

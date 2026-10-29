@@ -29,3 +29,18 @@ def read_frontmatter(path: Path) -> dict[str, str]:
         key, value = line.split(":", 1)
         fields[key.strip()] = value.strip()
     return fields
+
+
+def read_section(path: Path, heading: str) -> str:
+    """Return the body of a `## ` section of a Markdown file, or "" when the file lacks it.
+
+    The body is the text after the line that is exactly `## <heading>` up to the next line that
+    starts with `## ` (or the end of the file). Lines are read with universal newlines.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    try:
+        start = lines.index(f"## {heading}") + 1
+    except ValueError:
+        return ""
+    end = next((index for index in range(start, len(lines)) if lines[index].startswith("## ")), len(lines))
+    return "\n".join(lines[start:end])
