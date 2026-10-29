@@ -1,0 +1,16 @@
+{
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings=0",
+    "types": "tsc --noEmit",
+    "arch": "depcruise src --config .dependency-cruiser.cjs --output-type err-long",
+    "test": "vitest run --coverage",
+    "check": "npm run format:check && npm run lint && npm run types && npm run arch && npm run test",
+    "mutation": "stryker run",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*": ["secretlint --no-glob"]
+  }
+}

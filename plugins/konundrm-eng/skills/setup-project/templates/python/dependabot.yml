@@ -1,0 +1,28 @@
+# Konundrm dependency updates for Python. Copy to .github/dependabot.yml.
+# Besides uv packages, Dependabot keeps the SHA-pinned actions in .github/workflows current,
+# rewriting both the SHA and its version comment.
+version: 2
+
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # One pull request for all minor and patch bumps; majors stay separate to review alone.
+      uv-minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build" # becomes "build(deps): …", the Conventional Commits format
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "ci"
+      include: scope

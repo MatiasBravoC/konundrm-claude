@@ -1,0 +1,22 @@
+{
+  "name": "konundrm-eng",
+  "displayName": "Konundrm Engineering",
+  "version": "0.5.0",
+  "description": "Konundrm's engineering workflow: spec → plan in pull-request-sized slices → test-first tasks run by separate test-writer, implementer and reviewer subagents → small reviewed pull requests, with quality gates, secret and silencer checks enforced by hooks, plus flows for bugs, migrations and periodic cleanup.",
+  "author": {
+    "name": "Matías Bravo",
+    "email": "matias.bravo.c@konundrm.cl"
+  },
+  "repository": "https://github.com/konundrm/konundrm-claude",
+  "keywords": [
+    "tdd",
+    "spec-driven-development",
+    "code-review",
+    "subagents",
+    "quality-gates",
+    "solid",
+    "mutation-testing",
+    "security",
+    "pull-requests"
+  ]
+}

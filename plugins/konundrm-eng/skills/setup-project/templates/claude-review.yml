@@ -1,0 +1,51 @@
+# AI review of every pull request with the konundrm-eng reviewers (spec, code and, for risky
+# changes, security), posting only the findings a verifier could not refute. It comments; a
+# person approves. Copy to .github/workflows/claude-review.yml.
+#
+# Needs: the ANTHROPIC_API_KEY repository secret, and read access to the plugin's marketplace
+# repository (if it is private, the runner needs Git credentials for it). Each review costs API
+# usage; the concurrency group cancels a review when a newer push arrives.
+name: Claude review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Reads the code, writes review comments. Nothing else.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Same-repository pull requests only: a fork's code and text are untrusted input for an agent
+    # that holds a token (Standards → Security). Drafts and Dependabot are skipped.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the reviewers read the pull request's range against its base
+          persist-credentials: false
+
+      - uses: anthropics/claude-code-action@db77d4d3c98f3f6380e7cd45ffba2342a3dbde3c # v1.0.254
+        env:
+          GH_TOKEN: ${{ github.token }} # for the gh commands the skill runs
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          plugin_marketplaces: https://github.com/konundrm/konundrm-claude.git
+          plugins: konundrm-eng@konundrm
+          # Only the number reaches the prompt: the title and description are untrusted text.
+          prompt: /konundrm-eng:reviewing-pull-requests ${{ github.event.pull_request.number }}
+          claude_args: |
+            --max-turns 80
+            --allowedTools "Read,Grep,Glob,Agent,Task,Skill,Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr comment *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git merge-base *),Bash(git rev-parse *),mcp__github_inline_comment__create_inline_comment"

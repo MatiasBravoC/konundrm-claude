@@ -1,0 +1,43 @@
+# Development tooling for the plugin's own Python. The hooks themselves use only the standard
+# library; nothing here is installed for people who use the plugin.
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"  # the oldest Python the hooks support (README → Requirements)
+# Ruff also formats code blocks in Markdown; the skills' examples are compact on purpose.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W", "F",  # pycodestyle, pyflakes
+  "I",            # import order
+  "B",            # bugbear
+  "UP",           # pyupgrade
+  "SIM",          # simplifications
+  "N",            # pep8-naming (Standards → Naming)
+  "D",            # docstrings (Standards → Documentation)
+  "C90",          # cyclomatic complexity
+  "S",            # flake8-bandit (Standards → Security)
+  "RUF",
+]
+# S603/S607: the hooks run git and the project's own tools by design, with argument lists.
+ignore = ["D105", "D107", "S603", "S607"]
+
+[tool.ruff.lint.per-file-ignores]
+"plugins/*/hooks/tests/**" = ["D", "S101", "S108"]  # test names state the behavior; unittest asserts
+"plugins/*/skills/setup-project/templates/**" = ["S"]  # copied into projects, checked there
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.mypy]
+strict = true
+warn_unreachable = true
+python_version = "3.10"
+# The hook scripts import each other as top-level modules, as Python does when it runs them.
+mypy_path = "plugins/konundrm-eng/hooks/scripts"
+files = ["plugins/konundrm-eng/hooks/scripts"]
+explicit_package_bases = true

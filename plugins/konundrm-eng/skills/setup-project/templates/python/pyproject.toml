@@ -1,0 +1,88 @@
+# Konundrm quality gates for Python. Merge these tables into the project's pyproject.toml;
+# keep any existing value the project already set. Replace `your_package` and `src`.
+
+[tool.ruff]
+line-length = 100
+# target-version is inferred from [project].requires-python.
+# Ruff also formats code blocks in Markdown; keep docs out of the gate so a README sample never
+# turns `check` red. Format them deliberately with `ruff format <file>.md` when wanted.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W", "F",  # pycodestyle, pyflakes
+  "I",            # import order
+  "B",            # bugbear
+  "UP",           # pyupgrade
+  "SIM",          # simplifications
+  "N",            # pep8-naming (Standards → Naming)
+  "D",            # docstrings (Standards → Documentation)
+  "C90",          # cyclomatic complexity
+  "PT",           # pytest style
+  "S",            # flake8-bandit (Standards → Security)
+  "PGH",          # blanket noqa and type: ignore without codes (Standards → Gate integrity)
+  "RUF",          # includes RUF100: a noqa that no longer silences anything
+]
+ignore = ["D105", "D107"]  # magic methods and __init__ are documented on the class
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "S101"]  # names state the behavior, docstrings optional; assert is how pytest checks
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.mypy]
+strict = true
+warn_unreachable = true
+# Legacy modules that cannot be strict yet, listed explicitly as recorded debt:
+# [[tool.mypy.overrides]]
+# module = ["your_package.legacy.*"]
+# disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers --cov --cov-branch --cov-report=term-missing:skip-covered"
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 0  # set to today's total (rounded down) and raise it; diff-cover enforces 80 % on new code
+show_missing = true
+
+[tool.importlinter]
+root_package = "your_package"
+
+# Write contracts only for layers that exist today (see setup-project step 5).
+[[tool.importlinter.contracts]]
+# lint-imports prints this name when the contract breaks, so it carries the remedy.
+name = "Layers point inward: depend on an interface the inner layer owns, or move shared code inward"
+type = "layers"
+layers = [
+  "your_package.entrypoints",
+  "your_package.infrastructure",
+  "your_package.application",
+  "your_package.domain",
+]
+
+[tool.poe.tasks]
+format = "ruff format ."
+fix = "ruff check --fix ."
+format-check = "ruff format --check ."
+lint = "ruff check ."
+types = "mypy ."
+arch = "lint-imports"
+test = "pytest"
+check = ["format-check", "lint", "types", "arch", "test"]
+
+[tool.mutmut]
+# mutmut 3.8+ (CI pins "mutmut>=3.8,<4"; it needs fork(), so not on native Windows). On pull
+# requests labelled risk:high, scripts/check_mutation.py gates the changed functions; nightly,
+# the whole project is reported. Mark an equivalent mutant's line with mutmut's no-mutate pragma
+# and the reason.
+source_paths = ["src/"]
+pytest_add_cli_args_test_selection = ["tests/"]

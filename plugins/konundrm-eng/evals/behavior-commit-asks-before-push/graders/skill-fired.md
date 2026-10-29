@@ -1,0 +1,6 @@
+---
+type: tool_used
+tool: Skill
+input_match: '"skill"\s*:\s*"(?:[\w-]+:)?committing-changes"'
+---
+The `committing-changes` skill must be invoked for this request.

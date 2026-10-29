@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled] # labeled: adding risk:high starts mutation testing
+  schedule:
+    - cron: "0 6 * * *" # nightly mutation testing and dependency audit (UTC)
+  workflow_dispatch:
+
+# Least privilege: no job needs to write to the repository.
+permissions:
+  contents: read
+
+# A newer push supersedes a running pull request build. Pushes to main and the nightly run are
+# never cancelled, or a merge would kill that night's mutation and audit jobs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Actions are pinned to a full commit SHA because a tag can be moved to other code.
+# Dependabot (.github/dependabot.yml) keeps the SHAs and their version comments current.
+
+jobs:
+  check:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+
+      - run: uv sync --locked
+
+      - name: Quality gate
+        run: uv run poe check
+
+      - name: Coverage on changed lines >= 80 %
+        if: github.event_name == 'pull_request'
+        run: |
+          uv run coverage xml
+          uv run diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=80
+
+      - name: Commit message format
+        # Dependabot's generated titles can exceed 72 characters.
+        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+        run: uv run python scripts/check_commit_msg.py --range origin/${{ github.base_ref }}..HEAD
+
+  secrets:
+    # TruffleHog OSS, not gitleaks-action: gitleaks-action needs a paid license for organizations.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # scan every commit in the push or pull request, not only the tip
+          persist-credentials: false
+
+      - name: Secret scan
+        uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
+        with:
+          extra_args: --results=verified,unknown
+
+  sast:
+    # Semgrep CE: free static analysis for security bugs. Only findings this pull request
+    # introduces fail the job, so existing code never blocks day one (Standards → Security).
+    # Bump the pinned version deliberately; Dependabot does not see it.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # --baseline-commit needs the base branch's history
+          persist-credentials: false
+
+      - name: Static analysis (new findings only)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >-
+          pipx run --spec semgrep==1.181.0 semgrep scan --config p/default --error --metrics=off
+          --baseline-commit "$(git merge-base "origin/$BASE_REF" HEAD)"
+
+  audit:
+    # Also nightly: new CVEs are published against dependencies that did not change.
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+
+      - run: uv sync --locked
+
+      - name: Dependency vulnerabilities
+        # The project itself is installed editable and is not a published dependency.
+        run: uv run pip-audit --skip-editable
+
+  mutation:
+    # Pull requests labelled risk:high: a gate on the functions they changed. Every mutant there
+    # must be killed, or its line marked equivalent with mutmut's no-mutate pragma and the reason
+    # (Standards → Verification by risk). Nightly and on demand: the whole project, as a report.
+    # mutmut needs fork(), which is why high-risk work done on Windows relies on this job.
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'risk:high'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the gate diffs the pull request against its merge base
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+
+      - run: uv sync --locked
+
+      - name: Mutation testing of the changed code (gate)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: uv run --with "mutmut>=3.8,<4" python scripts/check_mutation.py --base "origin/$BASE_REF"
+
+      - name: Mutation testing of the whole project (report)
+        # mutmut exits non-zero only when it cannot run; surviving mutants are in the report.
+        if: github.event_name != 'pull_request'
+        run: |
+          uv run --with "mutmut>=3.8,<4" mutmut run
+          uv run --with "mutmut>=3.8,<4" mutmut export-cicd-stats
+          cat mutants/mutmut-cicd-stats.json

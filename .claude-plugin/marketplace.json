@@ -1,0 +1,18 @@
+{
+  "name": "konundrm",
+  "owner": {
+    "name": "Konundrm",
+    "email": "matias.bravo.c@konundrm.cl"
+  },
+  "metadata": {
+    "description": "Konundrm's internal Claude Code plugins."
+  },
+  "plugins": [
+    {
+      "name": "konundrm-eng",
+      "source": "./plugins/konundrm-eng",
+      "description": "Spec → plan → test-first tasks with separate test-writer, implementer and reviewer subagents → small reviewed pull requests, with quality gates enforced by hooks.",
+      "category": "development"
+    }
+  ]
+}

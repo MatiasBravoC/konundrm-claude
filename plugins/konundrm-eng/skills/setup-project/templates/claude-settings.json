@@ -1,0 +1,20 @@
+{
+  "extraKnownMarketplaces": {
+    "konundrm": {
+      "source": { "source": "github", "repo": "konundrm/konundrm-claude" }
+    }
+  },
+  "enabledPlugins": {
+    "konundrm-eng@konundrm": true
+  },
+  "permissions": {
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(!.env.example)",
+      "Read(**/secrets/**)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)"
+    ]
+  }
+}

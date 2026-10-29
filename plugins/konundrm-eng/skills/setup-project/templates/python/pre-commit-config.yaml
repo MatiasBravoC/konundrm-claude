@@ -1,0 +1,27 @@
+# Same gate locally, in Claude Code and in CI: the project's `check` command.
+# Install with: uv run pre-commit install
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  # Secrets never reach a commit (Standards → Security). pre-commit 3+ downloads Go to build it
+  # when Go is not installed. Update the rev with `uv run pre-commit autoupdate`.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: check
+        name: quality gate (poe check)
+        entry: uv run poe check
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      - id: commit-message-format
+        name: conventional commit message
+        entry: uv run python scripts/check_commit_msg.py
+        language: system
+        stages: [commit-msg]
