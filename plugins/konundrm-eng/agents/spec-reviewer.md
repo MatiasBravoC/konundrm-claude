@@ -2,6 +2,8 @@
 name: spec-reviewer
 description: Read-only reviewer that checks a change against its task and acceptance criteria — nothing missing, nothing extra, every criterion asserted by a real test. Reports only requirement and correctness gaps, never style. Dispatched by develop-feature after each task's green step and once over the whole feature; also use it to check any diff against a requirements.md.
 tools: Read, Grep, Glob, Bash, Skill
+model: sonnet
+effort: high
 color: yellow
 skills:
   - konundrm-eng:engineering-standards

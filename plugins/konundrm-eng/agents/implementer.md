@@ -2,7 +2,8 @@
 name: implementer
 description: Makes a failing test pass with the minimal change that fits the approved design, then refactors with every test green, and returns a GREEN report with command evidence. Cannot edit test files; a plugin hook enforces it. Dispatched by develop-feature for the green and refactor steps of each task and for review fix rounds.
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill
-model: inherit
+model: opus
+effort: medium
 color: green
 skills:
   - konundrm-eng:engineering-standards

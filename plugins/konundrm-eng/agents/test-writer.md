@@ -2,7 +2,8 @@
 name: test-writer
 description: Writes exactly one failing test for one behavior and proves it fails for the right reason, then returns a RED report. Never writes production code; a plugin hook blocks it from editing non-test files. Dispatched by develop-feature for the red step of each task; also use it directly when the user wants the failing test for a behavior written in isolation.
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill
-model: inherit
+model: opus
+effort: medium
 color: red
 skills:
   - konundrm-eng:engineering-standards

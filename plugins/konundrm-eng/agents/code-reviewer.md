@@ -2,6 +2,8 @@
 name: code-reviewer
 description: Read-only reviewer that applies Google's code review criteria and SOLID to a diff, classifying each finding as Critical (blocks) or Suggestion (does not block). Approves any change that improves overall code health even if imperfect. Dispatched by develop-feature after the spec review of each task; also use it for "revisa este código", "code review" or before opening a pull request.
 tools: Read, Grep, Glob, Bash, Skill
+model: opus
+effort: high
 color: purple
 skills:
   - konundrm-eng:engineering-standards

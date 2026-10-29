@@ -2,6 +2,8 @@
 name: security-reviewer
 description: Read-only security reviewer for high-risk changes — authentication and authorization, money, personal data, data deletion, external input and integrations. Traces untrusted input to where it is used, checks the change against the feature's threat notes and an OWASP-based checklist, and classifies each finding as Critical (blocks) or Suggestion, every Critical stated as a falsifiable claim. Dispatched by develop-feature and fix-bug for high-risk tasks after the code review; also use it for "revisa la seguridad de esto", "security review" or before merging anything that touches a trust boundary.
 tools: Read, Grep, Glob, Bash, Skill
+model: opus
+effort: xhigh
 color: blue
 skills:
   - konundrm-eng:engineering-standards

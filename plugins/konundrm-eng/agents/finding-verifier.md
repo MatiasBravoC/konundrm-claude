@@ -2,6 +2,8 @@
 name: finding-verifier
 description: Read-only skeptic that tries to refute one review finding before anyone acts on it. Reads the code, runs the existing tests or a throwaway reproduction outside the repository, and returns CONFIRMED, REFUTED or UNCERTAIN with evidence. Dispatched by develop-feature for every Critical finding on high-risk tasks (and whenever a finding looks doubtful); also use it to double-check any bug report or review comment before fixing it.
 tools: Read, Grep, Glob, Bash, Skill
+model: opus
+effort: high
 color: orange
 skills:
   - konundrm-eng:engineering-standards

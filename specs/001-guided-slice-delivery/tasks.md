@@ -16,11 +16,12 @@ de cada archivo (algunos son CRLF). -->
 
 ## Slice S1: modelo y esfuerzo por rol, con la base de la suite de contratos
 
-- [ ] **T1** Cada agente existente declara su modelo y esfuerzo acordados · `behavior` · Risk: low · Covers: R1.1, R10.1
+- [x] **T1** Cada agente existente declara su modelo y esfuerzo acordados · `behavior` · Risk: low · Covers: R1.1, R10.1
   - Test: `P/hooks/tests/contract/test_agents.py::test_each_role_has_its_agreed_model_and_effort` (crea el paquete `contract` con `__init__.py`; tabla: test-writer opus/medium, implementer opus/medium, spec-reviewer sonnet/high, code-reviewer opus/high, security-reviewer opus/xhigh, finding-verifier opus/high)
   - Files: `P/agents/test-writer.md`, `implementer.md`, `spec-reviewer.md`, `code-reviewer.md`, `security-reviewer.md`, `finding-verifier.md` (modify frontmatter)
   - Verify: `... -k test_each_role_has_its_agreed_model_and_effort`
   - Depends on: —
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T2** Solo la skill de planificación declara esfuerzo (xhigh) y ninguna skill declara modelo · `behavior` · Risk: low · Covers: R1.5, R1.6
   - Test: `P/hooks/tests/contract/test_skills.py::test_only_the_planning_skill_declares_effort`
