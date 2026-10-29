@@ -241,6 +241,10 @@ Las demás skills también se activan solas cuando el pedido calza ("hagamos est
 La CI (`.github/workflows/ci.yml`) corre todo esto en cada push y pull request, con los tests en
 Linux, Windows y macOS sobre Python 3.10 y 3.13.
 
+En local, `python scripts/check.py` (o `npm run check`, el comando que detectan los hooks del
+plugin) corre los mismos pasos: usa ruff y mypy si están instalados y, si no, las versiones fijadas
+en `requirements-dev.txt` a través de `uvx`.
+
 ```bash
 python -m pip install -r requirements-dev.txt
 ```

@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Development scripts for this marketplace. The plugin has no Node dependencies; the konundrm-eng hooks read the check command from here.",
+  "scripts": {
+    "check": "python scripts/check.py"
+  }
+}
