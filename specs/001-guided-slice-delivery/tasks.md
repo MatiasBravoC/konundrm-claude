@@ -180,11 +180,12 @@ revisiones de código y de las sesiones paralelas. -->
   - Depends on: T16
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T20** Una sesión de partición construye solo su partición y deja su informe · `behavior` · Risk: low · Covers: R3.3
+- [x] **T20** Una sesión de partición construye solo su partición y deja su informe · `behavior` · Risk: low · Covers: R3.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_a_partition_session_builds_only_its_partition` (`--partition P<n>` en el argument-hint; nunca edita design, requirements ni otras particiones; informe `evidence/P<k>.md`; nunca hace push; PLAN CHANGE la detiene con `BLOCKED:`)
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_a_partition_session_builds_only_its_partition`
   - Depends on: T19
+  - Rounds: spec 2 · code 1 · escalations 0
 
 - [ ] **T21** develop-feature integra las particiones de una oleada de a una, con el check después de cada una, desde worktrees fuera del proyecto · `behavior` · Risk: low · Covers: R3.3, R9.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_parallel_partitions_integrate_one_at_a_time` (sección `## Parallel partitions`: `git worktree add ../<repo>-worktrees/`, ramas `wave/`, primera partición en la sesión principal, cherry-pick desde el merge-base, check tras cada partición, arreglo de integración revisado con la línea `Task:` y tipo feat o refactor, revisión de código cruzada al final, `git worktree remove` nunca con `--force`, borrar la rama solo con todos los commits de tarea integrados)

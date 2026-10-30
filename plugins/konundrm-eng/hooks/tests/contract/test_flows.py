@@ -7,7 +7,7 @@ import unittest
 from collections.abc import Callable
 from pathlib import Path
 
-from .plugin_files import SKILLS_DIR, read_section
+from .plugin_files import SKILLS_DIR, read_frontmatter, read_section
 
 DEVELOP_FEATURE_DIR = SKILLS_DIR / "develop-feature"
 MODEL_AND_EFFORT_LINK_TARGET = "../develop-feature/SKILL.md#model-and-effort"
@@ -466,6 +466,90 @@ def _parallel_question_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# The partition session (R3.3). These run on blocks from _blocks that are about a session started for one partition.
+_PARTITION_ARGUMENT = re.compile(r"--partition\s+p<\w+>", re.IGNORECASE)
+_PARTITION_SESSION = re.compile(r"--partition\b|\bpartition sessions?\b")
+_TASK_LOOP = re.compile(r"\bphase 3\b|\btask loop\b")
+_ONLY = re.compile(r"\bonly\b")
+_OTHER_PARTITION = re.compile(r"\b(?:an)?other partitions?\b|\bother partitions'")
+_PARTITION_REPORT = re.compile(r"\bevidence/p<\w+>\.md\b")
+_NEVER_PUSHES = re.compile(r"\b(?:never|not|no|nor)\b(?: \S+){0,4} push")
+_PLAN_CHANGE = re.compile(r"\bplan change\b")
+_BLOCKED = re.compile(r"\bblocked:")
+# The task order comes from the level-3 `### Partitions` table, one per slice, so the session must name the slice that
+# holds its partition. A level-2 `## Partitions` heading exists in no plan document.
+_PARTITIONS_TABLE = re.compile(r"(?<!#)###\s*partitions\b")
+_LEVEL_2_PARTITIONS = re.compile(r"(?<!#)##\s*partitions\b")
+_SLICE_OF_THE_PARTITION = re.compile(
+    r"\bslice\b(?: \S+){0,6} (?:p<\w+>|(?:its|your|this|that|the) partition\b)|\b(?:p<\w+>|partition)'s slice\b"
+)
+
+
+def _never_edits_the_plan(block: str) -> bool:
+    """Return whether one sentence of a block forbids editing design.md, requirements.md and other partitions' tasks."""
+    return any(
+        _NEGATION.search(sentence) is not None
+        and "design.md" in sentence
+        and "requirements.md" in sentence
+        and _OTHER_PARTITION.search(sentence) is not None
+        for sentence in _SENTENCE_END.split(block)
+    )
+
+
+def _follows_its_slice_partitions_table(block: str) -> bool:
+    """Return whether a block builds only the partition's tasks through Phase 3, and one of its sentences takes them
+    from the `### Partitions` table of the slice that holds the partition."""
+    return (
+        _ONLY.search(block) is not None
+        and _TASK_LOOP.search(block) is not None
+        and any(
+            _PARTITIONS_TABLE.search(sentence) is not None and _SLICE_OF_THE_PARTITION.search(sentence) is not None
+            for sentence in _SENTENCE_END.split(block)
+        )
+    )
+
+
+def _never_pushes(block: str) -> bool:
+    """Return whether one sentence of a block forbids pushing."""
+    return any(_NEVER_PUSHES.search(sentence) is not None for sentence in _SENTENCE_END.split(block))
+
+
+# What develop-feature must say about a partition session, each in one paragraph or list item about that session.
+_PARTITION_SESSION_RULES: dict[str, Callable[[str], bool]] = {
+    "building only its partition's tasks through the Phase 3 task loop": lambda block: (
+        _ONLY.search(block) is not None and _TASK_LOOP.search(block) is not None
+    ),
+    "taking those tasks from the ### Partitions table of the slice that holds P<k>": (
+        _follows_its_slice_partitions_table
+    ),
+    "never editing design.md, requirements.md or another partition's tasks": _never_edits_the_plan,
+    "leaving its report in specs/<NNN-slug>/evidence/P<k>.md": lambda block: (
+        _PARTITION_REPORT.search(block) is not None
+    ),
+    "never pushing (the main session integrates its branch)": _never_pushes,
+    "stopping with a BLOCKED: line on a PLAN CHANGE instead of editing the plan": lambda block: (
+        _PLAN_CHANGE.search(block) is not None and _BLOCKED.search(block) is not None
+    ),
+}
+
+
+def _partition_session_gaps(skill: Path) -> list[str]:
+    """Return one message per part of R3.3's partition session that develop-feature's SKILL.md lacks."""
+    gaps = []
+    if not _PARTITION_ARGUMENT.search(read_frontmatter(skill).get("argument-hint", "")):
+        gaps.append("develop-feature: the frontmatter argument-hint does not mention --partition P<n>")
+    blocks = _blocks(skill)
+    sessions = [block for block in blocks if _PARTITION_SESSION.search(block)]
+    if any(_LEVEL_2_PARTITIONS.search(block) for block in blocks):
+        gaps.append("develop-feature: refers to a ## Partitions heading; the plan's table is ### Partitions")
+    gaps += [
+        f"develop-feature: no paragraph or list item about a partition session says {label}"
+        for label, says_it in _PARTITION_SESSION_RULES.items()
+        if not any(says_it(block) for block in sessions)
+    ]
+    return gaps
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -532,6 +616,15 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         says why; it records the answer in tasks.md's `- **Parallel:**` header line, and a resumed session keeps that
         answer instead of asking again."""
         gaps = _parallel_question_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_a_partition_session_builds_only_its_partition(self) -> None:
+        """R3.3: develop-feature's argument-hint offers `--partition P<n>`, and a session started with it builds only
+        that partition's tasks through the Phase 3 task loop, never edits design.md, requirements.md or another
+        partition's tasks, leaves its report in `specs/<NNN-slug>/evidence/P<k>.md`, never pushes (the main session
+        integrates its branch), and stops with a `BLOCKED:` line for the main session on a PLAN CHANGE."""
+        gaps = _partition_session_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 

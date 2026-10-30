@@ -2,7 +2,7 @@
 name: develop-feature
 description: Runs a feature from idea to reviewed pull requests with a fixed, gated workflow. Writes and approves the spec, writes and approves the plan (tasks grouped into pull-request-sized slices), then for each task dispatches fresh subagents (test-writer for red, implementer for green and refactor, spec-reviewer, code-reviewer, a security-reviewer on high-risk tasks, and a finding-verifier that tries to refute Critical findings), rejects flaky tests, sends a task stuck in review to a rethinker that finds what to do differently, scales verification to each task's risk (property tests, mutation testing, end-to-end evidence), verifies every claim by running commands, lands one atomic commit per task and, with the user's yes, opens one pull request per slice. Invoke explicitly with /konundrm-eng:develop-feature <idea>, or pass an existing specs/<NNN-slug> folder to resume.
 disable-model-invocation: true
-argument-hint: "<feature idea | specs/NNN-slug>"
+argument-hint: "<feature idea | specs/NNN-slug [--partition P<n>]>"
 ---
 
 # Develop Feature
@@ -65,6 +65,21 @@ runs this solved slightly more tasks than running everything at `high`, for less
    it, or `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" quality_check.py` prints it. Run it once as a
    baseline. If it is red before you start, stop and report: never build on red. If none exists,
    suggest `/konundrm-eng:setup-project` and ask whether to continue without gates.
+
+**Partition session.** When `$ARGUMENTS` also says `--partition P<k>`, the feature's main session
+started you in a Git worktree of your own to build one partition of a parallel wave. Resume as in
+step 1, then run Phase 3 for only that partition's tasks, in the order the `### Partitions`
+table of the slice that holds `P<k>` lists them, and skip Phases 1, 2 and 4. Never edit `design.md`, `requirements.md` or another
+partition's tasks: in `tasks.md` you check only your own tasks' boxes and write only their Rounds
+lines. After the last task's commit, write a short report as `specs/<NNN-slug>/evidence/P<k>.md`
+with what the main session needs to integrate you: your branch, each task's commit SHA and subject,
+each task's Rounds line and the Suggestions not applied. Commit it as
+`docs(<scope>): report partition P<k>` with the last task's `Task:` line, then stop with that
+report. Never push nor open pull requests: the main session integrates your branch. A PLAN CHANGE
+from a rethink is not yours to propose or write: stop with a `BLOCKED:` line for the main session
+that quotes its `Plan change:`. A fresh worktree may lack installed dependencies or local
+configuration the check needs; set them up as the project's `AGENTS.md` or README says before the
+baseline in step 3, and if the check still cannot run, stop with `BLOCKED:`.
 
 ## Phase 1: Spec
 
