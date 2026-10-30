@@ -132,5 +132,10 @@ integrado. Para revertir un slice se revierten sus commits; los planes viejos si
   sesión única con `Sessions: single`.
 - **Pipes en Windows.** El camino rápido de `run.sh` depende de cómo lee stdin. Lo decide T1, y se
   mide antes y después.
+- **Comandos con comillas.** Mandar a Python todo comando con un escape JSON dejaba el camino
+  rápido en el 1,7% de los comandos de la 0.6.0, porque casi todos llevan comillas. T42 decide sobre
+  el texto escapado cuando la palabra del check no tiene `"`, `\` ni `/` (JSON nunca escapa letras,
+  dígitos ni el resto de la puntuación), cortando el valor en la primera comilla sin escapar; si la
+  tiene, cualquier escape sigue mandando a Python.
 - **Fuera de alcance.** fix-bug conserva su revisión en serie. `opening-pull-requests` ya busca con
   rango.

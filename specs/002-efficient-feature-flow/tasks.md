@@ -61,11 +61,25 @@ actualiza en el paso rojo de esa tarea. -->
   - Depends on: T3
   - Rounds: spec 1 · code 3 · escalations 0
 
+<!-- T42 se agregó el 2026-10-30, después del resumen de S1 y con el visto bueno del usuario. En las
+transcripciones de la 0.6.0, solo 86 de 5.016 comandos de shell (1,7%) habrían tomado el camino
+rápido: casi todos llevan comillas (la ruta del repo tiene un espacio), y la regla de T1–T3 manda a
+Python todo comando con un escape JSON, camino que ahora cuesta ~100 ms más. Con T42 serían ~77%. El
+caso de comillas escapadas de la prueba de T3 y el generador `_escaped_case` de su prueba de
+propiedad fijan la regla vieja; el test-writer los actualiza en el paso rojo. La prueba de propiedad
+de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se amplía a ellos. -->
+- [ ] **T42** `run.sh` decide también cuando el comando lleva comillas o barras escapadas: busca la palabra del check en el texto escapado, hasta la primera comilla sin escapar · `behavior` · Risk: medium · Covers: R5.1, R5.3
+  - Test: `P/hooks/tests/integration/test_hook_scripts.py::test_run_sh_skips_python_for_a_quoted_command_that_is_not_the_check` (`ls "my dir"`, `git commit -m "x"` y un comando que termina en `\` → sin marcador; `cd "<raíz con un espacio>" && npm run check` → marcador y evento intacto; con un override cuya palabra lleva `"`, `\` o `/`, un comando con escapes → marcador)
+  - Files: `P/hooks/run.sh` (modify)
+  - Invariants: todo comando que corre el check arranca Python, también con comillas, barras o `cd "<raíz>" &&`; el valor del comando termina en la primera comilla no escapada.
+  - Verify: `... -k test_run_sh_skips_python_for_a_quoted_command_that_is_not_the_check`
+  - Depends on: T4
+
 ### Partitions
 
 | Wave | Partition | Tasks | Depends on |
 | --- | --- | --- | --- |
-| 1 | P1 | T1–T4 | — |
+| 1 | P1 | T1–T4, T42 | — |
 
 ## Slice S2: commits de tarea por rango y huella del check junto al repositorio
 
