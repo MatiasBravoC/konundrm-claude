@@ -42,12 +42,13 @@ actualiza en el paso rojo de esa tarea. -->
   - Depends on: T1
   - Rounds: spec 1 · code 2 · escalations 0
 
-- [ ] **T3** Si no puede leer el comando, `run.sh` corre el registro completo · `behavior` · Risk: medium · Covers: R5.3
+- [x] **T3** Si no puede leer el comando, `run.sh` corre el registro completo · `behavior` · Risk: medium · Covers: R5.3
   - Test: `P/hooks/tests/integration/test_hook_scripts.py::test_run_sh_runs_python_when_it_cannot_tell_the_command` (comillas escapadas dentro del comando, campo `command` después de los primeros 8 KB, evento sin `command` → marcador)
   - Files: `P/hooks/run.sh` (modify)
   - Invariants: ante la duda, Python corre.
   - Verify: `... -k test_run_sh_runs_python_when_it_cannot_tell_the_command`
   - Depends on: T2
+  - Rounds: spec 1 · code 2 · escalations 0
 
 - [ ] **T4** El gate de commit y el guard reciben el evento intacto y el gate sigue fallando cerrado · `behavior` · Risk: high · Covers: R5.4
   - Test: `P/hooks/tests/integration/test_hook_scripts.py::test_run_sh_passes_the_event_intact_to_the_gate_and_the_guard` (para `gate_git_commit.py` y `guard_new_dependencies.py` el Python falso recibe el mismo evento, también con `ls`; sin Python, un evento con `git commit` sigue denegado)

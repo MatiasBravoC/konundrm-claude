@@ -309,6 +309,45 @@ class HookScriptsTest(unittest.TestCase):
         launch("make verify", custom_env)
         self.assertTrue(marker.exists(), "run.sh skipped Python for the check set in KONUNDRM_CHECK_CMD")
 
+    @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
+    def test_run_sh_runs_python_when_it_cannot_tell_the_command(self) -> None:
+        # R5.3: none of these commands is the check, so Python starting proves run.sh ran the full
+        # recorder because it could not read the command, not because it recognized the check.
+        marker, _ = install_fake_python(Path(self._data.name))
+        base = {"session_id": "it-session", "cwd": str(self.root), "hook_event_name": "PostToolUse"}
+        base["tool_name"] = "Bash"
+        response = {"stdout": "ok", "stderr": "", "interrupted": False}
+        events = {
+            "escaped quotes in the command": {
+                **base,
+                "tool_input": {"command": 'ls "my dir"'},
+                "tool_response": response,
+            },
+            "command after the first 8 KB": {
+                **base,
+                "tool_response": {**response, "stdout": "x" * 10_000},
+                "tool_input": {"command": "ls -la"},
+            },
+            "no command in the event": {**base, "tool_input": {}, "tool_response": response},
+        }
+        started = {}
+        for case, event in events.items():
+            marker.unlink(missing_ok=True)
+
+            result = subprocess.run(
+                [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), "record_check_result.py"],
+                input=json.dumps(event),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=self.env,
+                timeout=60,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            started[case] = marker.exists()
+        self.assertEqual(started, dict.fromkeys(events, True), "run.sh skipped Python without reading the command")
+
 
 # Whitespace Python's str.split() and str.strip() remove, including some a C-locale shell does not.
 PYTHON_WHITESPACE = (" ", "  ", "\t", "\n", "\u00a0", "\u2003", "\u3000")
@@ -331,6 +370,109 @@ def _respace(rng: random.Random, words: str) -> str:
 
 def _suffix(rng: random.Random) -> str:
     return "".join(rng.choice(SUFFIX_PARTS) for _ in range(rng.randint(0, 3)))
+
+
+# Generators for events run.sh cannot read (R5.3). Every command is built from words without "check",
+# so Python starting can only come from the launcher's doubt, never from recognizing the check.
+ORDINARY_WORDS = ("ls", "-la", "git", "status", "echo", "hi", "make", "lint", "npm", "test", "pytest", "-q", "cat")
+# Characters json.dumps(ensure_ascii=True) writes as an escape: \" \\ \n \t \r \b \f and \uXXXX.
+ESCAPED_CHARS = ('"', "\\", "\n", "\t", "\r", "\b", "\f", "\x01", "\x1f", "ñ", "€", "\u00a0", "😀")
+# (item separator, key separator) pairs whose key separator is not ":" plus optional spaces.
+UNEXPECTED_SEPARATORS = (
+    (", ", " : "),
+    (",", " :"),
+    (",", "\t:"),
+    (", ", ":\n"),
+    (",\n", ":\t"),
+    (", ", ": \t"),
+    (", ", ":\r\n"),
+    (", ", ":  \n "),
+)
+NON_ASCII_CHARS = ("é", "ñ", "€", "\u00a0", "\u3000", "😀")
+FILL_ALPHABET = "abcdefxyz0123456789-_/. "  # no "k", so a fill never spells the check word
+BLOCK = 8192  # the bytes run.sh's dd reads before it decides
+
+
+def _ordinary_command(rng: random.Random) -> str:
+    return " ".join(rng.choice(ORDINARY_WORDS) for _ in range(rng.randint(1, 5)))
+
+
+def _bash_event(tool_input: object = None, **fields: object) -> dict:
+    """A PostToolUse Bash event with a fixed cwd, so its bytes never depend on the machine."""
+    event: dict = {"session_id": "it-session", "cwd": "/home/dev/project", "hook_event_name": "PostToolUse"}
+    event["tool_name"] = "Bash"
+    event.update(fields)
+    if tool_input is not None:
+        event["tool_input"] = tool_input
+    event.setdefault("tool_response", {"stdout": "ok", "stderr": "", "interrupted": False})
+    return event
+
+
+def _escaped_case(rng: random.Random) -> tuple[bytes, str | None]:
+    words = _ordinary_command(rng)
+    at = rng.randint(0, len(words))
+    command = words[:at] + "".join(rng.choice(ESCAPED_CHARS) for _ in range(rng.randint(1, 3))) + words[at:]
+    return json.dumps(_bash_event({"command": command})).encode("ascii"), None
+
+
+def _far_case(rng: random.Random) -> tuple[bytes, str | None]:
+    """Pushes "command": past byte 8192, or makes its value start before it and end after it."""
+    where = rng.choice(("tool_response", "cwd", "transcript_path", "description"))
+    straddles = rng.random() < 0.4
+    command = _ordinary_command(rng)
+    if straddles:
+        command = (command + " ") * rng.randint(20, 60)
+    if where == "tool_response":
+        response = {"stdout": "@FILL@", "stderr": "", "interrupted": False}
+        event = {"tool_response": response, **_bash_event({"command": command}, tool_response=response)}
+    elif where == "description":
+        event = _bash_event({"description": "@FILL@", "command": command})
+    else:
+        event = _bash_event(**{where: "@FILL@"})
+        event["tool_input"] = event.pop("tool_input", {"command": command})
+        event["tool_response"] = event.pop("tool_response")
+    text = json.dumps(event)
+    key_end = text.index('"command":') + len('"command":')
+    opening = text.index('"', key_end)
+    closing = text.index('"', opening + 1)
+    if straddles:
+        shift = rng.randint(BLOCK - closing, BLOCK - 1 - opening)
+    else:
+        shift = rng.randint(BLOCK + 1 - key_end, BLOCK + 3000 - key_end)
+    fill = "".join(rng.choice(FILL_ALPHABET) for _ in range(shift + len("@FILL@")))
+    return text.replace("@FILL@", fill).encode("ascii"), None
+
+
+def _missing_case(rng: random.Random) -> tuple[bytes, str | None]:
+    shape = rng.choice(("no command", "no tool_input", "number", "null", "list", "object", "bool"))
+    values = {
+        "number": rng.randint(-5, 10**6),
+        "null": None,
+        "list": [_ordinary_command(rng)],
+        "object": {"command": _ordinary_command(rng)},
+        "bool": rng.choice((True, False)),
+    }
+    if shape == "no tool_input":
+        return json.dumps(_bash_event()).encode("ascii"), None
+    tool_input = {"description": _ordinary_command(rng)} if rng.random() < 0.5 else {}
+    if shape != "no command":
+        tool_input["command"] = values[shape]
+    return json.dumps(_bash_event(tool_input)).encode("ascii"), None
+
+
+def _separator_case(rng: random.Random) -> tuple[bytes, str | None]:
+    separators = rng.choice(UNEXPECTED_SEPARATORS)
+    return json.dumps(_bash_event({"command": _ordinary_command(rng)}), separators=separators).encode("ascii"), None
+
+
+def _non_ascii_override_case(rng: random.Random) -> tuple[bytes, str | None]:
+    override = _ordinary_command(rng) + " verify"
+    at = rng.randint(0, len(override))
+    override = override[:at] + rng.choice(NON_ASCII_CHARS) + override[at:]
+    return json.dumps(_bash_event({"command": _ordinary_command(rng)})).encode("ascii"), override
+
+
+UNREADABLE_CASES = (_escaped_case, _far_case, _missing_case, _separator_case, _non_ascii_override_case)
 
 
 @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
@@ -454,6 +596,37 @@ class RunShFastPathPropertyTest(unittest.TestCase):
                 if received != sent:
                     mismatches.append((command, size, len(newlines), None if received is None else len(received)))
             self.assertEqual(mismatches, [], "Python got other bytes for (command, size, trailing newlines, got)")
+
+    def test_run_sh_runs_python_for_every_event_it_cannot_read(self) -> None:
+        # R5.3 invariant: when run.sh cannot read the command (escapes, keys past the first 8 KB, no
+        # string command, unexpected separators, a non-ASCII override), Python starts. No command
+        # holds the check word, so the marker can only come from that doubt.
+        with tempfile.TemporaryDirectory() as data_name:
+            marker, _ = install_fake_python(Path(data_name))
+            base_env = {**os.environ, "CLAUDE_PLUGIN_DATA": data_name}
+            base_env.pop("KONUNDRM_CHECK_CMD", None)
+            skipped = []
+            for index in range(18):
+                # One generator per case, so each case's draws never depend on another case or the machine.
+                rng = random.Random(53 + index)  # noqa: S311 - seeded for reproducible test data, not cryptography
+                build = UNREADABLE_CASES[index % len(UNREADABLE_CASES)]
+                sent, override = build(rng)
+                self.assertNotIn(b"check", sent)
+                env = base_env if override is None else {**base_env, "KONUNDRM_CHECK_CMD": override}
+                marker.unlink(missing_ok=True)
+
+                result = subprocess.run(
+                    [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), "record_check_result.py"],
+                    input=sent,
+                    capture_output=True,
+                    env=env,
+                    timeout=60,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                if not marker.exists():
+                    skipped.append((index, build.__name__, override, sent[:200], len(sent)))
+            self.assertEqual(skipped, [], "run.sh skipped Python for events it could not read")
 
 
 def git(root: Path, *args: str) -> None:
