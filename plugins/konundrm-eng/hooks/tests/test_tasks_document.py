@@ -125,11 +125,19 @@ class ReadTasksTest(unittest.TestCase):
         self.assertEqual((document.status, document.tasks), ("", ()))
 
     def test_the_writing_plans_template_parses(self) -> None:
+        # R2.1, R3.1, R4.5: the template groups every task into a slice and a partition, ships
+        # serial (Parallel reads as no) and carries the Parallel and Checkpoints header lines.
         document = read_tasks(TEMPLATE)
+        with TEMPLATE.open(encoding="utf-8") as template:  # universal newlines
+            header_lines = [line.strip() for line in template]
         self.assertEqual(document.status, "Draft")
         self.assertTrue(document.tasks)
         self.assertTrue(all(task.risk in ("low", "medium", "high") for task in document.tasks))
-        self.assertTrue(all(task.slice is not None for task in document.tasks))
+        self.assertEqual([task.id for task in document.tasks if task.slice is None], [])
+        self.assertEqual([task.id for task in document.tasks if task.partition is None], [])
+        self.assertIs(document.parallel, False)
+        self.assertTrue(any(line.startswith("- **Parallel:**") for line in header_lines))
+        self.assertTrue(any(line.startswith("- **Checkpoints:**") for line in header_lines))
 
     def test_reads_the_partition_of_each_task(self) -> None:
         # R3.1: each task takes the partition of the first row that lists it; unlisted is None.

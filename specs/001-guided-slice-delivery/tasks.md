@@ -125,11 +125,12 @@ de cada archivo (algunos son CRLF). -->
   - Verify: `... -k test_reads_whether_partitions_run_in_parallel`
   - Depends on: T11
 
-- [ ] **T15** La plantilla de tasks.md tiene slices con su tabla de particiones y las líneas Parallel y Checkpoints, y se lee completa · `behavior` · Risk: low · Covers: R2.1, R3.1, R4.5
+- [x] **T15** La plantilla de tasks.md tiene slices con su tabla de particiones y las líneas Parallel y Checkpoints, y se lee completa · `behavior` · Risk: low · Covers: R2.1, R3.1, R4.5
   - Test: `P/hooks/tests/test_tasks_document.py::test_the_writing_plans_template_parses` (toda tarea tiene slice y partición; `parallel` es falso)
   - Files: `P/skills/writing-plans/templates/tasks.md` (modify)
   - Verify: `... -k test_the_writing_plans_template_parses`
   - Depends on: T11, T14
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T16** writing-plans parte cada slice en particiones y oleadas con reglas comprobables · `behavior` · Risk: low · Covers: R3.1
   - Test: `P/hooks/tests/contract/test_skills.py::test_writing_plans_partitions_each_slice` (a lo sumo tres particiones por oleada; sin dependencias ni archivos compartidos dentro de una oleada salvo tasks.md y evidence; regla de manifiesto y lockfile; IDs de partición únicos en la feature; puntos de autorrevisión)
