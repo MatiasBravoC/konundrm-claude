@@ -488,11 +488,12 @@ pedido de ser maximalista: las sugerencias de las revisiones de código que vale
   - Depends on: T55
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T61** Un ID con ceros a la izquierda (`T01`) coincide con `T1` en rangos y en celdas explícitas · `behavior` · Risk: low · Covers: R3.8
+- [x] **T61** Un ID con ceros a la izquierda (`T01`) coincide con `T1` en rangos y en celdas explícitas · `behavior` · Risk: low · Covers: R3.8
   - Test: `P/hooks/tests/test_tasks_document.py::test_zero_padded_ids_match_their_number`
   - Files: `P/hooks/scripts/tasks_document.py` (modify)
   - Verify: `... -k test_zero_padded_ids_match_their_number`
   - Depends on: T55
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T62** Una línea `Parallel:` sin llenar, o con las opciones solo dentro de un comentario, se lee como no · `behavior` · Risk: low · Covers: R3.6
   - Test: `P/hooks/tests/test_tasks_document.py::test_an_unfilled_parallel_line_reads_as_no`

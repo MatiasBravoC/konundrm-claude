@@ -5,9 +5,10 @@ writing-plans creates the file from its template and develop-feature checks the 
 run in parallel (no line means serial). Each slice ends with a ``### Partitions`` table
 (``| Wave | Partition | Tasks | Depends on |``) that assigns its tasks to partitions; a Tasks cell
 lists IDs and inclusive ranges (``T1-T3``, ``T4..T6``, ``T7 to T9``; en and em dashes too), bold or
-not; a range is never expanded, only the document's own tasks are checked against its bounds. The impact
-report and the session doctor both read it, so the format has this one parser. HTML comments are
-ignored: the template carries a commented example.
+not. IDs match by number, so ``T01`` lists task ``T1``; a range is never expanded, only the
+document's own tasks are checked against its bounds. The impact report and the session doctor
+both read it, so the format has this one parser. HTML comments are ignored: the template carries
+a commented example.
 
 Sections:
     Task, TasksDocument — what a tasks.md says.
@@ -128,25 +129,30 @@ def _unbold(cell: str) -> str:
 class _TasksCell:
     """The tasks a Partitions row's Tasks cell lists: explicit IDs and inclusive ranges.
 
-    Ranges stay as their bounds rather than being expanded, so their width costs nothing. A range
-    whose end comes before its start (``T5-T3``) lists no task. Anything that is not a task ID,
-    such as an empty cell or ``—``, is ignored.
+    Both are kept as task numbers, so zero padding never matters: ``T01`` and ``T1`` name the same
+    task, in the cell and in the task list alike. Ranges stay as their bounds rather than being
+    expanded, so their width costs nothing. A range whose end comes before its start (``T5-T3``)
+    lists no task. Anything that is not a task ID, such as an empty cell or ``—``, is ignored.
     """
 
-    ids: frozenset[str]
+    numbers: frozenset[int]
     ranges: tuple[tuple[int, int], ...]
 
     @classmethod
     def parse(cls, cell: str) -> _TasksCell:
         ranges = tuple((int(found.group("first")), int(found.group("last"))) for found in TASK_RANGE.finditer(cell))
-        return cls(ids=frozenset(TASK_ID.findall(TASK_RANGE.sub(" ", cell))), ranges=ranges)
+        explicit = TASK_ID.findall(TASK_RANGE.sub(" ", cell))
+        return cls(numbers=frozenset(_task_number(task_id) for task_id in explicit), ranges=ranges)
 
     def lists(self, task_id: str) -> bool:
-        """Whether the cell names the task or one of its ranges covers the task's number."""
-        if task_id in self.ids:
-            return True
-        number = int(task_id[1:])
-        return any(first <= number <= last for first, last in self.ranges)
+        """Whether the cell names the task's number or one of its ranges covers it."""
+        number = _task_number(task_id)
+        return number in self.numbers or any(first <= number <= last for first, last in self.ranges)
+
+
+def _task_number(task_id: str) -> int:
+    """The number a task ID such as ``T03`` stands for, without its zero padding."""
+    return int(task_id[1:])
 
 
 def _slice_at(position: int, headings: list[re.Match[str]]) -> str | None:

@@ -265,6 +265,28 @@ class ReadTasksTest(unittest.TestCase):
                 )
                 self.assertEqual({task.id: task.partition for task in tasks}, _expected_partitions(rows))
 
+    def test_zero_padded_ids_match_their_number(self) -> None:
+        # R3.8: a zero-padded ID matches its number in an explicit cell (both ways) and in a range's
+        # bounds, under the first-row rule; each task keeps its ID exactly as written.
+        _, tasks = self.read(
+            "- **Status:** Approved\n\n"
+            "## Slice S1: apply\n\n"
+            "- [ ] **T1** First\n"
+            "- [ ] **T02** Second\n"
+            "- [ ] **T4** Fourth\n"
+            "- [ ] **T6** Sixth\n\n"
+            "### Partitions\n\n"
+            "| Wave | Partition | Tasks | Depends on |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | P1 | T01 | \u2014 |\n"
+            "| 2 | P2 | T2, T1 | P1 |\n"
+            "| 3 | P3 | T03\u2013T05, T02 | P2 |\n"
+        )
+        self.assertEqual(
+            {task.id: task.partition for task in tasks},
+            {"T1": "P1", "T02": "P2", "T4": "P3", "T6": None},
+        )
+
     def test_reads_whether_partitions_run_in_parallel(self) -> None:
         # R3.6: the parallel answer is read back from the header; a plan without the line is serial.
         headers = {
