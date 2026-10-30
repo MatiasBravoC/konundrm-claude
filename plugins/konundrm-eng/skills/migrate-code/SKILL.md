@@ -67,7 +67,7 @@ Each file moves `pending → migrated → verified → committed`, or to `needs-
 1. **Migrate:** dispatch `implementer` with the recipe, the file and its last error, if any.
 2. **Verify:** run the per-file verify command yourself. On failure, send the error back with the
    recipe (Airbnb's retry loop), at most three attempts per file; then mark `needs-human` with the
-   last error and move on.
+   last error and move on. Retries run with the Agent tool's `model: opus` and `effort: high`.
 3. **Check the diff:** the change touches only what the recipe covers. Unrelated edits, deleted
    tests, weakened assertions and new silencers (Standards → Gate integrity) send the file back.
 
@@ -77,8 +77,9 @@ Update `inventory.md` after every file.
 
 Group verified files into batches within the pull request budget (Standards → Git and pull
 requests). For each batch: run the full check, dispatch `code-reviewer` on the batch (and
-`spec-reviewer` with the recipe as the criterion: the batch applies the recipe and nothing
-else), commit it as `refactor(<scope>): migrate <n> files from <old> to <new>`, and, with the
+`spec-reviewer`, with `model: opus` and `effort: high`, with the recipe as the criterion: the
+batch applies the recipe and nothing else), commit it as
+`refactor(<scope>): migrate <n> files from <old> to <new>`, and, with the
 user's yes, open its pull request with `opening-pull-requests`. Ask the user how many batches the
 reviewers can take per week, and do not open more than that.
 

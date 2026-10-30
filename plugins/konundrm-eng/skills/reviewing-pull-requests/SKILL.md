@@ -45,9 +45,12 @@ draft pull request gets a review only when the request asks for it.
 Dispatch, one at a time, with the range `<base>...<head>` in place of the uncommitted changes
 (develop-feature's dispatch prompts):
 
-1. `spec-reviewer` (whole-feature prompt) when a spec exists;
+1. `spec-reviewer` (whole-feature prompt) when a spec exists, with the Agent tool's
+   `model: opus` and `effort: high`;
 2. `code-reviewer`;
 3. `security-reviewer` when the risk is high.
+
+Omit `model` and `effort` for every other dispatch, so each agent's frontmatter applies.
 
 In CI, tell each reviewer not to run the test suite: the pull request's `check` job already does.
 
