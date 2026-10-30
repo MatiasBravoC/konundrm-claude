@@ -22,7 +22,8 @@ with the bug's `B1` in place of the task.
 Model and effort follow develop-feature's [Model and effort](../develop-feature/SKILL.md#model-and-effort),
 keyed to the bug's risk (step 2): every fix round runs `test-writer` or `implementer` with the
 Agent tool's `model: opus` and `effort: high`; on a high-risk bug so do their first attempts and
-`spec-reviewer`. Otherwise omit both parameters so each agent's frontmatter applies.
+`spec-reviewer`; and after a rethink so does every `test-writer` and `implementer` dispatch.
+Otherwise omit both parameters so each agent's frontmatter applies.
 
 ## Workflow
 

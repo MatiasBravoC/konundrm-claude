@@ -528,11 +528,12 @@ pedido de ser maximalista: las sugerencias de las revisiones de código que vale
   - Depends on: T10
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T67** fix-bug corre en Opus high todo despacho del test-writer y del implementer después de un replanteo · `behavior` · Risk: low · Covers: R1.2
+- [x] **T67** fix-bug corre en Opus high todo despacho del test-writer y del implementer después de un replanteo · `behavior` · Risk: low · Covers: R1.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_fix_bug_runs_dispatches_after_a_rethink_on_opus_high`
   - Files: `P/skills/fix-bug/SKILL.md` (modify)
   - Verify: `... -k test_fix_bug_runs_dispatches_after_a_rethink_on_opus_high`
   - Depends on: T10
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T68** La sección Model and effort deja de citar resultados que nada respalda · `chore` · Risk: low · Covers: —
   - Files: `P/skills/develop-feature/SKILL.md` (modify)

@@ -448,6 +448,44 @@ def _stash_recovery_gaps() -> list[str]:
     return gaps + _stash_unnamed_applies("fix-bug", fix_bug)
 
 
+# fix-bug's dispatches after a rethink (R1.2): the attempt rebuilt from the red step is not a fix round, so fix-bug
+# says itself that every test-writer and implementer dispatch after a rethink runs on opus at high.
+_FIX_BUG_RETHINK_AFTER = re.compile(r"\bafter\b(?: \S+){0,3} rethink\b")
+_FIX_BUG_RETHINK_EVERY_DISPATCH = re.compile(r"\b(?:every|each|all|any)\b(?: \S+){0,4} dispatch(?:es)?\b")
+
+
+def _fix_bug_after_rethink_states_dispatches(statement: str) -> bool:
+    """Return whether a statement covers every test-writer and implementer dispatch after a rethink."""
+    return (
+        _FIX_BUG_RETHINK_AFTER.search(statement) is not None
+        and "test-writer" in statement
+        and "implementer" in statement
+        and _FIX_BUG_RETHINK_EVERY_DISPATCH.search(statement) is not None
+    )
+
+
+def _fix_bug_after_rethink_gaps(skill: Path) -> list[str]:
+    """Return what fix-bug lacks to run every test-writer and implementer dispatch after a rethink on opus at high
+    (R1.2): a statement naming those dispatches after a rethink, in a block that sets `model: opus` and
+    `effort: high`."""
+    matching = [
+        block
+        for block in _blocks(skill)
+        if any(_fix_bug_after_rethink_states_dispatches(statement) for statement in _STATEMENT_END.split(block))
+    ]
+    if not matching:
+        return [
+            "fix-bug: no statement says every test-writer and implementer dispatch after a rethink runs on "
+            "opus at high; the rebuilt first attempts would run at their frontmatter's effort (R1.2)"
+        ]
+    if not any(_sets_opus_high(block) for block in matching):
+        return [
+            "fix-bug: the paragraph about test-writer and implementer dispatches after a rethink does not set "
+            "model: opus and effort: high (R1.2)"
+        ]
+    return []
+
+
 # The parallel question (R3.2, R3.6). These run on blocks from _blocks, in Phase 2 (and Phase 0 for the resume).
 _PARALLEL = re.compile(r"\bparallel\b")
 _ASKS = re.compile(r"\bask(?:s|ed|ing)?\b")
@@ -1847,6 +1885,17 @@ class OtherFlowsTest(unittest.TestCase):
         sessions push to, so a bare apply restores the newest entry, maybe another session's work, and a position
         such as `stash@{0}` shifts with every push."""
         gaps = _stash_recovery_gaps()
+
+        self.assertEqual(gaps, [])
+
+    def test_fix_bug_runs_dispatches_after_a_rethink_on_opus_high(self) -> None:
+        """R1.2: fix-bug says itself that every test-writer and implementer dispatch after a rethink runs with the
+        Agent tool's `model: opus` and `effort: high`. After a rethink fix-bug rebuilds the bug from its red step, and
+        those rebuilt first attempts are not fix rounds, so without this rule they fall under "otherwise omit both
+        parameters" and run at their frontmatter's medium effort."""
+        skill = SKILLS_DIR / "fix-bug" / "SKILL.md"
+
+        gaps = _fix_bug_after_rethink_gaps(skill)
 
         self.assertEqual(gaps, [])
 
