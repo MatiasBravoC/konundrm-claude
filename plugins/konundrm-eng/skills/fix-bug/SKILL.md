@@ -115,8 +115,11 @@ At the fifth failed review, or a third failure of the same review, stop the fix 
 rethink as develop-feature's [Rethink](../develop-feature/SKILL.md#rethink) says, with `B1` in
 place of the task. There, `<NNN-slug> T<n>` becomes `<YYYY-MM-DD>-<slug> B1`, the task loop's
 steps 1, 2 and 3 become steps 3, 5 and 6 here, and the RETHINK report goes in
-`specs/bugs/<YYYY-MM-DD>-<slug>-rethink.md`, which lands in the fix commit. If two more reviews
-fail after it, escalate.
+`specs/bugs/<YYYY-MM-DD>-<slug>-rethink.md`, which lands in the fix commit. A set-aside attempt is
+stashed with the message `<YYYY-MM-DD>-<slug> B1 attempt set aside by rethink`. To recover it, the
+user runs `git stash list --grep="<YYYY-MM-DD>-<slug> B1 attempt set aside by rethink" --format=%gd`,
+which prints its entry (`stash@{<n>}`), and right after it `git stash apply <entry>` with that
+entry. If two more reviews fail after the rethink, escalate.
 
 ### 7. Verify by risk
 

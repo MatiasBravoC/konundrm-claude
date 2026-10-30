@@ -521,11 +521,12 @@ pedido de ser maximalista: las sugerencias de las revisiones de código que vale
   - Depends on: T42
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T66** Un intento apartado se recupera nombrando su entrada del stash por el mensaje, nunca por posición · `behavior` · Risk: low · Covers: R8.2
+- [x] **T66** Un intento apartado se recupera nombrando su entrada del stash por el mensaje, nunca por posición · `behavior` · Risk: low · Covers: R8.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_a_set_aside_attempt_is_recovered_by_its_stash_message` (develop-feature y fix-bug: `git stash list --grep=<mensaje> --format=%gd` o equivalente; ningún `git stash apply` sin la entrada)
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/fix-bug/SKILL.md` (modify)
   - Verify: `... -k test_a_set_aside_attempt_is_recovered_by_its_stash_message`
   - Depends on: T10
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T67** fix-bug corre en Opus high todo despacho del test-writer y del implementer después de un replanteo · `behavior` · Risk: low · Covers: R1.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_fix_bug_runs_dispatches_after_a_rethink_on_opus_high`

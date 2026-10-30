@@ -385,6 +385,69 @@ def _fix_bug_escalation_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# Recovering a set-aside attempt (R8.2). These run on blocks from _blocks: lowercased, without backticks.
+_STASH_PUSH_MESSAGE = re.compile(r'\bgit stash push\b[^"]*?(?<!\S)-m "([^"]+)"')
+_STASH_GREP_VALUE = re.compile(r"""--grep(?:=|\s+)(?:"([^"]*)"|'([^']*)'|(\S+))""")
+_STASH_APPLY = re.compile(r"\bgit stash apply\b(?:\s+(?:--index|-q|--quiet))*\s*")
+# What may follow `git stash apply` and its options: a placeholder, a command substitution or stash@{<...>}.
+_STASH_NAMED_ENTRY = re.compile(r"""["']?(?:<[^>]+>|\$\(|stash@\{<[^>]+>\})""")
+_STASH_TASK = "<nnn-slug> t<n>"  # develop-feature's part of the message that fix-bug replaces
+_STASH_BUG = "<yyyy-mm-dd>-<slug> b1"
+
+
+def _stash_push_message(blocks: list[str]) -> str | None:
+    """Return the `-m` message of the first `git stash push` in blocks, lowercased as `_blocks` leaves it."""
+    for block in blocks:
+        match = _STASH_PUSH_MESSAGE.search(block)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _stash_finds_and_applies(block: str, message: str) -> bool:
+    """Return whether a block looks a stash entry up with `git stash list --grep` on a value that contains message,
+    and applies the entry with `git stash apply`."""
+    if "git stash list" not in block or "git stash apply" not in block:
+        return False
+    return any(message in "".join(value) for value in _STASH_GREP_VALUE.findall(block))
+
+
+def _stash_unnamed_applies(skill: str, path: Path) -> list[str]:
+    """Return one message per `git stash apply` in a SKILL.md that does not name its entry, quoting it."""
+    gaps = []
+    for block in _blocks(path):
+        for match in _STASH_APPLY.finditer(block):
+            rest = block[match.end() :]
+            if _STASH_NAMED_ENTRY.match(rest) is None:
+                quoted = match.group() + re.match(r"\S*", rest).group()
+                gaps.append(f"{skill}: {quoted.strip()!r} does not name its stash entry; a position shifts (R8.2)")
+    return gaps
+
+
+def _stash_recovery_gaps() -> list[str]:
+    """Return what develop-feature's Rethink section and fix-bug lack to recover a set-aside attempt by its stash
+    message (R8.2): a block that finds the entry with `git stash list --grep=<message>` and applies it, and no
+    `git stash apply` without its entry anywhere in either SKILL.md."""
+    develop_feature = DEVELOP_FEATURE_DIR / "SKILL.md"
+    fix_bug = SKILLS_DIR / "fix-bug" / "SKILL.md"
+    message = _stash_push_message(_section_blocks(develop_feature, "Rethink"))
+    if message is None or _STASH_TASK not in message:
+        return [f"develop-feature Rethink: no git stash push -m with a message naming {_STASH_TASK!r} (R8.2)"]
+    gaps = []
+    lookups = {
+        "develop-feature Rethink": (_section_blocks(develop_feature, "Rethink"), message),
+        "fix-bug": (_blocks(fix_bug), message.replace(_STASH_TASK, _STASH_BUG)),
+    }
+    for where, (blocks, expected) in lookups.items():
+        if not any(_stash_finds_and_applies(block, expected) for block in blocks):
+            gaps.append(
+                f"{where}: no paragraph or list item finds the attempt with git stash list --grep containing "
+                f"{expected!r} and applies that entry with git stash apply (R8.2)"
+            )
+    gaps += _stash_unnamed_applies("develop-feature", develop_feature)
+    return gaps + _stash_unnamed_applies("fix-bug", fix_bug)
+
+
 # The parallel question (R3.2, R3.6). These run on blocks from _blocks, in Phase 2 (and Phase 0 for the resume).
 _PARALLEL = re.compile(r"\bparallel\b")
 _ASKS = re.compile(r"\bask(?:s|ed|ing)?\b")
@@ -1776,6 +1839,16 @@ class OtherFlowsTest(unittest.TestCase):
             missing.append(f"fix-bug: no Markdown link to {MODEL_AND_EFFORT_LINK_TARGET}")
 
         self.assertEqual(missing, [])
+
+    def test_a_set_aside_attempt_is_recovered_by_its_stash_message(self) -> None:
+        """R8.2: develop-feature's Rethink section and fix-bug recover a set-aside attempt by looking its stash entry up
+        by the message it was stashed with (`git stash list --grep=<message>`) right before `git stash apply`, and no
+        `git stash apply` in either SKILL.md goes without its entry. Git worktrees share one stash list that other
+        sessions push to, so a bare apply restores the newest entry, maybe another session's work, and a position
+        such as `stash@{0}` shifts with every push."""
+        gaps = _stash_recovery_gaps()
+
+        self.assertEqual(gaps, [])
 
     def test_fix_bug_rethinks_a_stuck_fix(self) -> None:
         """R8.1, R8.4: fix-bug, at the fifth failed review or the third failure of the same review, stops the fix
