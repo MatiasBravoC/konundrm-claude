@@ -1,7 +1,8 @@
 """Reads a feature's tasks.md: its status and each task's fields, partition and review rounds.
 
 writing-plans creates the file from its template and develop-feature checks the boxes and adds a
-``Rounds:`` line per task. Each slice ends with a ``### Partitions`` table
+``Rounds:`` line per task. The header's ``- **Parallel:** yes | no`` line says whether partitions
+run in parallel (no line means serial). Each slice ends with a ``### Partitions`` table
 (``| Wave | Partition | Tasks | Depends on |``) that assigns its tasks to partitions; a Tasks cell
 lists IDs and ranges (``T1-T3``, ``T4..T6``, ``T7 to T9``; en and em dashes too), bold or not. The impact
 report and the session doctor both read it, so the format has this one parser. HTML comments are
@@ -19,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 STATUS = re.compile(r"(?mi)^-\s*\*\*Status:\*\*\s*(?P<status>[A-Za-z]+)")
+PARALLEL = re.compile(r"(?mi)^-\s*\*\*Parallel:\*\*\s*(?P<parallel>[A-Za-z]+)")
 TASK = re.compile(r"(?m)^- \[(?P<box>[ xX])\] \*\*(?P<id>T\d+)\*\*[ \t]*(?P<rest>[^\n]*)")
 RISK = re.compile(r"\bRisk:\s*(?P<risk>low|medium|high)\b", re.IGNORECASE)
 SLICE_HEADING = re.compile(r"(?m)^#{2,3}\s+Slice\s+(?P<slice>S\d+)\b")
@@ -64,10 +66,13 @@ class TasksDocument:
     Attributes:
         status: ``Draft``, ``Approved`` or ``Done`` as written, or an empty string when missing.
         tasks: The tasks in file order.
+        parallel: Whether the header's ``Parallel:`` line says ``yes`` (in any case), so the
+            partitions run in parallel; False when it says anything else or is missing.
     """
 
     status: str
     tasks: tuple[Task, ...]
+    parallel: bool = False
 
 
 def _rounds(block: str) -> tuple[int, int, int] | None:
@@ -158,4 +163,9 @@ def read_tasks(path: Path) -> TasksDocument:
         _task(match, text[match.end() : end], _slice_at(match.start(), headings), partitions)
         for match, end in zip(matches, ends, strict=True)
     )
-    return TasksDocument(status=status.group("status") if status else "", tasks=tasks)
+    parallel = PARALLEL.search(text)
+    return TasksDocument(
+        status=status.group("status") if status else "",
+        tasks=tasks,
+        parallel=parallel is not None and parallel.group("parallel").lower() == "yes",
+    )

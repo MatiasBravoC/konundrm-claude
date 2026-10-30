@@ -200,6 +200,19 @@ class ReadTasksTest(unittest.TestCase):
                 )
                 self.assertEqual({task.id: task.partition for task in tasks}, _expected_partitions(rows))
 
+    def test_reads_whether_partitions_run_in_parallel(self) -> None:
+        # R3.6: the parallel answer is read back from the header; a plan without the line is serial.
+        headers = {
+            "- **Parallel:** yes\n": True,
+            "- **Parallel:** Yes\n": True,
+            "- **Parallel:** no\n": False,
+            "": False,
+        }
+        for header, expected in headers.items():
+            with self.subTest(header=header):
+                self.path.write_text(f"- **Status:** Approved\n{header}\n- [ ] **T1** First\n", encoding="utf-8")
+                self.assertIs(read_tasks(self.path).parallel, expected)
+
 
 if __name__ == "__main__":
     unittest.main()

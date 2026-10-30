@@ -118,7 +118,8 @@ de cada archivo (algunos son CRLF). -->
   - Verify: `... -k test_partitions_follow_the_first_row_and_ranges_cover_their_bounds`
   - Depends on: T12
 
-- [ ] **T14** El lector lee la línea `Parallel:` del encabezado · `behavior` · Risk: low · Covers: R3.6
+- [x] **T14** El lector lee la línea `Parallel:` del encabezado · `behavior` · Risk: low · Covers: R3.6
+  - Rounds: spec 1 · code 1 · escalations 0
   - Test: `P/hooks/tests/test_tasks_document.py::test_reads_whether_partitions_run_in_parallel`
   - Files: `P/hooks/scripts/tasks_document.py` (modify)
   - Verify: `... -k test_reads_whether_partitions_run_in_parallel`
