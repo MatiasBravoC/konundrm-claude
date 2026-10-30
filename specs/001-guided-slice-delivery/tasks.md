@@ -411,11 +411,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T46
   - Rounds: spec 3 · code 4 · escalations 0
 
-- [ ] **T48** Si el archivo central no se puede escribir, las notas quedan con la feature y se avisa · `behavior` · Risk: low · Covers: R7.4
+- [x] **T48** Si el archivo central no se puede escribir, las notas quedan con la feature y se avisa · `behavior` · Risk: low · Covers: R7.4
   - Test: `P/hooks/tests/test_improvement_notes.py::test_falls_back_to_the_feature_folder_when_the_central_file_cannot_be_written`
   - Files: `P/hooks/scripts/improvement_notes.py` (modify)
   - Verify: `... -k test_falls_back_to_the_feature_folder_when_the_central_file_cannot_be_written`
   - Depends on: T44
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T49** La CLI recibe las notas por stdin, las limpia y dice dónde quedaron · `behavior` · Risk: low · Covers: R7.2, R7.4
   - Test: `P/hooks/tests/test_improvement_notes.py::test_cli_reads_notes_from_stdin_and_prints_where_they_went`

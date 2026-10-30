@@ -5,9 +5,10 @@ project, so the project and feature names only ever go into its content, each on
 never into the path, and the notes are scrubbed of code, credentials and e-mail addresses first.
 
 Sections:
-    NOTES_FILE     — where the notes file lives, relative to Claude's configuration folder.
-    scrub()        — drops code blocks and redacts credentials and e-mail addresses.
-    append_notes() — adds one dated entry tagged with project, feature and scope.
+    NOTES_FILE          — where the notes file lives, relative to Claude's configuration folder.
+    FALLBACK_NOTES_FILE — the notes file's name in the feature's folder when the central one fails.
+    scrub()             — drops code blocks and redacts credentials and e-mail addresses.
+    append_notes()      — adds one dated entry tagged with project, feature and scope.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from pathlib import Path
 from secret_patterns import SECRET_PATTERNS
 
 NOTES_FILE = Path("konundrm-eng") / "improvements.md"
+FALLBACK_NOTES_FILE = "improvement-notes.md"
 
 _CODE_MARKER = "[code removed]"
 _SECRET_MARKER = "[secret removed]"  # noqa: S105 - the text left in place of a credential, not one
@@ -123,11 +125,13 @@ def append_notes(
     config_dir: Path,
     fallback_dir: Path,
 ) -> tuple[Path, bool]:
-    """Adds one dated entry with the notes to the end of the central notes file.
+    """Adds one dated entry with the notes to the end of the central notes file, or of the fallback.
 
     Earlier content is never erased or changed. Project, feature and scope are written on a
     single line each (any line break or run of whitespace becomes one space), so a hostile name
-    can neither change the path nor forge a new line in the file.
+    can neither change the path nor forge a new line in the file. When the central folder or file
+    cannot be created or written, the same entry goes to ``fallback_dir / FALLBACK_NOTES_FILE``
+    instead, so the notes stay with the feature's documents.
 
     Args:
         notes: Text of the notes, written as given.
@@ -136,29 +140,39 @@ def append_notes(
         scope: What the notes cover, such as "slice 2" or "feature".
         today: Date stamped on the entry.
         config_dir: Claude's configuration folder; the file is ``config_dir / NOTES_FILE``.
-        fallback_dir: Folder for the notes when the central file cannot be written (not used yet).
+        fallback_dir: The feature's folder, which must already exist; used only when the central
+            file cannot be written.
 
     Returns:
         The path written to and whether it was the fallback.
 
     Raises:
-        OSError: If the folder or the file cannot be created or written.
+        OSError: If the central file cannot be written and the fallback file cannot either.
 
     Side effects:
-        Creates ``config_dir / NOTES_FILE`` and its folder when missing, then appends to it.
+        Creates ``config_dir / NOTES_FILE`` and its folder when missing, then appends to it; on
+        failure, creates or appends to ``fallback_dir / FALLBACK_NOTES_FILE`` instead.
     """
-    del fallback_dir  # the fallback arrives with T48
-    path = config_dir / NOTES_FILE
-    path.parent.mkdir(parents=True, exist_ok=True)
     entry = (
         f"\n## {today.isoformat()} · {_single_line(scope)}\n\n"
         f"- Project: {_single_line(project)}\n"
         f"- Feature: {_single_line(feature)}\n\n"
         f"{notes.rstrip()}\n"
     )
+    central_path = config_dir / NOTES_FILE
+    try:
+        central_path.parent.mkdir(parents=True, exist_ok=True)
+        _append_entry(central_path, entry)
+    except OSError:
+        fallback_path = fallback_dir / FALLBACK_NOTES_FILE
+        _append_entry(fallback_path, entry)
+        return fallback_path, True
+    return central_path, False
+
+
+def _append_entry(path: Path, entry: str) -> None:
     with path.open("a", encoding="utf-8", newline="\n") as notes_file:
         notes_file.write(entry)
-    return path, False
 
 
 def _single_line(value: str) -> str:

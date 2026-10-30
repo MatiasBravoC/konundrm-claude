@@ -85,6 +85,32 @@ class AppendNotesTest(unittest.TestCase):
                 self.assertGreater(len(after), len(before), f"sequence {sequence}: nothing was appended")
                 self.assertEqual(after[: len(before)], before, f"sequence {sequence}: earlier notes changed")
 
+    def test_falls_back_to_the_feature_folder_when_the_central_file_cannot_be_written(self) -> None:
+        # R7.4: when the central file cannot be written, the notes stay with the feature's documents
+        # and the caller learns the fallback was used (the CLI tells the user, T49).
+        # A regular file where the central folder should be makes mkdir/open fail on Windows and POSIX alike.
+        blocker = self.config_dir / "konundrm-eng"
+        blocker.write_bytes(b"not a folder")
+        notes = "Los checkpoints de slice fueron demasiado largos."
+
+        path, used_fallback = improvement_notes.append_notes(
+            notes,
+            project="konundrm-claude",
+            feature="001-guided-slice-delivery",
+            scope="slice 7",
+            today=date(2026, 10, 29),
+            config_dir=self.config_dir,
+            fallback_dir=self.fallback_dir,
+        )
+
+        expected = self.fallback_dir / "improvement-notes.md"
+        self.assertEqual((path, used_fallback), (expected, True))
+        content = expected.read_text(encoding="utf-8")
+        for text in ("2026-10-29", "konundrm-claude", "001-guided-slice-delivery", "slice 7", notes):
+            self.assertIn(text, content)
+        self.assertEqual(sorted(self.config_dir.rglob("*")), [blocker])
+        self.assertEqual(blocker.read_bytes(), b"not a folder")
+
 
 # Generated notes for the scrub property (T47). Fake credentials are assembled from split literals and
 # seeded noise, so this file never holds a value a secret scanner would flag.
