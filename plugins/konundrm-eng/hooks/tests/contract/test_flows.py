@@ -1693,6 +1693,64 @@ def _resume_checkpoint_gaps(skill: Path) -> list[str]:
     ]
 
 
+# Every worktree of a parallel session lives outside the project folder (R9.2): `claude --worktree` and the desktop
+# app's worktree sessions put it under `.claude/worktrees/`, inside the checkout, where it shows up in the tree and
+# breaks its gates. So develop-feature never recommends either, and its sentence about building several features at
+# once says where each feature's worktree goes instead.
+_WORKTREE_CLAUDE_FLAG = r"(?<![\w.-])claude --worktree\b"
+_WORKTREE_CLAUDE_FOLDER = r"(?<![\w.])\.claude/worktrees\b"
+_WORKTREE_BREAKS = re.compile(r"\bbreak(?:s|ing)?\b")
+_WORKTREE_NEGATED = r"\b(?:never|not|no|don't|avoid)\b(?: \S+){0,4} "
+# Where a clause ends inside a sentence from `_sentences`: a colon or semicolon that ends a word, not the one of
+# `konundrm-eng:rethinker`. Parentheses and commas stay inside the clause, as in "(such as .claude/worktrees/)".
+_WORKTREE_CLAUSE_END = re.compile(r"(?<!\s)[:;](?=\s|$)")
+# What develop-feature never recommends, each label naming it and why (R9.2), mapped to the regex that finds it.
+_WORKTREE_INSIDE_RULES: dict[str, str] = {
+    "claude --worktree (R9.2: it creates the worktree inside the checkout)": _WORKTREE_CLAUDE_FLAG,
+    ".claude/worktrees/ as a place to build (R9.2: it is inside the checkout)": _WORKTREE_CLAUDE_FOLDER,
+}
+_WORKTREE_SEVERAL_FEATURES = re.compile(
+    r"\b(?:several|multiple|many|two or more|more than one) features\b"
+    r"|\bfeatures (?:at once|in parallel|at the same time|concurrently|simultaneously)\b"
+)
+_WORKTREE_OUTSIDE_RULE = "R9.2 building several features at once puts each feature's worktree outside the project"
+
+
+def _worktree_recommends(sentence: str, name: str) -> bool:
+    """Return whether a sentence from `_sentences` names `name` (a regex source) other than as a warning.
+
+    The sentence is split into clauses at `_WORKTREE_CLAUSE_END`. A clause that names it is a warning, and allowed,
+    when that same clause says something breaks (`_WORKTREE_BREAKS`, as in "a worktree inside the checkout (such as
+    .claude/worktrees/) shows up in this tree and breaks its gates") or puts a negation at most four words before the
+    name ("never use claude --worktree"). A break cue or negation in another clause of the sentence does not count,
+    so "start it with claude --worktree: a worktree inside the checkout breaks its gates" recommends it. The sentence
+    recommends it when any clause that names it is not a warning.
+    """
+    return any(
+        re.search(name, clause) is not None
+        and _WORKTREE_BREAKS.search(clause) is None
+        and re.search(_WORKTREE_NEGATED + name, clause) is None
+        for clause in _WORKTREE_CLAUSE_END.split(sentence)
+    )
+
+
+def _worktree_outside_gaps(skill: Path) -> list[str]:
+    """Return one message per entry of _WORKTREE_INSIDE_RULES that a sentence of develop-feature recommends
+    (`_worktree_recommends`), quoting the first such sentence, plus one when no sentence about building several
+    features at once (`_WORKTREE_SEVERAL_FEATURES`) names a worktree outside the project (`_OUTSIDE_THE_PROJECT`),
+    including when no such sentence exists, so the rule never passes vacuously."""
+    sentences = [sentence for block in _blocks(skill) for sentence in _sentences(block)]
+    gaps = []
+    for label, name in _WORKTREE_INSIDE_RULES.items():
+        offending = [sentence for sentence in sentences if _worktree_recommends(sentence, name)]
+        if offending:
+            gaps.append(f"develop-feature recommends {label}: {offending[0].strip()!r}")
+    several = [sentence for sentence in sentences if _WORKTREE_SEVERAL_FEATURES.search(sentence)]
+    if not any(_WORKTREES.search(sentence) and _OUTSIDE_THE_PROJECT.search(sentence) for sentence in several):
+        gaps.append(f"develop-feature: no sentence says {_WORKTREE_OUTSIDE_RULE} ({len(several)} such sentences)")
+    return gaps
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -1886,6 +1944,14 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         Prepare` section runs the Slice checkpoint before the next slice's first task, so the slice's summary and pause
         are never skipped."""
         gaps = _resume_checkpoint_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_parallel_features_use_worktrees_outside_the_project(self) -> None:
+        """R9.2: develop-feature tells the user to build each of several features at once in a worktree outside the
+        project folder, and never recommends `claude --worktree` or `.claude/worktrees/`, which put it inside the
+        checkout; a sentence warning that such a worktree breaks the gates stays allowed."""
+        gaps = _worktree_outside_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 

@@ -620,11 +620,12 @@ huecos que encontró la revisión de spec de toda la feature (Phase 4, paso 2). 
   - Verify: `... -k test_pre_approved_decisions_are_recorded_apart_from_pauses`
   - Depends on: T32, T53
 
-- [ ] **T78** Las features en paralelo usan worktrees fuera de la carpeta del proyecto · `behavior` · Risk: low · Covers: R9.2
+- [x] **T78** Las features en paralelo usan worktrees fuera de la carpeta del proyecto · `behavior` · Risk: low · Covers: R9.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_parallel_features_use_worktrees_outside_the_project` (ningún bloque de develop-feature recomienda `claude --worktree` ni `.claude/worktrees/` como lugar donde construir; la frase sobre construir varias features a la vez dice crear cada worktree fuera de la carpeta del proyecto)
   - Files: `P/skills/develop-feature/SKILL.md` (modify; el README lo ajusta la integración si repite la recomendación)
   - Verify: `... -k test_parallel_features_use_worktrees_outside_the_project`
   - Depends on: T21
+  - Rounds: spec 1 · code 2 · escalations 0
 
 <!-- Example of a finished task, as develop-feature leaves it:
 - [x] **T1** … · `behavior` · Risk: low · Covers: R1.1

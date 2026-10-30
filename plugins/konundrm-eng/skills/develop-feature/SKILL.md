@@ -147,10 +147,15 @@ an escalation rule fires.
 
 Track the tasks in your todo list. For each task in order, start **fresh subagents**; never reuse
 one across tasks, and run konundrm-eng subagents **one at a time**: the plugin attributes file
-changes to the subagent that was running. To build several features at once, run each in its own
-Git worktree and session (`claude --worktree`, or a new worktree session in the desktop app):
-the gates and the audit work per working tree. Pass `model` and `effort` only as
-[Model and effort](#model-and-effort) lists; fix rounds always run on `opus` at `high`.
+changes to the subagent that was running. To build several features at once, create each one's
+Git worktree outside the project folder, on a branch cut from the default branch, and start that
+feature's session in it:
+`git worktree add ../<repo>-worktrees/<NNN-slug> -b feat/<NNN-slug> <default-branch>`. Without
+that start point Git cuts the branch from this checkout's HEAD, and the unfinished feature checked
+out here would end up in the new feature's pull request. The gates and the audit work per working
+tree, and a worktree inside the checkout shows up in this tree and breaks its gates. Pass `model`
+and `effort` only as [Model and effort](#model-and-effort) lists; fix rounds always run on `opus`
+at `high`.
 
 When the `tasks.md` header says `**Parallel:** yes`, build each wave of two or more partitions as
 [Parallel partitions](#parallel-partitions) says. Otherwise build each slice's tasks here, in list
