@@ -207,11 +207,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T20
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T22** Un conflicto de integración fuera del plan detiene el flujo y espera al usuario · `behavior` · Risk: low · Covers: R3.4
+- [x] **T22** Un conflicto de integración fuera del plan detiene el flujo y espera al usuario · `behavior` · Risk: low · Covers: R3.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_an_integration_conflict_waits_for_the_user`
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_an_integration_conflict_waits_for_the_user`
   - Depends on: T21
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T23** Al retomar con una oleada sin terminar, se termina primero, juzgando por los commits de tarea · `behavior` · Risk: low · Covers: R3.5
   - Test: `P/hooks/tests/contract/test_flows.py::test_resume_finishes_an_unfinished_wave_first`

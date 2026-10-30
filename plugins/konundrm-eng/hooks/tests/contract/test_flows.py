@@ -655,6 +655,108 @@ def _parallel_partitions_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# An integration conflict outside the plan's boxes (R3.4). These run on blocks of `## Parallel partitions` and of
+# `## Escalation`.
+_CONFLICT = re.compile(r"\bconflict")
+_BOTH_SIDES = re.compile(r"\bboth sides\b")
+_OTHER_CONFLICT = re.compile(
+    r"\bother conflicts?\b|\bconflicts?\b(?: \S+){0,4} (?:outside|beyond|elsewhere)\b"
+    r"|\bconflict\w*(?: \S+){0,3} other files?\b"
+)
+_NOT_INDEPENDENT = re.compile(r"\bindependen")
+_CHERRY_PICK_ABORT = re.compile(r"\bgit cherry-pick --abort\b")
+# Reporting what conflicted: a report verb, then "which", "the" or "each" and the partition or the files.
+_REPORTS_WHAT_CONFLICTED = re.compile(
+    r"\b(?:report|tell|show|nam|list|say|relay)\w*\b(?: \S+){0,6} (?:which|what|the|its|each)\b(?: \S+){0,2} "
+    r"(?:partitions?|files?)\b"
+)
+_FILES = re.compile(r"\bfiles?\b")
+_BLOCKED_LINE = re.compile(r"\bblocked:")
+_STOPS = re.compile(r"\b(?:stop|halt|wait)\w*")
+_USER_GO_AHEAD = re.compile(
+    r"\bgo-ahead\b|\bapprov\w*|\buser's (?:yes|answer|ok)\b|\buser (?:agrees|approves|says)\b"
+    r"|\b(?:wait|ask)\w*(?: \S+){0,4} user\b"
+)
+_REDOES_THE_CHERRY_PICK = re.compile(r"\b(?:redo|re-?run|repeat|again)\b")
+_CONFLICTED_FILE = re.compile(r"\bconflicted files?\b|\beach file\b|\bconflicting files?\b")
+_INTEGRATION = re.compile(r"\bintegrat|\bcherry-pick\b|\bpartition")
+_OUTSIDE_THE_PLAN = re.compile(r"\boutside\b|\bbeyond\b|\bother than\b|\bnot (?:in|on|about)\b|\bother\b")
+
+
+def _reports_the_partition_and_files(sentence: str) -> bool:
+    """Return whether one sentence reports which partition and which files conflicted."""
+    return (
+        _REPORTS_WHAT_CONFLICTED.search(sentence) is not None
+        and "partition" in sentence
+        and _FILES.search(sentence) is not None
+    )
+
+
+def _hands_off_after_the_go_ahead(block: str) -> bool:
+    """Return whether a block hands the conflict to the implementer only after naming the user's go-ahead."""
+    go_ahead = _USER_GO_AHEAD.search(block)
+    return _CONFLICT.search(block) is not None and go_ahead is not None and "implementer" in block[go_ahead.end() :]
+
+
+# What develop-feature's `## Parallel partitions` section must say about integration conflicts, each in one of its
+# paragraphs or list items.
+_INTEGRATION_CONFLICT_RULES: dict[str, Callable[[str], bool]] = {
+    "a conflict in tasks.md keeps both sides' boxes and Rounds lines": lambda b: (
+        _CONFLICT.search(b) is not None and "tasks.md" in b and _BOTH_SIDES.search(b) is not None
+    ),
+    "any other conflict means the partitions were not as independent as planned": lambda b: (
+        _OTHER_CONFLICT.search(b) is not None and _NOT_INDEPENDENT.search(b) is not None
+    ),
+    "any other conflict aborts the cherry-pick with `git cherry-pick --abort`": lambda b: (
+        _OTHER_CONFLICT.search(b) is not None and _CHERRY_PICK_ABORT.search(b) is not None
+    ),
+    "any other conflict is reported, naming the partition and the files": lambda b: (
+        _OTHER_CONFLICT.search(b) is not None
+        and any(_reports_the_partition_and_files(s) for s in _SENTENCE_END.split(b))
+    ),
+    "any other conflict stops with a `BLOCKED:` line": lambda b: (
+        _OTHER_CONFLICT.search(b) is not None and _BLOCKED_LINE.search(b) is not None and _STOPS.search(b) is not None
+    ),
+    "the conflict reaches the implementer only after the user's go-ahead": _hands_off_after_the_go_ahead,
+    "after the go-ahead, redoing the cherry-pick and handing each conflicted file, with both sides, to the "
+    "implementer or the test-writer for a test": lambda b: (
+        _CONFLICT.search(b) is not None
+        and _USER_GO_AHEAD.search(b) is not None
+        and _CHERRY_PICK.search(b) is not None
+        and _REDOES_THE_CHERRY_PICK.search(b) is not None
+        and _CONFLICTED_FILE.search(b) is not None
+        and _BOTH_SIDES.search(b) is not None
+        and "implementer" in b
+        and "test-writer" in b
+    ),
+    "reviewing the conflict's resolution like any integration fix": lambda b: (
+        _CONFLICT.search(b) is not None
+        and _USER_GO_AHEAD.search(b) is not None
+        and "implementer" in b
+        and _REVIEWED.search(b) is not None
+    ),
+}
+
+
+def _integration_conflict_gaps(skill: Path) -> list[str]:
+    """Return one message per part of R3.4 that develop-feature's `## Parallel partitions` section lacks, and one
+    when its `## Escalation` list does not name an integration conflict outside the plan's boxes."""
+    blocks = _section_blocks(skill, "Parallel partitions")
+    if not blocks:
+        return ["develop-feature: SKILL.md has no '## Parallel partitions' section"]
+    gaps = [
+        f"develop-feature Parallel partitions: no paragraph or list item covers {label} (R3.4)"
+        for label, says_it in _INTEGRATION_CONFLICT_RULES.items()
+        if not any(says_it(block) for block in blocks)
+    ]
+    if not any(
+        _CONFLICT.search(block) and _INTEGRATION.search(block) and _OUTSIDE_THE_PLAN.search(block)
+        for block in _escalation_blocks(skill)
+    ):
+        gaps.append("develop-feature Escalation: no item names an integration conflict outside the plan's boxes (R3.4)")
+    return gaps
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -742,6 +844,17 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         the end; removes worktrees with `git worktree remove`, never `--force`; and deletes a partition branch only
         once every one of its task commits, found by `Task:` line, is integrated."""
         gaps = _parallel_partitions_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_an_integration_conflict_waits_for_the_user(self) -> None:
+        """R3.4: in develop-feature's `## Parallel partitions` section, a conflict in tasks.md's boxes and Rounds lines
+        keeps both sides, but any other conflict while integrating a partition means the partitions were not as
+        independent as planned: the main session runs `git cherry-pick --abort`, reports which partition and which
+        files, and stops with a `BLOCKED:` line; only after the user's go-ahead does it redo the cherry-pick and hand
+        each conflicted file, with both sides, to the implementer (the test-writer for a test), reviewed like any
+        integration fix. The `## Escalation` list also names an integration conflict outside the plan's boxes."""
+        gaps = _integration_conflict_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 

@@ -236,11 +236,16 @@ slice's `### Partitions` table this way:
 5. Integrate one partition at a time, in table order, and only between tasks: no subagent running
    in this checkout and the tree clean. The plugin's subagent audit attributes any file that
    changes during a subagent's run to that subagent. If this session has uncommitted work of its
-   own (a task in progress), finish or commit it first; never integrate on a dirty tree.
+   own (a task in progress), finish it first; never integrate on a dirty tree.
    - Pick the partition's commits: `git cherry-pick <fork-point>..<branch>`, where the fork point
      is `git merge-base HEAD <branch>`. The range ends at the branch's tip, so it includes the
      partition's report commit (`docs(<scope>): report partition P<k>`) and its
      `evidence/P<k>.md`. In `tasks.md`, a conflict keeps both sides' boxes and Rounds lines.
+   - Any other conflict means the partitions were not as independent as planned. Run
+     `git cherry-pick --abort`, report which partition and which files conflicted, and stop with a
+     `BLOCKED:` line. Only after the user's go-ahead, redo the cherry-pick and hand each conflicted
+     file, with both sides, to the `implementer` (the `test-writer` for a test), then review and
+     commit the resolution as in step 6.
    - After a partition that changed dependencies or generated files, set the checkout up as
      `AGENTS.md` or the README says.
    - Run the check command after each partition. The history stays linear, one commit per task,
@@ -253,7 +258,8 @@ slice's `### Partitions` table this way:
    Then integrate the next partition.
 7. After the last partition, dispatch `code-reviewer` once over `git diff <wave-base>..HEAD` for
    duplication or inconsistency between partitions built apart, and route its Critical findings
-   as in step 6.
+   as in step 6. A finding carries the `Task:` line of the task whose code it names; when it names
+   several, the wave's last integrated task.
 8. Remove each worktree with `git worktree remove <folder>`, never `--force`: if it refuses, show
    the user what is left, and close any session still open in that folder first. Once every one
    of its tasks has its commit here, delete its branch (`git branch -D wave/<NNN-slug>-p<k>`).
@@ -290,7 +296,13 @@ To see whether the workflow is paying off across features, run `/konundrm-eng:me
   propose the edit to `design.md`/`tasks.md` and wait;
 - a subagent returns `BLOCKED` for a reason no other role can resolve. A `BLOCKED` that only
   says a test is wrong is not an escalation: route it to a new `test-writer` and continue;
+- integrating a partition conflicts outside the plan's boxes in `tasks.md`
+  ([Parallel partitions](#parallel-partitions), step 5);
 - the baseline or the final check is red for reasons outside the feature.
+
+A partition session never waits for the user on a plan change, whether from a rethink or because
+the plan turns out to be wrong: it stops with a `BLOCKED:` line for the main session, which relays
+it to the user ([Phase 0](#phase-0-prepare)).
 
 Start that message with a line `BLOCKED: <one-line reason>`. The plugin's stop gate lets the turn
 end on a red tree only when the message carries a `BLOCKED:` or `RED:` line.
