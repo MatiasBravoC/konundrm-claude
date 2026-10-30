@@ -4,7 +4,8 @@ writing-plans creates the file from its template and develop-feature checks the 
 ``Rounds:`` line per task. The header's ``- **Parallel:** yes | no`` line says whether partitions
 run in parallel (no line means serial). Each slice ends with a ``### Partitions`` table
 (``| Wave | Partition | Tasks | Depends on |``) that assigns its tasks to partitions; a Tasks cell
-lists IDs and ranges (``T1-T3``, ``T4..T6``, ``T7 to T9``; en and em dashes too), bold or not. The impact
+lists IDs and inclusive ranges (``T1-T3``, ``T4..T6``, ``T7 to T9``; en and em dashes too), bold or
+not; a range is never expanded, only the document's own tasks are checked against its bounds. The impact
 report and the session doctor both read it, so the format has this one parser. HTML comments are
 ignored: the template carries a commented example.
 
@@ -98,8 +99,12 @@ def _task(match: re.Match[str], block: str, slice_: str | None, partitions: dict
     )
 
 
-def _partitions(text: str) -> dict[str, str]:
-    """Maps each task ID to the partition of the first Partitions row that lists it."""
+def _partitions(text: str, task_ids: list[str]) -> dict[str, str]:
+    """Maps each of the document's task IDs to the partition of the first Partitions row listing it.
+
+    Only the given IDs are tested against each row, so a range as wide as ``T1-T10000000000``
+    costs one comparison per task instead of one per number it spans.
+    """
     partitions: dict[str, str] = {}
     for table in PARTITION_TABLE.finditer(text):
         for row in table.group("rows").splitlines():
@@ -107,8 +112,10 @@ def _partitions(text: str) -> dict[str, str]:
             if len(cells) < 3 or SEPARATOR_CELL.match(cells[0]):
                 continue
             partition = _unbold(cells[1])
-            for task_id in _task_ids(_unbold(cells[2])):
-                partitions.setdefault(task_id, partition)
+            listed = _TasksCell.parse(_unbold(cells[2]))
+            for task_id in task_ids:
+                if task_id not in partitions and listed.lists(task_id):
+                    partitions[task_id] = partition
     return partitions
 
 
@@ -117,18 +124,29 @@ def _unbold(cell: str) -> str:
     return cell.replace("**", "").strip()
 
 
-def _task_ids(cell: str) -> list[str]:
-    """The task IDs in a Tasks cell, with ranges such as ``T1-T3`` expanded.
+@dataclass(frozen=True)
+class _TasksCell:
+    """The tasks a Partitions row's Tasks cell lists: explicit IDs and inclusive ranges.
 
-    A range whose end comes before its start (``T5-T3``) lists no task. Anything that is not a
-    task ID, such as an empty cell or ``—``, is ignored.
+    Ranges stay as their bounds rather than being expanded, so their width costs nothing. A range
+    whose end comes before its start (``T5-T3``) lists no task. Anything that is not a task ID,
+    such as an empty cell or ``—``, is ignored.
     """
-    ranged = [
-        f"T{number}"
-        for found in TASK_RANGE.finditer(cell)
-        for number in range(int(found.group("first")), int(found.group("last")) + 1)
-    ]
-    return ranged + TASK_ID.findall(TASK_RANGE.sub(" ", cell))
+
+    ids: frozenset[str]
+    ranges: tuple[tuple[int, int], ...]
+
+    @classmethod
+    def parse(cls, cell: str) -> _TasksCell:
+        ranges = tuple((int(found.group("first")), int(found.group("last"))) for found in TASK_RANGE.finditer(cell))
+        return cls(ids=frozenset(TASK_ID.findall(TASK_RANGE.sub(" ", cell))), ranges=ranges)
+
+    def lists(self, task_id: str) -> bool:
+        """Whether the cell names the task or one of its ranges covers the task's number."""
+        if task_id in self.ids:
+            return True
+        number = int(task_id[1:])
+        return any(first <= number <= last for first, last in self.ranges)
 
 
 def _slice_at(position: int, headings: list[re.Match[str]]) -> str | None:
@@ -156,8 +174,8 @@ def read_tasks(path: Path) -> TasksDocument:
         return TasksDocument(status="", tasks=())
     status = STATUS.search(text)
     headings = list(SLICE_HEADING.finditer(text))
-    partitions = _partitions(text)
     matches = list(TASK.finditer(text))
+    partitions = _partitions(text, [match.group("id") for match in matches])
     ends = [*(match.start() for match in matches[1:]), len(text)]
     tasks = tuple(
         _task(match, text[match.end() : end], _slice_at(match.start(), headings), partitions)

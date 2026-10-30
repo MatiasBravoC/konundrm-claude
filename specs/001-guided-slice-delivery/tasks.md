@@ -155,12 +155,13 @@ de cada archivo (algunos son CRLF). -->
 
 <!-- T55–T59: agregadas el 2026-10-30 con el visto bueno del usuario, a partir de hallazgos de las
 revisiones de código y de las sesiones paralelas. -->
-- [ ] **T55** Un rango enorme de tareas no cuelga al lector: solo cuenta las tareas del documento que caen en él · `behavior` · Risk: medium · Covers: R3.8
+- [x] **T55** Un rango enorme de tareas no cuelga al lector: solo cuenta las tareas del documento que caen en él · `behavior` · Risk: medium · Covers: R3.8
   - Test: `P/hooks/tests/test_tasks_document.py::test_a_huge_task_range_does_not_hang_the_reader` (una fila de particiones con `T1–T10000000000` se lee en menos de 2 segundos y asigna solo las tareas del documento entre esos límites; la prueba va junto a `test_expands_task_ranges_and_reads_bold_cells`, no al final del archivo)
   - Files: `P/hooks/scripts/tasks_document.py` (modify)
   - Invariants: un rango cubre exactamente sus límites (la propiedad de T13 sigue pasando)
   - Verify: `... -k test_a_huge_task_range_does_not_hang_the_reader`
   - Depends on: T12, T13
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ## Slice S4: construcción en paralelo dentro de un slice
 

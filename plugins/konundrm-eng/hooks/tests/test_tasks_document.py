@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import random
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -192,6 +194,48 @@ class ReadTasksTest(unittest.TestCase):
                 "T8": "P3",
                 "T9": None,
             },
+        )
+
+    def test_a_huge_task_range_does_not_hang_the_reader(self) -> None:
+        # R3.8: a range as wide as T1-T10000000000 assigns only the document's tasks inside its bounds,
+        # and is read in under 2 seconds. The read runs in a child process so a reader that enumerates
+        # every number in the range is killed at the deadline instead of hanging the suite.
+        self.path.write_text(
+            "- **Status:** Approved\n\n"
+            "## Slice S1: apply\n\n"
+            "- [ ] **T1** First\n"
+            "- [ ] **T2** Second\n"
+            "- [ ] **T7** Seventh\n"
+            "- [ ] **T10000000001** Past the range\n\n"
+            "### Partitions\n\n"
+            "| Wave | Partition | Tasks | Depends on |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | P1 | T1\u2013T10000000000 | — |\n"
+            "| 2 | P2 | T10000000001 | P1 |\n",
+            encoding="utf-8",
+        )
+        reader = (
+            "import json, sys\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            "from tasks_document import read_tasks\n"
+            "print(json.dumps({task.id: task.partition for task in read_tasks(Path(sys.argv[2])).tasks}))\n"
+        )
+        scripts = str(Path(__file__).resolve().parents[1] / "scripts")
+        try:
+            # subprocess.run kills the child when the timeout expires.
+            completed = subprocess.run(
+                [sys.executable, "-c", reader, scripts, str(self.path)],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=True,
+            )
+        except subprocess.TimeoutExpired:
+            self.fail("reading a partition row with T1\u2013T10000000000 took more than 2 seconds")
+        self.assertEqual(
+            json.loads(completed.stdout),
+            {"T1": "P1", "T2": "P1", "T7": "P1", "T10000000001": "P2"},
         )
 
     def test_partitions_follow_the_first_row_and_ranges_cover_their_bounds(self) -> None:
