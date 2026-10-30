@@ -186,11 +186,12 @@ revisiones de código y de las sesiones paralelas. -->
   - Depends on: T19
   - Rounds: spec 2 · code 1 · escalations 0
 
-- [ ] **T21** develop-feature integra las particiones de una oleada de a una, con el check después de cada una, desde worktrees fuera del proyecto · `behavior` · Risk: low · Covers: R3.3, R9.2
+- [x] **T21** develop-feature integra las particiones de una oleada de a una, con el check después de cada una, desde worktrees fuera del proyecto · `behavior` · Risk: low · Covers: R3.3, R9.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_parallel_partitions_integrate_one_at_a_time` (sección `## Parallel partitions`: `git worktree add ../<repo>-worktrees/`, ramas `wave/`, primera partición en la sesión principal, cherry-pick desde el merge-base, check tras cada partición, arreglo de integración revisado con la línea `Task:` y tipo feat o refactor, revisión de código cruzada al final, `git worktree remove` nunca con `--force`, borrar la rama solo con todos los commits de tarea integrados)
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_parallel_partitions_integrate_one_at_a_time`
   - Depends on: T20
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T22** Un conflicto de integración fuera del plan detiene el flujo y espera al usuario · `behavior` · Risk: low · Covers: R3.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_an_integration_conflict_waits_for_the_user`

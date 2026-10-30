@@ -550,6 +550,111 @@ def _partition_session_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# The main session's side of a parallel wave (R3.3, R9.2). These run on blocks of the `## Parallel partitions` section.
+_WORKTREE_ADD_OUTSIDE = re.compile(r"\bgit worktree add \.\./\S*worktrees/")
+_WORKTREE_ADD_ELSEWHERE = re.compile(r"\bgit worktree add (?!\.\./)")
+_OUTSIDE_THE_PROJECT = re.compile(r"\boutside\b(?: \S+){0,3} (?:checkout|project|repo\w*)\b")
+_WAVE_BRANCH = re.compile(r"(?<![\w/])wave/\S+")
+_FIRST_PARTITION = re.compile(r"\bfirst partition\b")
+_IN_THE_MAIN_SESSION = re.compile(r"\b(?:here|main session|this session|feature branch)\b")
+_THE_OTHER_PARTITIONS = re.compile(
+    r"\bexcept the first\b|\bother partitions?\b|\bthe others\b|\bthe rest\b|\beach of the others\b"
+)
+_SESSION = re.compile(r"\bsessions?\b")
+_ONE_AT_A_TIME = re.compile(r"\bone (?:partition )?at a time\b|\bone by one\b|\bone after (?:the )?other\b")
+_CHERRY_PICK = re.compile(r"\bcherry-pick\b")
+_MERGE_BASE = re.compile(r"\bmerge-base\b")
+# Picking up to the branch's tip, or naming the report, keeps the partition's report commit in the range.
+_UP_TO_THE_BRANCH_OR_REPORT = re.compile(r"\.\.(?:<[\w -]*branch>|wave/)|\breport\b")
+_CHECK = re.compile(r"\bcheck\b")
+_AFTER_A_PARTITION = re.compile(r"\b(?:after|each|every)\b(?: \S+){0,3} partition\b")
+_REVIEWED = re.compile(r"\breview\w*")
+_TASK_LINE = re.compile(r"\btask:")
+_FEAT = re.compile(r"\bfeat\b")
+_REFACTOR = re.compile(r"\brefactor\b")
+_AT_THE_END = re.compile(
+    r"\bafter the last\b|\bat the end\b|\blast partition\b|\bfinally\b|\bonce (?:all|every)\b|\bwhole wave\b"
+)
+_ACROSS_PARTITIONS = re.compile(r"\bbetween partitions\b|\bacross\b|\bwave\b|<wave-base>")
+_WORKTREE_REMOVE = re.compile(r"\bgit worktree remove\b")
+_NEVER_FORCE = re.compile(r"\b(?:never|not|no|without)\b(?: \S+){0,3} --force\b")
+_FORCED_REMOVE = re.compile(r"\bgit worktree remove (?:\S+ )?(?:--force|-f)\b")
+_DELETES_THE_BRANCH = re.compile(r"\bgit branch (?:-d|--delete)\b|\bdelete\w* (?:its|the|each|that) (?:\S+ )?branch\b")
+_ONLY_ONCE = re.compile(r"\b(?:once|only|after|when|until)\b")
+_EVERY_TASK_COMMIT = re.compile(r"\b(?:every|all|each)\b(?: \S+){0,4} (?:tasks?|task commits?)\b")
+_FINDS_COMMITS_BY_TASK_LINE = re.compile(r"--grep\b|\bgit log\b")
+
+# What develop-feature's `## Parallel partitions` section must say, each in one of its paragraphs or list items.
+_PARALLEL_PARTITIONS_RULES: dict[str, Callable[[str], bool]] = {
+    "R9.2 creating each worktree outside the project with `git worktree add ../<repo>-worktrees/...`": lambda b: (
+        _WORKTREE_ADD_OUTSIDE.search(b) is not None and _OUTSIDE_THE_PROJECT.search(b) is not None
+    ),
+    "R3.3 giving each partition worktree a branch under wave/": lambda b: _WAVE_BRANCH.search(b) is not None,
+    "R3.3 building the wave's first partition in the main session": lambda b: (
+        _FIRST_PARTITION.search(b) is not None and _IN_THE_MAIN_SESSION.search(b) is not None
+    ),
+    "R3.3 building each other partition in its own session and worktree": lambda b: (
+        _THE_OTHER_PARTITIONS.search(b) is not None and _SESSION.search(b) is not None and "worktree" in b
+    ),
+    "R3.3 integrating one partition at a time": lambda b: _ONE_AT_A_TIME.search(b) is not None,
+    "R3.3 cherry-picking a partition's commits, its report included, from the merge-base": lambda b: (
+        _CHERRY_PICK.search(b) is not None
+        and _MERGE_BASE.search(b) is not None
+        and _UP_TO_THE_BRANCH_OR_REPORT.search(b) is not None
+    ),
+    "R3.3 running the full check after each partition": lambda b: (
+        _CHECK.search(b) is not None
+        and (_ONE_AT_A_TIME.search(b) is not None or _AFTER_A_PARTITION.search(b) is not None)
+    ),
+    "R3.3 reviewing an integration fix and committing it with its task's Task: line, typed feat or refactor": (
+        lambda b: (
+            _REVIEWED.search(b) is not None
+            and _TASK_LINE.search(b) is not None
+            and _FEAT.search(b) is not None
+            and _REFACTOR.search(b) is not None
+        )
+    ),
+    "R3.3 a cross code review of the whole wave at the end": lambda b: (
+        "code-review" in b and _AT_THE_END.search(b) is not None and _ACROSS_PARTITIONS.search(b) is not None
+    ),
+    "R3.3 removing worktrees with `git worktree remove`, never --force": lambda b: (
+        _WORKTREE_REMOVE.search(b) is not None and _NEVER_FORCE.search(b) is not None
+    ),
+    "R3.3 deleting a partition branch only once every one of its task commits is integrated": lambda b: (
+        _DELETES_THE_BRANCH.search(b) is not None
+        and _ONLY_ONCE.search(b) is not None
+        and _EVERY_TASK_COMMIT.search(b) is not None
+    ),
+    "R3.3 finding a task's commits by its Task: line": lambda b: (
+        _TASK_LINE.search(b) is not None and _FINDS_COMMITS_BY_TASK_LINE.search(b) is not None
+    ),
+}
+
+
+def _parallel_partitions_gaps(skill: Path) -> list[str]:
+    """Return one message per part of R3.3 and R9.2 that develop-feature's `## Parallel partitions` section lacks,
+    plus one per instruction that adds a worktree inside the project or forces its removal."""
+    blocks = _section_blocks(skill, "Parallel partitions")
+    if not blocks:
+        return ["develop-feature: SKILL.md has no '## Parallel partitions' section"]
+    gaps = [
+        f"develop-feature Parallel partitions: no paragraph or list item covers {label}"
+        for label, says_it in _PARALLEL_PARTITIONS_RULES.items()
+        if not any(says_it(block) for block in blocks)
+    ]
+    gaps += [
+        f"develop-feature Parallel partitions: adds a worktree that is not under ../: {block[:80]!r}"
+        for block in blocks
+        if _WORKTREE_ADD_ELSEWHERE.search(block)
+    ]
+    gaps += [
+        f"develop-feature Parallel partitions: forces a worktree removal: {block[:80]!r}"
+        for block in blocks
+        if _FORCED_REMOVE.search(block)
+    ]
+    return gaps
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -625,6 +730,18 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         partition's tasks, leaves its report in `specs/<NNN-slug>/evidence/P<k>.md`, never pushes (the main session
         integrates its branch), and stops with a `BLOCKED:` line for the main session on a PLAN CHANGE."""
         gaps = _partition_session_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_parallel_partitions_integrate_one_at_a_time(self) -> None:
+        """R3.3, R9.2: develop-feature's `## Parallel partitions` section builds the wave's first partition in the main
+        session and each other one in its own session, in a worktree on a `wave/` branch created outside the project
+        with `git worktree add ../<repo>-worktrees/...`; integrates them one at a time by cherry-picking each branch's
+        commits (its report included) from the merge-base, running the check after each; reviews an integration fix
+        and commits it with its task's `Task:` line typed feat or refactor; runs a cross code review over the wave at
+        the end; removes worktrees with `git worktree remove`, never `--force`; and deletes a partition branch only
+        once every one of its task commits, found by `Task:` line, is integrated."""
+        gaps = _parallel_partitions_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 

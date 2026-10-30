@@ -67,7 +67,8 @@ runs this solved slightly more tasks than running everything at `high`, for less
    suggest `/konundrm-eng:setup-project` and ask whether to continue without gates.
 
 **Partition session.** When `$ARGUMENTS` also says `--partition P<k>`, the feature's main session
-started you in a Git worktree of your own to build one partition of a parallel wave. Resume as in
+started you in a Git worktree of your own to build one partition of a parallel wave
+([Parallel partitions](#parallel-partitions)). Resume as in
 step 1, then run Phase 3 for only that partition's tasks, in the order the `### Partitions`
 table of the slice that holds `P<k>` lists them, and skip Phases 1, 2 and 4. Never edit `design.md`, `requirements.md` or another
 partition's tasks: in `tasks.md` you check only your own tasks' boxes and write only their Rounds
@@ -93,10 +94,11 @@ Run the `konundrm-eng:writing-plans` skill on the approved spec, with the base S
 `tasks.md` header. Do not continue until the user explicitly approves `design.md` and `tasks.md`.
 
 Then, only when some slice has a wave of two or more partitions, ask a separate question: whether
-to build those partitions in parallel, one session per partition. Offer parallel only when the
+to build those partitions in parallel, one session per partition
+([Parallel partitions](#parallel-partitions)). Offer parallel only when the
 partitions' checks and end-to-end tests can run at the same time on this machine; they cannot when
 they need a fixed port, a shared local database, a container name or another single resource.
-Otherwise, say why and build in order; when unsure, say so and recommend building in order. Record
+When they cannot, say why and build in order; when unsure, say so and recommend building in order. Record
 the answer in the `tasks.md` header line `- **Parallel:** yes` or `no` (`no` unless the user says
 yes). A resumed session keeps that parallel answer and never asks again.
 
@@ -206,6 +208,56 @@ review, or when the same review fails a third time, stop the fix rounds and:
    stash, and Git worktrees share one stash list. The file lands in the task's commit.
 4. One rethink per task. If the task still fails two more reviews, stop and ask the user (an
    escalation), with the RETHINK report and, when you set the attempt aside, its stash message.
+
+## Parallel partitions
+
+Partitions in the same wave of a slice depend on no other partition of the wave and share no file
+with it (writing-plans checks both), so each can be built in its own session and Git worktree,
+behind its own gates. When the `tasks.md` header says `Parallel: yes`, build each wave of a
+slice's `### Partitions` table this way:
+
+1. Start from a clean tree on the feature branch, with every earlier wave of this slice
+   integrated. Its head is the wave base.
+2. For every partition of the wave except the first, create a worktree **outside this checkout**,
+   on a new branch from the wave base:
+   `git worktree add ../<repo>-worktrees/<NNN-slug>-p<k> -b wave/<NNN-slug>-p<k>`. A worktree
+   inside the checkout (such as `.claude/worktrees/`) shows up in this tree and breaks its gates.
+   Then start a partition session in each folder with the prompt
+   `/konundrm-eng:develop-feature specs/<NNN-slug> --partition P<k>`: with the desktop app's
+   session tools when they can open a session in an existing folder, otherwise by giving the user
+   each folder and the command to run there,
+   `claude "/konundrm-eng:develop-feature specs/<NNN-slug> --partition P<k>"`.
+3. Build the wave's first partition here, on the feature branch, task by task (Phase 3).
+4. Wait for the other partitions. A partition is done when its session says so (the desktop app
+   tells you; otherwise the user does) and its branch has a commit for every one of its tasks
+   (`git log -E --grep '^Task: T<n>( |$)' <branch>`) plus its report commit. A partition session
+   that stops with `BLOCKED:` holds the wave: relay it to the user and send the answer to that
+   session.
+5. Integrate one partition at a time, in table order, and only between tasks: no subagent running
+   in this checkout and the tree clean. The plugin's subagent audit attributes any file that
+   changes during a subagent's run to that subagent. If this session has uncommitted work of its
+   own (a task in progress), finish or commit it first; never integrate on a dirty tree.
+   - Pick the partition's commits: `git cherry-pick <fork-point>..<branch>`, where the fork point
+     is `git merge-base HEAD <branch>`. The range ends at the branch's tip, so it includes the
+     partition's report commit (`docs(<scope>): report partition P<k>`) and its
+     `evidence/P<k>.md`. In `tasks.md`, a conflict keeps both sides' boxes and Rounds lines.
+   - After a partition that changed dependencies or generated files, set the checkout up as
+     `AGENTS.md` or the README says.
+   - Run the check command after each partition. The history stays linear, one commit per task,
+     so the pull request reads commit by commit.
+6. If the check is red after a partition, route the failure as in Phase 3 step 3 (a test problem
+   to the `test-writer`, everything else to the `implementer`'s fix round, with that partition's
+   last task), have `code-reviewer` review the fix, run the check again, and commit the fix with
+   `committing-changes`, carrying that task's `Task: T<n> · Covers: …` line and typed `feat` or
+   `refactor`, never `fix` (measure-impact counts `fix` commits on task files as escaped defects).
+   Then integrate the next partition.
+7. After the last partition, dispatch `code-reviewer` once over `git diff <wave-base>..HEAD` for
+   duplication or inconsistency between partitions built apart, and route its Critical findings
+   as in step 6.
+8. Remove each worktree with `git worktree remove <folder>`, never `--force`: if it refuses, show
+   the user what is left, and close any session still open in that folder first. Once every one
+   of its tasks has its commit here, delete its branch (`git branch -D wave/<NNN-slug>-p<k>`).
+9. Go on to the slice's next wave. After its last wave, continue with the end of the slice.
 
 ## Phase 4: Finish
 
