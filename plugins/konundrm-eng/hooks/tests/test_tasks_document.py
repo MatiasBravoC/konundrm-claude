@@ -198,8 +198,9 @@ class ReadTasksTest(unittest.TestCase):
 
     def test_a_huge_task_range_does_not_hang_the_reader(self) -> None:
         # R3.8: a range as wide as T1-T10000000000 assigns only the document's tasks inside its bounds,
-        # and is read in under 2 seconds. The read runs in a child process so a reader that enumerates
-        # every number in the range is killed at the deadline instead of hanging the suite.
+        # and is read in under 2 seconds. The child process times only read_tasks, so starting the
+        # interpreter does not count against the budget; the looser outer timeout is a kill switch
+        # so a reader that enumerates every number in the range cannot hang the suite.
         self.path.write_text(
             "- **Status:** Approved\n\n"
             "## Slice S1: apply\n\n"
@@ -215,27 +216,39 @@ class ReadTasksTest(unittest.TestCase):
             encoding="utf-8",
         )
         reader = (
-            "import json, sys\n"
+            "import json, sys, time\n"
             "from pathlib import Path\n"
             "sys.path.insert(0, sys.argv[1])\n"
             "from tasks_document import read_tasks\n"
-            "print(json.dumps({task.id: task.partition for task in read_tasks(Path(sys.argv[2])).tasks}))\n"
+            "path = Path(sys.argv[2])\n"
+            "start = time.perf_counter()\n"
+            "document = read_tasks(path)\n"
+            "elapsed_seconds = time.perf_counter() - start\n"
+            "partitions = {task.id: task.partition for task in document.tasks}\n"
+            "print(json.dumps({'partitions': partitions, 'elapsed_seconds': elapsed_seconds}))\n"
         )
         scripts = str(Path(__file__).resolve().parents[1] / "scripts")
         try:
-            # subprocess.run kills the child when the timeout expires.
+            # subprocess.run kills the child when the timeout expires. An enumerating reader would run
+            # out of memory over 10^10 IDs long before finishing, so waiting past 10 seconds adds nothing.
             completed = subprocess.run(
                 [sys.executable, "-c", reader, scripts, str(self.path)],
                 capture_output=True,
                 text=True,
-                timeout=2,
+                timeout=10,
                 check=True,
             )
         except subprocess.TimeoutExpired:
-            self.fail("reading a partition row with T1\u2013T10000000000 took more than 2 seconds")
+            self.fail("reading a partition row with T1\u2013T10000000000 did not finish within 10 seconds")
+        result = json.loads(completed.stdout)
         self.assertEqual(
-            json.loads(completed.stdout),
+            result["partitions"],
             {"T1": "P1", "T2": "P1", "T7": "P1", "T10000000001": "P2"},
+        )
+        self.assertLess(
+            result["elapsed_seconds"],
+            2,
+            f"read_tasks took {result['elapsed_seconds']:.2f} s on a T1\u2013T10000000000 row; the budget is 2 s",
         )
 
     def test_partitions_follow_the_first_row_and_ranges_cover_their_bounds(self) -> None:

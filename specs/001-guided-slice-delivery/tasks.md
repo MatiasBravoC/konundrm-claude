@@ -482,10 +482,11 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
 
 <!-- Agregado el 2026-10-30 por la sesión principal, con el permiso del usuario para decidir y su
 pedido de ser maximalista: las sugerencias de las revisiones de código que vale la pena aplicar. -->
-- [ ] **T60** La prueba del rango enorme mide solo la lectura, no el arranque del intérprete · `chore` · Risk: low · Covers: R3.8
+- [x] **T60** La prueba del rango enorme mide solo la lectura, no el arranque del intérprete · `chore` · Risk: low · Covers: R3.8
   - Files: `P/hooks/tests/test_tasks_document.py` (modify `test_a_huge_task_range_does_not_hang_the_reader`: medir `read_tasks` dentro del proceso hijo y dejar un tope externo más holgado)
   - Verify: `... -k test_a_huge_task_range_does_not_hang_the_reader`
   - Depends on: T55
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T61** Un ID con ceros a la izquierda (`T01`) coincide con `T1` en rangos y en celdas explícitas · `behavior` · Risk: low · Covers: R3.8
   - Test: `P/hooks/tests/test_tasks_document.py::test_zero_padded_ids_match_their_number`
