@@ -364,11 +364,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T7
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T43** Existe el agente process-reviewer: solo lectura, Sonnet high, notas con evidencia y skill o agente afectado, sin código ni datos del proyecto · `behavior` · Risk: low · Covers: R1.1, R7.1, R7.3
+- [x] **T43** Existe el agente process-reviewer: solo lectura, Sonnet high, notas con evidencia y skill o agente afectado, sin código ni datos del proyecto · `behavior` · Risk: low · Covers: R1.1, R7.1, R7.3
   - Test: `P/hooks/tests/contract/test_agents.py::test_the_process_reviewer_is_a_read_only_sonnet_agent`
   - Files: `P/agents/process-reviewer.md` (new)
   - Verify: `... -k test_the_process_reviewer_is_a_read_only_sonnet_agent`
   - Depends on: T42
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T44** improvement_notes agrega notas con fecha, proyecto, feature y alcance al archivo central · `behavior` · Risk: medium · Covers: R7.2
   - Test: `P/hooks/tests/test_improvement_notes.py::test_appends_dated_notes_tagged_with_project_feature_and_scope` (la ruta es siempre `<config>/konundrm-eng/improvements.md`, aunque el proyecto o la feature tengan `/`, `..` o saltos de línea)
