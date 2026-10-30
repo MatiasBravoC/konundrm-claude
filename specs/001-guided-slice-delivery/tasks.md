@@ -539,6 +539,32 @@ una sugerencia de la revisión de código de T29; T72 porque en T27 un nombre de
   - Verify: `... -k test_contract_tests_define_each_module_name_once`
   - Depends on: T51
 
+<!-- Agregadas el 2026-10-30 por la sesión principal con las notas de revisión de las sesiones de
+S3 y de agentes (T61, T63, T66 y T68). -->
+- [ ] **T73** Un ID de tarea o un límite de rango con miles de dígitos no hace caer al lector · `behavior` · Risk: medium · Covers: R3.8
+  - Test: `P/hooks/tests/test_tasks_document.py::test_a_task_id_with_thousands_of_digits_does_not_crash_the_reader` (un ID explícito y un límite de rango más allá del tope de 4300 dígitos de `int` en CPython: `read_tasks` no lanza y esa celda no asigna ninguna tarea)
+  - Files: `P/hooks/scripts/tasks_document.py` (modify: tope de dígitos en un solo lugar)
+  - Invariants: `read_tasks` nunca lanza con ningún texto de celda de partición
+  - Verify: `... -k test_a_task_id_with_thousands_of_digits_does_not_crash_the_reader`
+  - Depends on: T61
+
+- [ ] **T74** Al iniciar sesión, solo se listan las particiones de la oleada en curso · `behavior` · Risk: low · Covers: R3.7
+  - Test: `P/hooks/tests/test_session_doctor.py::test_lists_only_the_current_wave_partitions` (con tareas pendientes en la oleada 1, las particiones de la oleada 2 no se listan; terminada la oleada 1, sí)
+  - Files: `P/hooks/scripts/tasks_document.py`, `P/hooks/scripts/session_doctor.py` (modify)
+  - Verify: `... -k test_lists_only_the_current_wave_partitions`
+  - Depends on: T63
+
+- [ ] **T75** Los comandos que recuperan un intento apartado citan la entrada del stash, para que funcionen en PowerShell · `behavior` · Risk: low · Covers: R8.2
+  - Test: `P/hooks/tests/contract/test_flows.py::test_a_set_aside_attempt_is_recovered_by_its_stash_message` (se endurece: `git stash apply "<entry>"` con comillas, o por SHA; una entrada `stash@{…}` sin comillas o un `<n>` suelto fallan)
+  - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/fix-bug/SKILL.md` (modify)
+  - Verify: `... -k test_a_set_aside_attempt_is_recovered_by_its_stash_message`
+  - Depends on: T66
+
+- [ ] **T76** La sección Model and effort no contradice su tabla sobre los primeros intentos · `chore` · Risk: low · Covers: —
+  - Files: `P/skills/develop-feature/SKILL.md` (modify: "First attempts on low- and medium-risk tasks run at `medium`…")
+  - Verify: `npm run check`
+  - Depends on: T68
+
 <!-- Example of a finished task, as develop-feature leaves it:
 - [x] **T1** … · `behavior` · Risk: low · Covers: R1.1
   - Rounds: spec 1 · code 1 · escalations 0
