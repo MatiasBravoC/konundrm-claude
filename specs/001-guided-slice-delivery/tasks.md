@@ -44,11 +44,12 @@ de cada archivo (algunos son CRLF). -->
   - Depends on: T3
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T5** La revisión de PRs en el CI corre en Opus 5.5 con esfuerzo medium · `behavior` · Risk: low · Covers: R1.7
+- [x] **T5** La revisión de PRs en el CI corre en Opus 5.5 con esfuerzo medium · `behavior` · Risk: low · Covers: R1.7
   - Test: `P/hooks/tests/contract/test_templates.py::test_ci_review_runs_on_opus_at_medium_effort`
   - Files: `P/skills/setup-project/templates/claude-review.yml` (modify)
   - Verify: `... -k test_ci_review_runs_on_opus_at_medium_effort`
   - Depends on: T1
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ## Slice S2: replanteo de tareas trabadas
 
