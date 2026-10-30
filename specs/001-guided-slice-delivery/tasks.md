@@ -165,12 +165,26 @@ revisiones de código y de las sesiones paralelas. -->
 
 ## Slice S4: construcción en paralelo dentro de un slice
 
+<!-- T56 entró en a798166 y se revirtió en 61cad85: en una sesión de worktree, la auditoría de
+subagentes fotografiaba la copia principal en SubagentStart y comparaba y restauraba en el worktree en
+SubagentStop. T70 hace que la auditoría use una sola raíz por subagente; T56 vuelve a entrar después.
+Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para decidir. -->
+- [ ] **T70** La auditoría de subagentes compara y restaura solo en el árbol que fotografió al empezar · `behavior` · Risk: high · Covers: R3.3
+  - Test: `P/hooks/tests/test_audit_subagent_changes.py::test_audit_restores_only_in_the_tree_it_snapshotted` (un SubagentStart y un SubagentStop del mismo subagente que resuelven raíces distintas —copia principal y worktree enlazado reales en carpetas temporales— no restauran ni borran nada en ningún árbol; con la misma raíz, todo sigue como hoy)
+  - Files: `P/hooks/scripts/audit_subagent_changes.py` (modify: el registro guarda la raíz de SubagentStart y SubagentStop usa esa), `P/hooks/scripts/hook_state.py` (si hace falta)
+  - Invariants: para cualquier par de eventos de un subagente, la auditoría compara y restaura solo dentro del árbol que fotografió al empezar (propiedad en el mismo test sobre raíces generadas con `random.Random(23)`)
+  - Mutation: `uvx --from mutmut mutmut run --paths-to-mutate plugins/konundrm-eng/hooks/scripts/audit_subagent_changes.py` (mutmut no corre en Windows nativo: dejarlo registrado en la evidencia)
+  - Security: la auditoría restaura y borra archivos de un árbol de trabajo (Threats: Sesión en un worktree → gates del plugin)
+  - Evidence: `specs/001-guided-slice-delivery/evidence/T70.md` con los hooks SubagentStart y SubagentStop corridos sobre un worktree enlazado real (eventos armados a mano) y el árbol sin cambios después
+  - Verify: `... -k test_audit_restores_only_in_the_tree_it_snapshotted`
+  - Depends on: —
+
 - [ ] **T56** Los gates de una sesión que trabaja en un worktree revisan ese worktree, no la copia principal · `behavior` · Risk: medium · Covers: R3.3
   - Test: `P/hooks/tests/test_project_paths.py::test_project_root_is_the_worktree_the_session_works_in` (con un repositorio y un worktree enlazado reales en carpetas temporales: con `CLAUDE_PROJECT_DIR` en la copia principal y el `cwd` del evento dentro del worktree, la raíz es el worktree; con el `cwd` dentro de la copia principal o fuera del repositorio, la raíz sigue siendo `CLAUDE_PROJECT_DIR`)
   - Files: `P/hooks/scripts/project_paths.py` (modify)
   - Invariants: la raíz es el worktree enlazado del mismo repositorio que contiene el `cwd`, y si no hay ninguno, `CLAUDE_PROJECT_DIR` (propiedad en el mismo test: 40 subcarpetas generadas con `random.Random(17)` entre las tres zonas)
   - Verify: `... -k test_project_root_is_the_worktree_the_session_works_in`
-  - Depends on: —
+  - Depends on: T70
 
 - [x] **T19** Al aprobar el plan, develop-feature pregunta aparte por el paralelo y guarda la respuesta · `behavior` · Risk: low · Covers: R3.2, R3.6
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_asks_about_parallel_partitions_once`
@@ -437,6 +451,65 @@ revisiones de código y de las sesiones paralelas. -->
   - Files: `README.md` (modify)
   - Verify: `npm run check`
   - Depends on: T53
+
+## Slice S9: pulido tras las revisiones
+
+<!-- Agregado el 2026-10-30 por la sesión principal, con el permiso del usuario para decidir y su
+pedido de ser maximalista: las sugerencias de las revisiones de código que vale la pena aplicar. -->
+- [ ] **T60** La prueba del rango enorme mide solo la lectura, no el arranque del intérprete · `chore` · Risk: low · Covers: R3.8
+  - Files: `P/hooks/tests/test_tasks_document.py` (modify `test_a_huge_task_range_does_not_hang_the_reader`: medir `read_tasks` dentro del proceso hijo y dejar un tope externo más holgado)
+  - Verify: `... -k test_a_huge_task_range_does_not_hang_the_reader`
+  - Depends on: T55
+
+- [ ] **T61** Un ID con ceros a la izquierda (`T01`) coincide con `T1` en rangos y en celdas explícitas · `behavior` · Risk: low · Covers: R3.8
+  - Test: `P/hooks/tests/test_tasks_document.py::test_zero_padded_ids_match_their_number`
+  - Files: `P/hooks/scripts/tasks_document.py` (modify)
+  - Verify: `... -k test_zero_padded_ids_match_their_number`
+  - Depends on: T55
+
+- [ ] **T62** Una línea `Parallel:` sin llenar, o con las opciones solo dentro de un comentario, se lee como no · `behavior` · Risk: low · Covers: R3.6
+  - Test: `P/hooks/tests/test_tasks_document.py::test_an_unfilled_parallel_line_reads_as_no`
+  - Files: `P/hooks/scripts/tasks_document.py` (modify)
+  - Verify: `... -k test_an_unfilled_parallel_line_reads_as_no`
+  - Depends on: T14
+
+- [ ] **T63** Al iniciar sesión, las particiones se listan por número (P2 antes que P10) y fuera de una oleada en paralelo se muestra una sola tarea · `behavior` · Risk: low · Covers: R3.7
+  - Test: `P/hooks/tests/test_session_doctor.py::test_lists_partitions_by_number_and_falls_back_to_one_task`
+  - Files: `P/hooks/scripts/session_doctor.py` (modify)
+  - Verify: `... -k test_lists_partitions_by_number_and_falls_back_to_one_task`
+  - Depends on: T17
+
+- [ ] **T64** La prueba del rethinker revisa los veredictos en la línea `Verdict:` y cuenta MultiEdit como herramienta de escritura · `chore` · Risk: low · Covers: R8.1
+  - Files: `P/hooks/tests/contract/test_agents.py` (modify `test_the_rethinker_is_a_read_only_opus_max_agent`)
+  - Verify: `... -k test_the_rethinker_is_a_read_only_opus_max_agent`
+  - Depends on: T8
+
+- [ ] **T65** La prueba de roles de solo lectura confirma el nombre del rol antes de la denegación · `chore` · Risk: low · Covers: R8.5
+  - Files: `P/hooks/tests/test_roles.py` (modify `test_read_only_roles_may_not_change_anything` y los nombres de los ayudantes de la propiedad)
+  - Verify: `... -k test_read_only_roles`
+  - Depends on: T42
+
+- [ ] **T66** Un intento apartado se recupera nombrando su entrada del stash por el mensaje, nunca por posición · `behavior` · Risk: low · Covers: R8.2
+  - Test: `P/hooks/tests/contract/test_flows.py::test_a_set_aside_attempt_is_recovered_by_its_stash_message` (develop-feature y fix-bug: `git stash list --grep=<mensaje> --format=%gd` o equivalente; ningún `git stash apply` sin la entrada)
+  - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/fix-bug/SKILL.md` (modify)
+  - Verify: `... -k test_a_set_aside_attempt_is_recovered_by_its_stash_message`
+  - Depends on: T10
+
+- [ ] **T67** fix-bug corre en Opus high todo despacho del test-writer y del implementer después de un replanteo · `behavior` · Risk: low · Covers: R1.2
+  - Test: `P/hooks/tests/contract/test_flows.py::test_fix_bug_runs_dispatches_after_a_rethink_on_opus_high`
+  - Files: `P/skills/fix-bug/SKILL.md` (modify)
+  - Verify: `... -k test_fix_bug_runs_dispatches_after_a_rethink_on_opus_high`
+  - Depends on: T10
+
+- [ ] **T68** La sección Model and effort deja de citar resultados que nada respalda · `chore` · Risk: low · Covers: —
+  - Files: `P/skills/develop-feature/SKILL.md` (modify)
+  - Verify: `npm run check` y que la frase "solved slightly more tasks" ya no esté
+  - Depends on: T3
+
+- [ ] **T69** La plantilla del CI explica que `--model` y `--effort` fijan solo la sesión que orquesta · `chore` · Risk: low · Covers: R1.7
+  - Files: `P/skills/setup-project/templates/claude-review.yml` (modify: un comentario YAML arriba de `claude_args:`, nunca dentro del bloque)
+  - Verify: `... -k test_ci_review_runs_on_opus_at_medium_effort`
+  - Depends on: T5
 
 <!-- Example of a finished task, as develop-feature leaves it:
 - [x] **T1** … · `behavior` · Risk: low · Covers: R1.1
