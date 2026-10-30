@@ -150,6 +150,47 @@ class FeatureProgressContextTest(unittest.TestCase):
                 if "per partition" not in expected_line:
                     self.assertNotIn("per partition", context)
 
+    def test_lists_only_the_current_wave_partitions(self) -> None:
+        # R3.7: only the partitions of the wave in progress are listed; wave 2 waits until every
+        # wave-1 task is checked, and a wave with a single pending partition runs serially.
+        folder = self.root / "specs" / "007-coupons"
+        folder.mkdir(parents=True)
+        header = "- **Status:** Approved\n- **Parallel:** yes\n\n## Slice S1: apply\n\n"
+        table = (
+            "### Partitions\n\n"
+            "| Wave | Partition | Tasks | Depends on |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | P1 | T1, T2 | — |\n"
+            "| 1 | P2 | T3 | — |\n"
+            "| 2 | P3 | T4, T5 | P1 |\n"
+            "| 2 | P4 | T6 | P2 |\n"
+        )
+
+        def tasks(*checked: int) -> str:
+            boxes = "".join(f"- [{'x' if n in checked else ' '}] **T{n}** Step {n} · `behavior`\n" for n in range(1, 7))
+            return boxes + "\n"
+
+        cases = {
+            "wave 1 pending": (
+                tasks(),
+                "- specs/007-coupons: 0 of 6 tasks checked, next per partition: P1 T1, P2 T3",
+            ),
+            "wave 1 done": (
+                tasks(1, 2, 3),
+                "- specs/007-coupons: 3 of 6 tasks checked, next per partition: P3 T4, P4 T6",
+            ),
+            "one wave-1 partition left": (
+                tasks(1, 2),
+                "- specs/007-coupons: 2 of 6 tasks checked, next T3: Step 3",
+            ),
+        }
+        for case, (body, expected_line) in cases.items():
+            with self.subTest(case):
+                (folder / "tasks.md").write_text(header + body + table, encoding="utf-8")
+                context = feature_progress_context(self.root) or ""
+
+                self.assertIn(expected_line, context.splitlines())
+
 
 if __name__ == "__main__":
     unittest.main()

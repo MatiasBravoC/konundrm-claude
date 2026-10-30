@@ -1,17 +1,18 @@
-"""Reads a feature's tasks.md: its status and each task's fields, partition and review rounds.
+"""Reads a feature's tasks.md: its status and each task's fields, partition, wave and review rounds.
 
 writing-plans creates the file from its template and develop-feature checks the boxes and adds a
 ``Rounds:`` line per task. The header's ``- **Parallel:** yes | no`` line says whether partitions
 run in parallel: only a whole value of ``yes`` does, so a missing or unfilled line means serial.
-Each slice ends with a ``### Partitions`` table
-(``| Wave | Partition | Tasks | Depends on |``) that assigns its tasks to partitions; a Tasks cell
-lists IDs and inclusive ranges (``T1-T3``, ``T4..T6``, ``T7 to T9``; en and em dashes too), bold or
-not. IDs match by number, so ``T01`` lists task ``T1``; a range is never expanded, only the
-document's own tasks are checked against its bounds. A number longer than ``MAX_TASK_NUMBER_DIGITS``
-significant digits is not a usable task number: a cell ID, range bound or task with one lists or
-belongs to nothing, so no cell text can make the reader raise. The impact report and the session doctor
-both read it, so the format has this one parser. HTML comments are ignored: the template carries
-a commented example.
+Each slice ends with a ``### Partitions`` table (``| Wave | Partition | Tasks | Depends on |``)
+that assigns its tasks to partitions and each partition to a numbered wave. The Wave and Partition
+cells are read bold or not; a Tasks cell lists IDs and inclusive ranges (``T1-T3``, ``T4..T6``,
+``T7 to T9``; en and em dashes too), bold or not. IDs match by number, so ``T01`` lists task
+``T1``; a range is never expanded, only the document's own tasks are checked against its bounds.
+A number longer than ``MAX_TASK_NUMBER_DIGITS`` significant digits is not a usable task number: a
+cell ID, range bound or task with one lists or belongs to nothing, and a Wave cell that is not a
+number that short gives no wave, so no cell text can make the reader raise. The impact report and
+the session doctor both read it, so the format has this one parser. HTML comments are ignored:
+the template carries a commented example.
 
 Sections:
     Task, TasksDocument — what a tasks.md says.
@@ -23,6 +24,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 STATUS = re.compile(r"(?mi)^-\s*\*\*Status:\*\*\s*(?P<status>[A-Za-z]+)")
 PARALLEL = re.compile(r"(?mi)^-\s*\*\*Parallel:\*\*[ \t]*(?P<parallel>[^\r\n]*)")
@@ -38,6 +40,7 @@ PARTITION_TABLE = re.compile(
 SEPARATOR_CELL = re.compile(r"^:?-+:?$")
 TASK_RANGE = re.compile(r"\bT(?P<first>\d+)\s*(?:\u2013|\u2014|-|\.\.|to)\s*T(?P<last>\d+)\b")
 TASK_ID = re.compile(r"\bT\d+\b")
+WAVE_NUMBER = re.compile(r"[0-9]+")
 MAX_TASK_NUMBER_DIGITS = 18
 """Significant digits a task number may have: far above any real plan, far below CPython's limit."""
 
@@ -55,6 +58,8 @@ class Task:
         rounds: Spec review rounds, code review rounds and escalations, once recorded.
         partition: The partition (``P1``) of the first ``### Partitions`` row that lists it, or
             None when no row lists it.
+        wave: The Wave of that same first row, or None when no row lists it or its Wave cell is
+            not a number of at most ``MAX_TASK_NUMBER_DIGITS`` significant digits.
     """
 
     id: str
@@ -64,6 +69,14 @@ class Task:
     slice: str | None
     rounds: tuple[int, int, int] | None
     partition: str | None = None
+    wave: int | None = None
+
+
+class _Placement(NamedTuple):
+    """Where the first Partitions row listing a task puts it."""
+
+    partition: str
+    wave: int | None
 
 
 @dataclass(frozen=True)
@@ -91,39 +104,47 @@ def _rounds(block: str) -> tuple[int, int, int] | None:
     return spec, code, escalations
 
 
-def _task(match: re.Match[str], block: str, slice_: str | None, partitions: dict[str, str]) -> Task:
+def _task(match: re.Match[str], block: str, slice_: str | None, placements: dict[str, _Placement]) -> Task:
     rest = match.group("rest")
     risk = RISK.search(rest)
-    task_id = match.group("id")
+    placement = placements.get(match.group("id"))
     return Task(
-        id=task_id,
+        id=match.group("id"),
         title=rest.split(" · ", 1)[0].strip(),
         done=match.group("box").lower() == "x",
         risk=risk.group("risk").lower() if risk else None,
         slice=slice_,
         rounds=_rounds(block),
-        partition=partitions.get(task_id),
+        partition=placement.partition if placement else None,
+        wave=placement.wave if placement else None,
     )
 
 
-def _partitions(text: str, task_ids: list[str]) -> dict[str, str]:
-    """Maps each of the document's task IDs to the partition of the first Partitions row listing it.
+def _placements(text: str, task_ids: list[str]) -> dict[str, _Placement]:
+    """Maps each of the document's task IDs to the partition and wave of the first row listing it.
 
     Only the given IDs are tested against each row, so a range as wide as ``T1-T10000000000``
     costs one comparison per task instead of one per number it spans.
     """
-    partitions: dict[str, str] = {}
+    placements: dict[str, _Placement] = {}
     for table in PARTITION_TABLE.finditer(text):
         for row in table.group("rows").splitlines():
             cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
             if len(cells) < 3 or SEPARATOR_CELL.match(cells[0]):
                 continue
-            partition = _unbold(cells[1])
+            placement = _Placement(partition=_unbold(cells[1]), wave=_wave_number(_unbold(cells[0])))
             listed = _TasksCell.parse(_unbold(cells[2]))
             for task_id in task_ids:
-                if task_id not in partitions and listed.lists(task_id):
-                    partitions[task_id] = partition
-    return partitions
+                if task_id not in placements and listed.lists(task_id):
+                    placements[task_id] = placement
+    return placements
+
+
+def _wave_number(cell: str) -> int | None:
+    """The wave an unbolded Wave cell such as ``2`` names, or None when it is not a short number."""
+    if WAVE_NUMBER.fullmatch(cell) is None:
+        return None
+    return _task_number(cell)
 
 
 def _unbold(cell: str) -> str:
@@ -202,10 +223,10 @@ def read_tasks(path: Path) -> TasksDocument:
     status = STATUS.search(text)
     headings = list(SLICE_HEADING.finditer(text))
     matches = list(TASK.finditer(text))
-    partitions = _partitions(text, [match.group("id") for match in matches])
+    placements = _placements(text, [match.group("id") for match in matches])
     ends = [*(match.start() for match in matches[1:]), len(text)]
     tasks = tuple(
-        _task(match, text[match.end() : end], _slice_at(match.start(), headings), partitions)
+        _task(match, text[match.end() : end], _slice_at(match.start(), headings), placements)
         for match, end in zip(matches, ends, strict=True)
     )
     parallel = PARALLEL.search(text)

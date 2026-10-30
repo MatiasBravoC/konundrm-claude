@@ -574,11 +574,12 @@ S3 y de agentes (T61, T63, T66 y T68). -->
   - Depends on: T61
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T74** Al iniciar sesión, solo se listan las particiones de la oleada en curso · `behavior` · Risk: low · Covers: R3.7
+- [x] **T74** Al iniciar sesión, solo se listan las particiones de la oleada en curso · `behavior` · Risk: low · Covers: R3.7
   - Test: `P/hooks/tests/test_session_doctor.py::test_lists_only_the_current_wave_partitions` (con tareas pendientes en la oleada 1, las particiones de la oleada 2 no se listan; terminada la oleada 1, sí)
   - Files: `P/hooks/scripts/tasks_document.py`, `P/hooks/scripts/session_doctor.py` (modify)
   - Verify: `... -k test_lists_only_the_current_wave_partitions`
   - Depends on: T63
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T75** Los comandos que recuperan un intento apartado citan la entrada del stash, para que funcionen en PowerShell · `behavior` · Risk: low · Covers: R8.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_a_set_aside_attempt_is_recovered_by_its_stash_message` (se endurece: `git stash apply "<entry>"` con comillas, o por SHA; una entrada `stash@{…}` sin comillas o un `<n>` suelto fallan)

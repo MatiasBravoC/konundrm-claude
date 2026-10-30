@@ -3,8 +3,8 @@
 Warns the person when Git is missing or when the account-level skills this plugin replaced are
 still installed, since Claude would then choose between two versions of each skill. Adds context
 for Claude: the project's check command, the same one every hook runs, and the features in
-progress under specs/ with their next task, or the next task of each partition while a slice's
-partitions run in parallel. The hook runs on every session start, including the
+progress under specs/ with their next task, or the next task of each partition of the wave in
+progress while a slice's partitions run in parallel. The hook runs on every session start, including the
 one after a compaction, so a long develop-feature run finds its place again. A missing Python is
 reported by run.sh, which cannot start this script without one.
 """
@@ -76,9 +76,10 @@ def next_step(document: TasksDocument) -> str:
 
     Returns:
         ``next per partition: P1 T3, P2 T2`` when the plan runs partitions in parallel and at least
-        two partitions of the first unchecked task's slice still have unchecked tasks, every
-        pending task of that slice having a partition; partitions are in numeric order, each with
-        its first unchecked task. Otherwise ``next T<n>: <title>`` for the first unchecked task, or
+        two partitions of the wave in progress, the earliest wave of the first unchecked task's
+        slice that still has unchecked tasks, have unchecked tasks, every pending task of that
+        slice having a partition; partitions are in numeric order, each with its first unchecked
+        task. Otherwise ``next T<n>: <title>`` for the first unchecked task, or
         the finish-phase text when every box is checked.
     """
     pending = [task for task in document.tasks if not task.done]
@@ -94,20 +95,33 @@ def next_step(document: TasksDocument) -> str:
 
 
 def _next_task_by_partition(pending: list[Task]) -> dict[str, Task] | None:
-    """Maps each partition of the first pending task's slice to its first pending task.
+    """Maps each partition of the wave in progress to its first pending task.
 
-    Returns None when fewer than two partitions remain or a pending task of that slice has no
-    partition, since a single next task then describes the resume point fully.
+    The wave in progress is the earliest wave of the first pending task's slice that still has
+    pending tasks. When a pending task of that slice has no numeric wave, the slice's waves are
+    not filtered at all, since the order of its partitions is then unknown.
+
+    Returns None when fewer than two partitions of that wave remain or a pending task of that
+    slice has no partition, since a single next task then describes the resume point fully.
     """
     current_slice = [task for task in pending if task.slice == pending[0].slice]
     if any(task.partition is None for task in current_slice):
         return None
     next_by_partition: dict[str, Task] = {}
-    for task in current_slice:
+    for task in _current_wave(current_slice):
         next_by_partition.setdefault(str(task.partition), task)
     if len(next_by_partition) < 2:
         return None
     return dict(sorted(next_by_partition.items(), key=lambda item: _partition_number(item[0])))
+
+
+def _current_wave(slice_pending: list[Task]) -> list[Task]:
+    """Keeps the pending tasks of the slice's earliest wave, or all of them when a wave is unknown."""
+    waves = [task.wave for task in slice_pending]
+    if None in waves:
+        return slice_pending
+    earliest = min(wave for wave in waves if wave is not None)
+    return [task for task in slice_pending if task.wave == earliest]
 
 
 def _partition_number(partition: str) -> tuple[int, str]:
