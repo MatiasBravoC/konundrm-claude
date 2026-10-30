@@ -281,11 +281,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T29
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T32** Con checkpoints aprobados de antemano, escribe el resumen, toma la opción recomendada y sigue sin preguntar · `behavior` · Risk: low · Covers: R4.5, R5.3
+- [x] **T32** Con checkpoints aprobados de antemano, escribe el resumen, toma la opción recomendada y sigue sin preguntar · `behavior` · Risk: low · Covers: R4.5, R5.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_pre_approved_checkpoints_do_not_stop`
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_pre_approved_checkpoints_do_not_stop`
   - Depends on: T29, T27
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T33** La descripción de la PR de cada slice usa su resumen · `behavior` · Risk: low · Covers: R6.2
   - Test: `P/hooks/tests/contract/test_skills.py::test_slice_pull_requests_use_the_slice_summary`

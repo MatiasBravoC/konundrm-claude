@@ -1281,6 +1281,100 @@ def _changes_gaps(skill: Path) -> list[str]:
     ]
 
 
+# Checkpoints the user approved in advance (R4.5, R5.3). Each rule runs within one sentence (_in_one_sentence) of the
+# section that owns it, and names the `Checkpoints:` header value, so the sentences about the ordinary pause ("wait
+# for the user's go-ahead", "wait for the user's choice") cannot satisfy it alone.
+_PREAPPROVED_LINE = re.compile(r"\bcheckpoints:(?:\*\*)? ?pre-approved\b")
+_PREAPPROVED_ASK_LINE = re.compile(r"\bcheckpoints:(?:\*\*)? ?ask\b")
+_PREAPPROVED_IN_ADVANCE = re.compile(r"\bin advance\b|\bbeforehand\b|\bahead of time\b")
+_PREAPPROVED_REQUEST = re.compile(r"\brequest\b")
+_PREAPPROVED_PLAN_APPROVAL = re.compile(r"\bapprov\w*(?: \S+){0,2} plan\b|\bplan\b(?: \S+){0,2} approv\w*")
+_PREAPPROVED_OTHERWISE = re.compile(r"\b(?:otherwise|unless|else)\b")
+# The negation governs the verb, allowing a short list ("without stopping, asking questions or waiting").
+_PREAPPROVED_NEGATED = r"\b(?:never|not|no|without)\b(?: \S+){0,4} "
+_PREAPPROVED_NEVER_STOPS = re.compile(_PREAPPROVED_NEGATED + r"(?:stop|halt)\w*")
+_PREAPPROVED_NEVER_ASKS = re.compile(_PREAPPROVED_NEGATED + r"ask\w*")
+_PREAPPROVED_NEVER_WAITS = re.compile(_PREAPPROVED_NEGATED + r"wait\w*")
+_PREAPPROVED_NEVER_PAUSES = re.compile(_PREAPPROVED_NEGATED + r"paus\w*")
+_PREAPPROVED_TAKES_RECOMMENDED = re.compile(
+    r"\b(?:take|takes|taking|choose|chooses|choosing|pick|picks|picking)\b(?: \S+){0,2} recommended\b"
+)
+_PREAPPROVED_RECOMMENDED_FORMAT = re.compile(r"\bdecision: ?<[^>]+> ?\(recommended\)")
+_PREAPPROVED_RECOMMENDED = re.compile(r"\brecommended\b")
+_PREAPPROVED_SLICE_SUMMARY = re.compile(
+    r"\bslice(?:'s)? summar(?:y|ies)\b|\bsummar(?:y|ies) of (?:the|its|each|that) slice\b"
+)
+
+# Section of develop-feature's SKILL.md -> what it must say about pre-approved checkpoints, each in one sentence.
+_PREAPPROVED_RULES: dict[str, dict[str, tuple[re.Pattern[str], ...]]] = {
+    "Phase 2: Plan": {
+        "R4.5 it records Checkpoints: pre-approved when the user approved the pauses in advance": (
+            _RECORDS,
+            _PREAPPROVED_LINE,
+            _APPROVES,
+            _PAUSES,
+            _PREAPPROVED_IN_ADVANCE,
+        ),
+        "R4.5 that approval comes in the request or when approving the plan": (
+            _PREAPPROVED_LINE,
+            _PREAPPROVED_REQUEST,
+            _PREAPPROVED_PLAN_APPROVAL,
+        ),
+        "R4.5 it records Checkpoints: ask otherwise": (_PREAPPROVED_ASK_LINE, _PREAPPROVED_OTHERWISE),
+    },
+    "Slice checkpoint": {
+        "R4.5 with Checkpoints: pre-approved it still writes and commits the summary": (
+            _PREAPPROVED_LINE,
+            _CHECKPOINT_WRITES,
+            _COMMIT,
+            _SUMMARIES,
+        ),
+        "R4.5 with Checkpoints: pre-approved it goes on to the next slice without stopping": (
+            _PREAPPROVED_LINE,
+            _CHECKPOINT_NEXT_SLICE,
+            _PREAPPROVED_NEVER_STOPS,
+        ),
+        "R4.5 with Checkpoints: pre-approved it asks no questions": (_PREAPPROVED_LINE, _PREAPPROVED_NEVER_ASKS),
+        "R4.5 with Checkpoints: pre-approved it does not wait": (_PREAPPROVED_LINE, _PREAPPROVED_NEVER_WAITS),
+    },
+    "Phase 3: Task loop": {
+        "R5.3 with Checkpoints: pre-approved an open decision never pauses the task": (
+            _PREAPPROVED_LINE,
+            _DECISION,
+            _PREAPPROVED_NEVER_PAUSES,
+        ),
+        "R5.3 with Checkpoints: pre-approved it takes the recommended option": (
+            _PREAPPROVED_LINE,
+            _PREAPPROVED_TAKES_RECOMMENDED,
+        ),
+        "R5.3 it records - Decision: <option> (recommended) with the options below it": (
+            _PREAPPROVED_RECOMMENDED_FORMAT,
+            _OPTIONS,
+            _BELOW,
+        ),
+    },
+}
+_PREAPPROVED_CITED_RULE = "R5.3 the slice summary cites the recommended decision"
+_PREAPPROVED_CITED = (_PREAPPROVED_RECOMMENDED, _PREAPPROVED_SLICE_SUMMARY, _CITE)
+
+
+def _preapproved_gaps(skill: Path) -> list[str]:
+    """Return one message per part of R4.5 and R5.3 that its section of develop-feature's SKILL.md lacks, and one
+    when neither Phase 3 nor the Slice checkpoint says the slice summary cites the recommended decision."""
+    gaps: list[str] = []
+    for heading, rules in _PREAPPROVED_RULES.items():
+        blocks = _section_blocks(skill, heading)
+        gaps += [
+            f"develop-feature {heading}: no sentence says {label}"
+            for label, patterns in rules.items()
+            if not any(_in_one_sentence(block, *patterns) for block in blocks)
+        ]
+    cited_in = _section_blocks(skill, "Phase 3: Task loop") + _section_blocks(skill, "Slice checkpoint")
+    if not any(_in_one_sentence(block, *_PREAPPROVED_CITED) for block in cited_in):
+        gaps.append(f"develop-feature Phase 3 or Slice checkpoint: no sentence says {_PREAPPROVED_CITED_RULE}")
+    return gaps
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -1442,6 +1536,17 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         the next slice starts (an approval of the changes, not the go-ahead alone), and never makes them on the spot,
         outside the task loop."""
         gaps = _changes_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_pre_approved_checkpoints_do_not_stop(self) -> None:
+        """R4.5, R5.3: develop-feature records `- **Checkpoints:** pre-approved` in the tasks.md header when the user
+        approved the pauses in advance (in the request or when approving the plan), `ask` otherwise; with
+        `Checkpoints: pre-approved` the Slice checkpoint still writes and commits the summary, then goes on to the next
+        slice without stopping, asking questions or waiting; and an open decision never pauses the task: it takes the
+        recommended option, records it as `- Decision: <option> (recommended)` with the options below it, and the
+        slice summary cites it."""
+        gaps = _preapproved_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 

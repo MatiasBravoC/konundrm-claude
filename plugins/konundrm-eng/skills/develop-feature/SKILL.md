@@ -129,6 +129,10 @@ When they cannot, say why and build in order; when unsure, say so and recommend 
 the answer in the `tasks.md` header line `- **Parallel:** yes` or `no` (`no` unless the user says
 yes). A resumed session keeps that parallel answer and never asks again.
 
+Record the `tasks.md` header line `- **Checkpoints:** pre-approved` when the user approved the
+pauses between slices in advance, in the request or when approving the plan, and
+`- **Checkpoints:** ask` otherwise; a `tasks.md` without that line reads as `ask`.
+
 Then commit the three documents as `docs(<scope>): add spec and plan for <slug>`, so every
 later commit contains only its task. From here on, work autonomously until the feature is done or
 an escalation rule fires.
@@ -220,6 +224,12 @@ subagent's `Decision:` report below it, so summaries cite the decision as record
 lands in the task's commit. Then send the task to a new subagent of the same role with the same
 prompt, whose task block now carries the decision. A `Status: DECISION` is not an escalation nor a
 `BLOCKED`: the design is not wrong, it left the choice open.
+
+With `Checkpoints: pre-approved` in the `tasks.md` header, an open decision never pauses the
+task, so no `RED:` line is needed: take the recommended option and record it as
+`- Decision: <option> (recommended)`, with the options from the subagent's `Decision:` report
+below it, so the slice summary cites the recommended choice. Then send the task to a new subagent
+of the same role with the same prompt.
 
 Never accept "it passes" from a subagent without running the command yourself. The plugin also
 audits each subagent when it finishes: files changed outside its role are sent back to it, then
@@ -355,6 +365,9 @@ wave is integrated:
 6. When the user asks for changes at the pause, turn the changes into new tasks in `tasks.md` or
    into a plan change to `design.md`/`tasks.md`, and wait for the user to approve them before
    starting the next slice. Never make those changes on the spot, outside the task loop.
+
+With `Checkpoints: pre-approved` in the `tasks.md` header, still write and commit the summary
+(steps 1 and 2), then start the next slice without stopping, asking questions or waiting.
 
 ## Phase 4: Finish
 
