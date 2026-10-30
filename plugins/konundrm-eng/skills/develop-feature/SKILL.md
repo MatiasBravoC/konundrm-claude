@@ -1,6 +1,6 @@
 ---
 name: develop-feature
-description: Runs a feature from idea to reviewed pull requests with a fixed, gated workflow. Writes and approves the spec, writes and approves the plan (tasks grouped into pull-request-sized slices), then for each task dispatches fresh subagents (test-writer for red, implementer for green and refactor, spec-reviewer, code-reviewer, a security-reviewer on high-risk tasks, and a finding-verifier that tries to refute Critical findings), rejects flaky tests, scales verification to each task's risk (property tests, mutation testing, end-to-end evidence), verifies every claim by running commands, lands one atomic commit per task and, with the user's yes, opens one pull request per slice. Invoke explicitly with /konundrm-eng:develop-feature <idea>, or pass an existing specs/<NNN-slug> folder to resume.
+description: Runs a feature from idea to reviewed pull requests with a fixed, gated workflow. Writes and approves the spec, writes and approves the plan (tasks grouped into pull-request-sized slices), then for each task dispatches fresh subagents (test-writer for red, implementer for green and refactor, spec-reviewer, code-reviewer, a security-reviewer on high-risk tasks, and a finding-verifier that tries to refute Critical findings), rejects flaky tests, sends a task stuck in review to a rethinker that finds what to do differently, scales verification to each task's risk (property tests, mutation testing, end-to-end evidence), verifies every claim by running commands, lands one atomic commit per task and, with the user's yes, opens one pull request per slice. Invoke explicitly with /konundrm-eng:develop-feature <idea>, or pass an existing specs/<NNN-slug> folder to resume.
 disable-model-invocation: true
 argument-hint: "<feature idea | specs/NNN-slug>"
 ---
@@ -26,6 +26,7 @@ Request: $ARGUMENTS
 | Code review | `konundrm-eng:code-reviewer` subagent | no Critical finding |
 | Security review (high risk) | `konundrm-eng:security-reviewer` subagent | no Critical finding |
 | Finding check | `konundrm-eng:finding-verifier` subagent | each Critical finding confirmed or refuted |
+| Rethink (stuck task) | `konundrm-eng:rethinker` subagent | a RETHINK report saying what to do differently, or a plan change the user approves |
 | Risk verification | you | properties, mutation and evidence as the task's risk requires |
 | Gate and commit | you, with the `committing-changes` skill | the check command passes; one atomic commit |
 | Pull requests | you, with the `opening-pull-requests` skill | the user approves the push; one pull request per slice |
@@ -44,6 +45,7 @@ listed (Claude Code sets `effort` only when told a level):
 | Dispatch | `model` | `effort` |
 | --- | --- | --- |
 | Any fix round: `test-writer` or `implementer` sent back after a FAIL, a Critical finding, a red for the wrong reason, a flaky run or a red check | `opus` | `high` |
+| Every `test-writer` and `implementer` dispatch for a task after its [rethink](#rethink) | `opus` | `high` |
 | `test-writer`, `implementer` and `spec-reviewer` on a `high` task | `opus` | `high` |
 | `spec-reviewer` over the whole feature (Phase 4) | `opus` | `high` |
 
@@ -87,7 +89,10 @@ the gates and the audit work per working tree. Pass `model` and `effort` only as
 [Model and effort](#model-and-effort) lists; fix rounds always run on `opus` at `high`.
 
 Keep a tally per task: spec review rounds, code review rounds and escalations. It goes into
-`tasks.md` at the gate.
+`tasks.md` at the gate. Also count the task's failed reviews in its todo item (a spec review FAIL,
+or a code or security review with a Critical finding no `finding-verifier` refuted), for example
+`T12 · failed: spec 1, code 2`: the fifth, or a third failure of the same review, sends the task to
+[Rethink](#rethink) instead of another fix round.
 
 1. **Red** (`behavior` and `property` tasks). Dispatch `test-writer`. Then run the task's verify
    command yourself.
@@ -144,6 +149,39 @@ Never accept "it passes" from a subagent without running the command yourself. T
 audits each subagent when it finishes: files changed outside its role are sent back to it, then
 restored automatically.
 
+## Rethink
+
+A task that keeps failing review needs a different approach, not one more fix. At its fifth failed
+review, or when the same review fails a third time, stop the fix rounds and:
+
+1. Dispatch `konundrm-eng:rethinker` (rethinker prompt) with the task, its criteria, every review
+   finding so far, verbatim and in order, and the latest RED and GREEN reports. Its frontmatter
+   runs it on Opus at `max`, so pass no `model` or `effort`.
+2. Act on its RETHINK report. From then on, every `test-writer` and `implementer` dispatch for the
+   task carries that role's line from the report's `Instructions:` and runs on `opus` at `high`,
+   like any fix round ([Model and effort](#model-and-effort)).
+   - `Verdict: PLAN CHANGE`: first propose its `Plan change:` edit to `tasks.md`, `design.md` or
+     `requirements.md` and wait for the user (an escalation). Once the user approves it, handle the
+     attempt as below and write the approved edit only after the attempt is stashed or kept, so the
+     stash cannot take it.
+   - `Current attempt: SET ASIDE`: stash the attempt, never discard it. The tree was clean when the
+     task began, so the stash holds only this attempt:
+     `git stash push --include-untracked -m "<NNN-slug> T<n> attempt set aside by rethink"`. When
+     the `test-writer` line keeps the current test, end that command with
+     `-- . ':(exclude)<test file>'` so the test stays. Check with `git status` that nothing else is
+     left, then build the task again from step 1 of the task loop, or from step 2 when the test
+     stays (rerun its verify command and pass that output as the RED report).
+   - `Current attempt: KEEP`: when the `test-writer` line changes the test, send it to a new
+     `test-writer` (test-writer prompt) first; then send the `implementer` line to the
+     `implementer` (fix-round prompt) and review again from step 3.
+3. Save the RETHINK report as `specs/<NNN-slug>/evidence/T<n>-rethink.md`, after any stash so the
+   stash does not take it, adding the stash message when you set the attempt aside: the user finds
+   the attempt by that message in `git stash list` and recovers it with `git stash apply`. Name a
+   stash by its message, never by a position such as `stash@{0}`: positions shift with every new
+   stash, and Git worktrees share one stash list. The file lands in the task's commit.
+4. One rethink per task. If the task still fails two more reviews, stop and ask the user (an
+   escalation), with the RETHINK report and, when you set the attempt aside, its stash message.
+
 ## Phase 4: Finish
 
 1. Run the check command on the whole project.
@@ -159,7 +197,8 @@ restored automatically.
    not read stale instructions.
 5. Set the three documents to `Status: Done` in a final `docs(<scope>)` commit.
 6. Report: commits made, a table mapping each requirement ID to its test(s) and evidence, the
-   risk level of each task, Suggestions not applied, refuted findings, and anything escalated.
+   risk level of each task, Suggestions not applied, refuted findings, each rethink (its evidence
+   file and the message of any stash it left), and anything escalated.
    When any task was `high`, tell the user to read that diff before pushing. **Ask before
    pushing** or opening pull requests. On a yes, run the `opening-pull-requests` skill: one
    pull request per slice, stacked in order, each with its traceability table, and `risk:high` on
@@ -169,7 +208,7 @@ To see whether the workflow is paying off across features, run `/konundrm-eng:me
 
 ## Escalation: stop and ask the user when
 
-- a task fails the same review three times;
+- a task still fails two reviews after its rethink ([Rethink](#rethink));
 - the plan turns out to be wrong (a task cannot be done as written, or the design must change):
   propose the edit to `design.md`/`tasks.md` and wait;
 - a subagent returns `BLOCKED` for a reason no other role can resolve. A `BLOCKED` that only

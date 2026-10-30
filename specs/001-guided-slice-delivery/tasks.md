@@ -77,11 +77,12 @@ de cada archivo (algunos son CRLF). -->
   - Depends on: T6, T1
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T9** develop-feature replantea una tarea trabada en vez de seguir arreglándola · `behavior` · Risk: low · Covers: R8.1, R8.2, R8.3, R8.4
+- [x] **T9** develop-feature replantea una tarea trabada en vez de seguir arreglándola · `behavior` · Risk: low · Covers: R8.1, R8.2, R8.3, R8.4, R1.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_rethinks_a_stuck_task` (sección `## Rethink`: quinta revisión fallida o tercera de la misma; el intento se guarda con stash y nunca se descarta; PLAN CHANGE espera al usuario; dos fallas más llevan al usuario; la lista de Escalation ya no pregunta a la tercera falla; `dispatch-prompts.md` tiene `## rethinker`)
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/develop-feature/reference/dispatch-prompts.md` (modify)
   - Verify: `... -k test_develop_feature_rethinks_a_stuck_task`
   - Depends on: T8, T3
+  - Rounds: spec 2 · code 1 · escalations 0
 
 - [ ] **T10** fix-bug también replantea un arreglo trabado · `behavior` · Risk: low · Covers: R8.1, R8.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_fix_bug_rethinks_a_stuck_fix`

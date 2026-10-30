@@ -17,6 +17,7 @@ where [Model and effort](../SKILL.md#model-and-effort) lists them.
 - finding-verifier
 - test-writer (surviving mutant)
 - test-writer (flaky test)
+- rethinker
 
 ## test-writer
 
@@ -169,4 +170,28 @@ timezone, unseeded randomness, concurrency, network) and fix the test so it pass
 Do not add retries, sleeps that hide a race, or a skip. If the nondeterminism is in the
 production code, describe it instead of changing that code. Run the verify command five times
 and return your report with the five results.
+```
+
+## rethinker
+
+```
+Feature folder: specs/<NNN-slug>/ (requirements.md, design.md, tasks.md)
+Check command: <command>
+
+Task:
+<task block from tasks.md>
+
+Acceptance criteria covered:
+<EARS lines for the IDs in "Covers">
+
+This task has failed <n> reviews. Every finding so far, verbatim and in order, each with the
+review and round it came from:
+<findings>
+
+Latest RED and GREEN reports:
+<reports>
+
+Find why the attempts keep failing and what to do differently. The attempt is uncommitted: read
+it with `git diff HEAD`, plus untracked files from `git status --porcelain`, and the code around
+it. Do not change any file. Return your RETHINK report.
 ```
