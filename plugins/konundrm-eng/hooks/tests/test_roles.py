@@ -2,13 +2,47 @@
 
 from __future__ import annotations
 
+import random
+import string
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from roles import agent_role, change_denial_reason
+from file_kinds import TEST_DIRECTORIES, TEST_FILE_GLOBS
+from roles import READ_ONLY_ROLES, agent_role, change_denial_reason
+
+PATH_CHARACTERS = string.ascii_lowercase + string.digits + "_.-"
+FEATURE_DOCUMENTS = ("requirements.md", "design.md", "tasks.md")
+
+
+def generate_paths(seed: int, count: int) -> list[str]:
+    """Builds repeatable relative paths of 1 to 6 segments over [a-z0-9_.-].
+
+    The shapes take turns, so files in test folders, test file names, hidden files and
+    specs/<NNN-slug>/ documents are always among the paths instead of appearing by chance.
+    """
+    rng = random.Random(seed)  # noqa: S311 - repeatable test inputs, not cryptography
+    test_folders = sorted(TEST_DIRECTORIES)  # sorted: a frozenset's order changes between runs
+
+    def segment() -> str:
+        return "".join(rng.choice(PATH_CHARACTERS) for _ in range(rng.randint(1, 12)))
+
+    def under_folders(*last: str) -> str:
+        return "/".join([*(segment() for _ in range(rng.randint(0, 6 - len(last)))), *last])
+
+    def test_file_name() -> str:
+        return "".join(segment() if character == "*" else character for character in rng.choice(TEST_FILE_GLOBS))
+
+    shapes = (
+        lambda: under_folders(segment()),
+        lambda: under_folders(rng.choice(test_folders), segment()),
+        lambda: under_folders(test_file_name()),
+        lambda: under_folders("." + segment()),
+        lambda: f"specs/{rng.randrange(1000):03d}-{segment()}/{rng.choice(FEATURE_DOCUMENTS)}",
+    )
+    return [shapes[index % len(shapes)]() for index in range(count)]
 
 
 class AgentRoleTest(unittest.TestCase):
@@ -54,6 +88,17 @@ class ChangeDenialReasonTest(unittest.TestCase):
                 role = agent_role({"agent_type": f"konundrm-eng:{name}"})
                 self.assertIn("read-only", change_denial_reason(role, "src/a.py") or "")
                 self.assertIn("read-only", change_denial_reason(role, "tests/test_a.py") or "")
+
+    def test_read_only_roles_are_denied_for_any_path(self) -> None:
+        # R8.5: property over 500 seeded paths and every role in READ_ONLY_ROLES, so a read-only role
+        # added later is covered too. Test code and feature documents are among the paths because
+        # the other roles' rules treat them differently; the read-only denial must win for them too.
+        paths = generate_paths(seed=7, count=500)
+        for role in sorted(READ_ONLY_ROLES):
+            with self.subTest(role=role):
+                for path in paths:
+                    reason = change_denial_reason(role, path) or ""
+                    self.assertIn("read-only", reason, f"the {role} may change {path}")
 
     def test_only_the_orchestrator_changes_feature_documents(self) -> None:
         for role in ("test-writer", "implementer"):

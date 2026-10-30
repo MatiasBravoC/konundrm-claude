@@ -61,13 +61,14 @@ de cada archivo (algunos son CRLF). -->
   - Depends on: —
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T7** Todo rol de solo lectura queda bloqueado para cualquier ruta · `property` · Risk: medium · Covers: R8.5
+- [x] **T7** Todo rol de solo lectura queda bloqueado para cualquier ruta · `property` · Risk: medium · Covers: R8.5
   - Test: `P/hooks/tests/test_roles.py::test_read_only_roles_are_denied_for_any_path`
   - Generator domain: 500 rutas relativas con `random.Random(7)`: 1 a 6 segmentos de `[a-z0-9_.-]`, incluidas carpetas de test, archivos ocultos y documentos `specs/<NNN-slug>/`
   - Invariants: para cada rol de `READ_ONLY_ROLES` y cada ruta, el motivo de rechazo menciona "read-only"
   - Files: `P/hooks/scripts/roles.py` (sin cambios esperados)
   - Verify: `... -k test_read_only_roles_are_denied_for_any_path`
   - Depends on: T6
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T8** Existe el agente rethinker: solo lectura, Opus con esfuerzo max y veredictos NEW APPROACH, ADJUST o PLAN CHANGE · `behavior` · Risk: low · Covers: R8.1
   - Test: `P/hooks/tests/contract/test_agents.py::test_the_rethinker_is_a_read_only_opus_max_agent`
