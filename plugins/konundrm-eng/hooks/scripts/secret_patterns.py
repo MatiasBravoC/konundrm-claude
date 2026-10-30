@@ -7,6 +7,7 @@ from entropy. Values that are obviously placeholders (documentation examples suc
 remains the broad net; this is the early one, in front of the agent.
 
 Sections:
+    PRIVATE_KEY_LABEL              — the label of a PEM private key of any type.
     SecretPattern, SECRET_PATTERNS — the credential formats recognised.
     SecretMatch, find_secrets()    — credentials in a text, with line numbers and masked values.
     find_secrets_in_lines()        — credentials in lines a change added.
@@ -27,6 +28,11 @@ if TYPE_CHECKING:  # the edit hook imports this module on every write; keep Git'
 
 MAX_DISTINCT_PLACEHOLDER_CHARACTERS = 3
 PLACEHOLDER_WORDS = ("EXAMPLE", "XXXXXXXX", "PLACEHOLDER", "REDACTED", "YOUR_", "DUMMY", "FAKE")
+# The label of a PEM private key, between "-----BEGIN " or "-----END " and "-----": up to three
+# type words of any kind (RSA, EC, DH, X25519, ED448, OPENSSH, ENCRYPTED, PGP…) or none, then
+# "PRIVATE KEY", then PGP's " BLOCK". The words are bounded so matching stays linear, and the
+# label must end in "PRIVATE KEY", so public keys and certificates never match.
+PRIVATE_KEY_LABEL = r"(?:[A-Z0-9]{1,16} ){0,3}PRIVATE KEY(?: BLOCK)?"
 
 
 @dataclass(frozen=True)
@@ -64,7 +70,7 @@ SECRET_PATTERNS = (
     _pattern("PyPI token", r"\bpypi-AgEIcHlwaS5vcmc(?P<body>[A-Za-z0-9_-]{50,})"),
     _pattern("SendGrid key", r"\bSG\.(?P<body>[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43})(?![A-Za-z0-9_-])"),
     _pattern("Azure storage account key", r"AccountKey=(?P<body>[A-Za-z0-9+/]{86}==)"),
-    _pattern("private key", r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----"),
+    _pattern("private key", rf"-----BEGIN {PRIVATE_KEY_LABEL}-----"),
 )
 
 

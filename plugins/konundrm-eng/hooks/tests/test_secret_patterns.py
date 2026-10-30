@@ -79,6 +79,25 @@ class FindSecretsTest(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(secret_patterns.find_secrets(text), [])
 
+    def test_reports_a_pem_private_key_header_of_any_type(self) -> None:
+        # R7.3, T58: the edit hook blocks the same private key headers scrub removes from the notes, of any
+        # type or none, and still lets public keys, certificates and placeholder headers through.
+        for key_type in ("", "RSA ", "DH ", "X25519 ", "ED25519 ", "ED448 ", "SM2 ", "SSH2 ENCRYPTED "):
+            for suffix in ("", " BLOCK"):
+                header = "-----BEGIN " + key_type + "PRIVATE" + " KEY" + suffix + "-----"
+                with self.subTest(header=header):
+                    found = secret_patterns.find_secrets(f"key = '''\n{header}\n'''\n")
+                    self.assertEqual([(match.kind, match.line) for match in found], [("private key", 2)])
+        for header in (
+            "-----BEGIN " + "PUBLIC" + " KEY-----",
+            "-----BEGIN " + "DH PUBLIC" + " KEY-----",
+            "-----BEGIN " + "CERTIFICATE-----",
+            "-----BEGIN " + "DH PARAMETERS-----",
+            "-----BEGIN " + "EXAMPLE PRIVATE" + " KEY-----",
+        ):
+            with self.subTest(header=header):
+                self.assertEqual(secret_patterns.find_secrets(header), [])
+
     def test_plain_code_has_no_findings(self) -> None:
         text = 'api_key = os.environ["STRIPE_API_KEY"]\nheaders = {"Authorization": f"Bearer {token}"}\n'
         self.assertEqual(secret_patterns.find_secrets(text), [])

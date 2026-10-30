@@ -133,7 +133,11 @@ _WRAPPERS = (("", ""), ("`", "`"), ("(", ")"), ('"', '"'), ("<", ">"), ("token="
 _EMAIL_NAMES = ("ana", "perez", "soto", "maria", "jose", "soporte", "devops")
 _EMAIL_SEPARATORS = ("", ".", "_", "+", "-")
 _EMAIL_DOMAINS = ("cliente-ejemplo.cl", "mail.empresa.com", "uc.cl", "proveedor.io")
-_KEY_LABELS = ("", "RSA ", "EC ", "DSA ", "OPENSSH ", "PGP ", "ENCRYPTED ")
+# PEM private key types before "PRIVATE KEY" (T58: any type, one word or several, or none).
+_KEY_LABELS = (
+    "", "RSA ", "EC ", "DSA ", "OPENSSH ", "PGP ", "ENCRYPTED ", "DH ", "X25519 ", "ED25519 ", "ED448 ", "SM2 ",
+    "SSH2 ENCRYPTED ", "ENCRYPTED X448 ",
+)  # fmt: skip
 # The line endings CommonMark knows; scrub keeps the prose before the code with any of them.
 _NEWLINES = ("\n", "\r\n", "\r")
 # What a line that may start code can sit behind (T57): up to 3 spaces, then any mix of quote markers, bullets
@@ -465,11 +469,15 @@ class _NotesGenerator:
         return line
 
     def _private_key(self, notes: _GeneratedNotes) -> None:
-        label = self.rng.choice(_KEY_LABELS) + "PRIVATE" + " KEY" + self.rng.choice(("", " BLOCK"))
+        key_type = self.rng.choice(_KEY_LABELS)
+        self.forms.add(f"private key type {key_type!r}")
+        label = key_type + "PRIVATE" + " KEY" + self.rng.choice(("", " BLOCK"))
         header = "-----BEGIN " + label + "-----"
         notes.secrets.append(header)
         lines = [_noise(self.rng, 64, _BASE64) for _ in range(self.rng.randint(1, 4))]
-        if self.rng.random() < 0.8:
+        is_closed = self.rng.random() < 0.8
+        self.forms.add("closed private key" if is_closed else "unclosed private key")
+        if is_closed:
             lines.append("-----END " + label + "-----")
         elif not notes.has_code_started:
             # scrub redacts a key with no END line through the end of the text, prose included.
@@ -863,6 +871,32 @@ class ScrubTest(unittest.TestCase):
         self.assertTrue(scrubbed.startswith("El log mostró "), scrubbed)
         self.assertTrue(scrubbed.endswith(" completo.\n"), scrubbed)
 
+    def test_scrub_removes_every_pem_private_key_block(self) -> None:
+        # R7.3 (Threats, row 1), T58: a PEM private key of any type (BEGIN DH PRIVATE KEY between dashes,
+        # X25519, ED25519…) is dropped whole, from its BEGIN line through its END line, or through the end
+        # of the text when END is missing, and the prose around it stays.
+        # Fake key material is split literals, so this file never holds one a scanner would flag.
+        secret_marker = improvement_notes.scrub("-----BEGIN " + "RSA PRIVATE" + " KEY-----").strip()
+        body_lines = ("MIIBIjANBgkq" + "FirmaFalsaDeTipo", "Q29ycG9EZUxh" + "Q2xhdmVGYWxzYQ==")
+        body = "".join(line + "\n" for line in body_lines)
+        for key_type in ("DH", "X25519", "ED25519", "ED448", "SM2", "ANY"):
+            header = "-----BEGIN " + key_type + " PRIVATE" + " KEY-----"
+            end = "-----END " + key_type + " PRIVATE" + " KEY-----"
+            closed = f"Clave filtrada:\n{header}\n{body}{end}\nTexto tras la clave cerrada.\n"
+            unclosed = f"Otra clave sin cierre:\n{header}\n{body}"
+            for notes, kept_before, kept_after in (
+                (closed, "Clave filtrada:\n", "Texto tras la clave cerrada.\n"),
+                (unclosed, "Otra clave sin cierre:\n", ""),
+            ):
+                with self.subTest(key_type=key_type, is_closed=bool(kept_after)):
+                    scrubbed = improvement_notes.scrub(notes)
+
+                    self.assertTrue(scrubbed.startswith(kept_before), f"the prose before the key changed: {scrubbed!r}")
+                    self.assertTrue(scrubbed.endswith(kept_after), f"the prose after the key is missing: {scrubbed!r}")
+                    self.assertIn(secret_marker, scrubbed)
+                    for leaked in ("-----BEGIN", "-----END", "PRIVATE KEY", *body_lines):
+                        self.assertNotIn(leaked, scrubbed, scrubbed)
+
     def test_scrubbed_notes_never_keep_secrets_code_or_emails(self) -> None:
         # R7.3 (Threats, row 1): over 400 generated notes, scrub keeps the prose before the first line that
         # may start code and drops everything from that line on, prose included; the result keeps no fence,
@@ -875,7 +909,8 @@ class ScrubTest(unittest.TestCase):
         # and tabs make a line blank), and so does a tab after nested markers that markdown-it reads as indented
         # code even where commonmark.js does not. Spec review round 5, by decision: a tab anywhere before a line's
         # content, behind any markers, starts code, and an inline ``` span leading a line that holds a separator
-        # only str.splitlines ends lines at starts code too.
+        # only str.splitlines ends lines at starts code too. T58: a private key of any PEM type (DH, X25519, ED448,
+        # SM2, several words or none), closed or not, keeps none of its header, body or END lines.
         rng = random.Random(17)  # noqa: S311 - repeatable generated notes for tests, not cryptography
         generator = _NotesGenerator(rng)
         covered_patterns: set[secret_patterns.SecretPattern] = set()
@@ -941,6 +976,9 @@ class ScrubTest(unittest.TestCase):
             "tab before any marker",
             *(f"tab after {marker!r}" for marker in _PREFIX_MARKERS),
             "tab after spaced nested quotes and a list marker",
+            *(f"private key type {key_type!r}" for key_type in _KEY_LABELS),
+            "closed private key",
+            "unclosed private key",
         }
         self.assertEqual(generator.forms, expected_forms, "a form of code or prose was not generated")
 

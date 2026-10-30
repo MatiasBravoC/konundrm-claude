@@ -436,7 +436,7 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T47
   - Rounds: spec 6 · code 1 · escalations 1
 
-- [ ] **T58** La limpieza tapa cualquier clave privada PEM, también las DH · `behavior` · Risk: high · Covers: R7.3
+- [x] **T58** La limpieza tapa cualquier clave privada PEM, también las DH · `behavior` · Risk: high · Covers: R7.3
   - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_removes_every_pem_private_key_block` (`-----BEGIN DH PRIVATE KEY-----` y otras cabeceras `-----BEGIN <tipo> PRIVATE KEY-----` se quitan con todo su cuerpo)
   - Files: `P/hooks/scripts/secret_patterns.py` (modify: la cabecera de clave privada acepta cualquier tipo), `P/hooks/scripts/improvement_notes.py` (si hace falta)
   - Invariants: el texto limpio no conserva ninguna clave privada PEM (extender el generador de la propiedad de T47); el hook que bloquea escrituras con secretos detecta las mismas cabeceras (sus pruebas siguen pasando)
@@ -445,6 +445,7 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Evidence: agregar a `specs/001-guided-slice-delivery/evidence/T46.md` una corrida de la CLI con una clave DH de prueba y el archivo central resultante sin ella
   - Verify: `... -k test_scrub_removes_every_pem_private_key_block`
   - Depends on: T47
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T59** La búsqueda de correos de la limpieza corre en tiempo lineal · `behavior` · Risk: medium · Covers: R7.3
   - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_handles_long_word_runs_quickly` (`"A" * 40000`, `"a." * 20000` y textos parecidos se limpian en menos de 2 segundos; hoy tardan unos 8)

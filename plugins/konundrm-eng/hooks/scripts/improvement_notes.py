@@ -21,7 +21,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from secret_patterns import SECRET_PATTERNS
+from secret_patterns import PRIVATE_KEY_LABEL, SECRET_PATTERNS
 from session_doctor import claude_config_directory
 
 NOTES_FILE = Path("konundrm-eng") / "improvements.md"
@@ -67,11 +67,11 @@ _HTML_BLOCK_OPENER = re.compile(r"<[A-Za-z/?!]")
 # separator only str.splitlines ends lines at); reduced to one character so no fence remains.
 _FENCE_CHARACTER_RUN = re.compile(r"([`~])\1{2,}")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-# A whole private key: secret_patterns' BEGIN header through its END line, or through the end of
-# the text when END is missing, since the header alone leaves the key body.
-_PRIVATE_KEY_BEGIN = next(secret.pattern.pattern for secret in SECRET_PATTERNS if secret.kind == "private key")
+# A whole private key: the BEGIN header secret_patterns detects through the first END line of any
+# private key type, or through the end of the text when END is missing, since the header alone
+# leaves the key body.
 _PRIVATE_KEY_BLOCK = re.compile(
-    _PRIVATE_KEY_BEGIN + r".*?(?:-----END [A-Z ]*PRIVATE KEY[A-Z ]*-----|\Z)",
+    rf"-----BEGIN {PRIVATE_KEY_LABEL}-----.*?(?:-----END {PRIVATE_KEY_LABEL}-----|\Z)",
     re.DOTALL,
 )
 
@@ -110,11 +110,12 @@ def scrub(notes: str) -> str:
     inline-span exception, since a CommonMark reader may end a fence's info string at it. Any run
     of three or more backticks or tildes left in the kept lines, such as an inline span, is
     reduced to one character.
-    Then every private key, from its "-----BEGIN … PRIVATE KEY-----" header through its
-    "-----END … PRIVATE KEY-----" line (or through the end of the text when that line is
-    missing), every other match of a ``secret_patterns.SECRET_PATTERNS`` pattern, placeholder or
-    not, becomes "[secret removed]" and every e-mail address "[email removed]", repeated until
-    nothing matches, since removing one value can expose another that it was glued to.
+    Then every private key of any type (RSA, EC, DH, X25519, ED448, OPENSSH…, or none), from its
+    "-----BEGIN … PRIVATE KEY-----" header through the next "-----END … PRIVATE KEY-----" line
+    (or through the end of the text when that line is missing), every other match of a
+    ``secret_patterns.SECRET_PATTERNS`` pattern, placeholder or not, becomes "[secret removed]"
+    and every e-mail address "[email removed]", repeated until nothing matches, since removing
+    one value can expose another that it was glued to.
 
     Args:
         notes: Text of the notes, in Markdown.
