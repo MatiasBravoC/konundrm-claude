@@ -22,7 +22,7 @@ actualiza en el paso rojo de esa tarea. -->
 
 ## Slice S1: el hook que registra checks no arranca Python para comandos que no son el check
 
-- [ ] **T1** `run.sh` no arranca Python para registrar un comando que no es el check · `behavior` · Risk: medium · Covers: R5.1
+- [x] **T1** `run.sh` no arranca Python para registrar un comando que no es el check · `behavior` · Risk: medium · Covers: R5.1
   - Test: `P/hooks/tests/integration/test_hook_scripts.py::test_run_sh_skips_python_for_a_command_that_is_not_the_check` (`CLAUDE_PLUGIN_DATA` temporal con `python-path` apuntando a un Python falso que deja un marcador; evento PostToolUse con `ls -la` y una salida de 200 KB → sin marcador)
   - Files: `P/hooks/run.sh` (modify)
   - Invariants: todo comando que contiene el texto del check arranca Python; el camino rápido nunca se salta un check real.
@@ -32,6 +32,7 @@ actualiza en el paso rojo de esa tarea. -->
     - Option A: bucle `read` de builtins sobre todo stdin · pros: ningún proceso extra · cons: sh lee los pipes byte a byte, lento con salidas grandes
     - Option B: `head -c 8192` para el comienzo, decidir con `case` y vaciar el resto con `cat >/dev/null` · pros: costo fijo sea cual sea la salida · cons: dos procesos cortos; si el comando no cabe en 8 KB no decide y corre Python (R5.3)
     - Recommendation: B, confirmada midiendo ambas en esta máquina con un evento chico y uno de 200 KB.
+  - Rounds: spec 2 · code 3 · escalations 0
 
 - [ ] **T2** `run.sh` arranca Python para el check del proyecto y para un check propio configurado · `behavior` · Risk: medium · Covers: R5.2
   - Test: `P/hooks/tests/integration/test_hook_scripts.py::test_run_sh_runs_python_for_the_check_and_a_custom_check` (`npm run check` → marcador y evento intacto; con `KONUNDRM_CHECK_CMD=make verify`, `make verify` → marcador)

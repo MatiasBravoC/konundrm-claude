@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,10 @@ from pathlib import Path
 
 HOOKS = Path(__file__).resolve().parents[2]
 SCRIPTS = HOOKS / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+
+import quality_check  # noqa: E402 - needs the scripts folder on sys.path first
+
 PASSING = f'"{sys.executable}" -c "raise SystemExit(0)"'
 FAILING = f'"{sys.executable}" -c "print(\'1 failed\'); raise SystemExit(1)"'
 
@@ -220,6 +225,126 @@ class HookScriptsTest(unittest.TestCase):
 
         self.assertEqual(json.loads(launch("git commit -m x"))["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertEqual(launch("git status").strip(), "")
+
+    @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
+    def test_run_sh_skips_python_for_a_command_that_is_not_the_check(self) -> None:
+        # R5.1
+        data = Path(self._data.name)
+        marker = data / "python-started"
+        fake_python = data / "fake-python"
+        fake_python.write_text(f'#!/bin/sh\n: > "{marker.as_posix()}"\ncat >/dev/null\n', newline="\n")
+        fake_python.chmod(0o755)
+        (data / "python-path").write_text(fake_python.as_posix() + "\n", newline="\n")
+        event = {
+            "session_id": "it-session",
+            "cwd": str(self.root),
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls -la"},
+            "tool_response": {"stdout": "x" * 200_000, "stderr": "", "interrupted": False},
+        }
+
+        result = subprocess.run(
+            [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), "record_check_result.py"],
+            input=json.dumps(event),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=self.env,
+            timeout=60,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(marker.exists(), "run.sh started Python for a command that is not the check")
+
+
+# Whitespace Python's str.split() and str.strip() remove, including some a C-locale shell does not.
+PYTHON_WHITESPACE = (" ", "  ", "\t", "\n", "\u00a0", "\u2003", "\u3000")
+PADDING = ("", *PYTHON_WHITESPACE)
+OVERRIDE_CORES = ("npm run check", "uv run poe check", "poe check", "make check", "pytest -q", "cargo clippy --all")
+DISCOVERED_PROJECTS = (
+    ({"package.json": '{"scripts": {"check": "x"}}'}, None),
+    ({"package.json": '{"scripts": {"check": "x"}}', "pnpm-lock.yaml": ""}, None),
+    ({"package.json": '{"scripts": {"check": "x"}}', "yarn.lock": ""}, None),
+    ({"package.json": '{"scripts": {"check": "x"}}'}, ""),
+    ({"package.json": '{"scripts": {"check": "x"}}'}, "   "),
+    ({"package.json": '{"scripts": {"check": "x"}}'}, "\u00a0"),
+)
+SUFFIX_PARTS = (";", " ;", "2>&1", " 2>&1", " ")
+
+
+def _respace(rng: random.Random, words: str) -> str:
+    return "".join(word + " " * rng.randint(1, 3) for word in words.split(" ")[:-1]) + words.split(" ")[-1]
+
+
+def _suffix(rng: random.Random) -> str:
+    return "".join(rng.choice(SUFFIX_PARTS) for _ in range(rng.randint(0, 3)))
+
+
+@unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
+class RunShFastPathPropertyTest(unittest.TestCase):
+    """run.sh's fast path, outside HookScriptsTest so the slow property runs once per check."""
+
+    def test_run_sh_starts_python_for_every_command_that_runs_the_check(self) -> None:
+        # R5.1 invariant: the fast path never skips a command quality_check would record as the check.
+        with tempfile.TemporaryDirectory() as data_name:
+            data = Path(data_name)
+            marker = data / "python-started"
+            fake_python = data / "fake-python"
+            fake_python.write_text(f'#!/bin/sh\n: > "{marker.as_posix()}"\ncat >/dev/null\n', newline="\n")
+            fake_python.chmod(0o755)
+            (data / "python-path").write_text(fake_python.as_posix() + "\n", newline="\n")
+            rng = random.Random(29)  # noqa: S311 - seeded for reproducible test data, not cryptography
+            skipped = []
+            checked = 0
+            for index in range(24):
+                root = data / f"project{index}"
+                root.mkdir()
+                if rng.random() < 0.3:
+                    files, override = rng.choice(DISCOVERED_PROJECTS)
+                    for name, content in files.items():
+                        (root / name).write_text(content)
+                else:
+                    core = _respace(rng, rng.choice(OVERRIDE_CORES)) + _suffix(rng)
+                    override = rng.choice(PADDING) + core + rng.choice(PADDING)
+                env = {**os.environ, "CLAUDE_PLUGIN_DATA": data_name, "CLAUDE_PROJECT_DIR": str(root)}
+                env.pop("KONUNDRM_CHECK_CMD", None)
+                if override is not None:
+                    env["KONUNDRM_CHECK_CMD"] = override
+                check = quality_check.find_check_command(root, env)
+                self.assertIsNotNone(check)
+                form = rng.choice(sorted(quality_check._equivalent_forms(check)))
+                command = rng.choice(("", " ")) + _respace(rng, form) + _suffix(rng)
+                if rng.random() < 0.4:
+                    command = f"cd{' ' * rng.randint(1, 2)}'{root.as_posix()}'{' ' * rng.randint(0, 2)}&& {command}"
+                runs_check = quality_check.is_check_invocation(command, check, root, root)
+                if not runs_check or "\\" in command or '"' in command:
+                    continue
+                event = {
+                    "session_id": "it-session",
+                    "cwd": str(root),
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": command},
+                    "tool_response": {"stdout": "ok", "stderr": "", "interrupted": False},
+                }
+                marker.unlink(missing_ok=True)
+
+                subprocess.run(
+                    [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), "record_check_result.py"],
+                    input=json.dumps(event, ensure_ascii=False),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    env=env,
+                    timeout=60,
+                )
+
+                checked += 1
+                if not marker.exists():
+                    skipped.append((override, command))
+            self.assertGreaterEqual(checked, 15, "the generator produced too few commands that run the check")
+            self.assertEqual(skipped, [], "run.sh skipped Python for (KONUNDRM_CHECK_CMD, command) pairs")
 
 
 def git(root: Path, *args: str) -> None:
