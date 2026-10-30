@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import random
+import string
 import sys
 import tempfile
 import unittest
@@ -54,6 +56,31 @@ class AppendNotesTest(unittest.TestCase):
             carrying = [line for line in lines if injected in line]
             self.assertEqual(len(carrying), 1, f"{injected} must appear on exactly one line: {lines!r}")
             self.assertIn(first_part, carrying[0], f"{injected} was split onto its own line: {lines!r}")
+
+    def test_appending_keeps_every_earlier_note(self) -> None:
+        # R7.2: the central file only grows; each append keeps every earlier byte exactly as it was.
+        rng = random.Random(13)  # noqa: S311 - repeatable generated notes for tests, not cryptography
+        for sequence in range(100):
+            config_dir = self.root / "sequences" / str(sequence)
+            path = config_dir / improvement_notes.NOTES_FILE
+            note_count = rng.randint(1, 8)
+            for _ in range(note_count):
+                notes = "".join(rng.choice(string.printable) for _ in range(rng.randint(0, 80)))
+                before = path.read_bytes() if path.exists() else b""
+
+                improvement_notes.append_notes(
+                    notes,
+                    project="konundrm-claude",
+                    feature="001-guided-slice-delivery",
+                    scope="slice 7",
+                    today=date(2026, 10, 29),
+                    config_dir=config_dir,
+                    fallback_dir=self.fallback_dir,
+                )
+
+                after = path.read_bytes()
+                self.assertGreater(len(after), len(before), f"sequence {sequence}: nothing was appended")
+                self.assertEqual(after[: len(before)], before, f"sequence {sequence}: earlier notes changed")
 
 
 if __name__ == "__main__":

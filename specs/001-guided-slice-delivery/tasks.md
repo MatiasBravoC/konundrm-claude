@@ -379,13 +379,14 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: —
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T45** Agregar notas nunca borra ni cambia las anteriores · `property` · Risk: medium · Covers: R7.2
+- [x] **T45** Agregar notas nunca borra ni cambia las anteriores · `property` · Risk: medium · Covers: R7.2
   - Test: `P/hooks/tests/test_improvement_notes.py::test_appending_keeps_every_earlier_note`
   - Generator domain: 100 secuencias con `random.Random(13)` de 1 a 8 notas de texto imprimible
   - Invariants: después de cada agregado, el archivo empieza con su contenido anterior completo
   - Files: `P/hooks/scripts/improvement_notes.py` (sin cambios esperados)
   - Verify: `... -k test_appending_keeps_every_earlier_note`
   - Depends on: T44
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T46** Las notas se limpian: sin bloques de código y con secretos y correos tapados · `behavior` · Risk: high · Covers: R7.3
   - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_drops_code_and_redacts_secrets_and_emails`
