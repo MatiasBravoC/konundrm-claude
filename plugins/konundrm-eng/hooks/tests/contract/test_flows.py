@@ -996,6 +996,82 @@ def _plan_without_partitions_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# An open decision a subagent returns during the build (R5.2, R5.4). These run on blocks from _blocks that mention a
+# decision, each rule within one sentence (_in_one_sentence) so an unrelated sentence cannot satisfy it.
+_DECISION = re.compile(r"\bdecision")
+_STATUS_DECISION = re.compile(r"\bstatus: ?decision\b")
+_PAUSES = re.compile(r"\b(?:paus|hold)\w*")
+_SUBAGENT = re.compile(r"\b(?:subagents?|dispatch\w*)\b")
+_SHOWS = re.compile(r"\b(?:show|present|relay)\w*")
+_USER = re.compile(r"\buser\b")
+_OPTIONS = re.compile(r"\boptions?\b")
+_ADVANTAGES = re.compile(r"\badvantages?\b")
+_DISADVANTAGES = re.compile(r"\bdisadvantages?\b")
+_RECOMMENDATION = re.compile(r"\brecommend\w*")
+_WAITS = re.compile(r"\bwait\w*")
+_CHOICE = re.compile(r"\b(?:choice|choos\w*|chos\w*|pick\w*)\b")
+_RECORDS_CHOICE = re.compile(r"\b(?:record|writ)\w*")
+_DECISION_FIELD = re.compile(r"\bdecision:")
+_TASKS_MD = re.compile(r"\btasks\.md\b")
+# The template's `(user | recommended)` or the decided `(user)` the orchestrator writes; either names who chose.
+_CHOSEN_FORMAT = re.compile(r"\bdecision: ?<[^>]+> ?\(user(?: ?\| ?recommended)?\)")
+_BELOW = re.compile(r"\bbelow\b")
+_KEEPS = re.compile(r"\b(?:keep|stay|retain)\w*")
+_SUMMARIES = re.compile(r"\bsummar(?:y|ies)\b")
+_CITE = re.compile(r"\b(?:cit|quot)\w*")
+_COMMIT = re.compile(r"\bcommit\b")
+_THE_RECORD = re.compile(r"\b(?:decision|record|choice)")
+_SAME_ROLE = re.compile(r"\bsame role\b")
+_NEW = re.compile(r"\bnew\b")
+_CHOICE_OR_DECISION = re.compile(r"\b(?:choice|decision|chosen)\b")
+_ESCALATION_OR_BLOCKED = re.compile(r"\bescalat\w*|\bblocked\b")
+_WRONG = re.compile(r"\bwrong\b")
+_DESIGN_OR_PLAN = re.compile(r"\b(?:design|plan)\b")
+
+# What develop-feature must say about a subagent's `Status: DECISION`, each in one sentence of a block about it.
+_OPEN_DECISION_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R5.2 it pauses the task when a subagent returns Status: DECISION": (_STATUS_DECISION, _PAUSES),
+    "R5.2 it dispatches no other subagent for the paused task": (_NEGATION, _SUBAGENT),
+    "R5.2 it runs no fix round for it": (_NEGATION, _FIX_ROUND),
+    "R5.2 it shows the user the options with their advantages, disadvantages and the recommendation": (
+        _SHOWS,
+        _USER,
+        _OPTIONS,
+        _ADVANTAGES,
+        _DISADVANTAGES,
+        _RECOMMENDATION,
+    ),
+    "R5.2 it waits for the user's choice": (_WAITS, _USER, _CHOICE),
+    "R5.4 it records the choice in the task's - Decision: field in tasks.md": (
+        _RECORDS_CHOICE,
+        _DECISION_FIELD,
+        _TASKS_MD,
+    ),
+    "R5.4 the record reads - Decision: <option> (user)": (_CHOSEN_FORMAT,),
+    "R5.4 the options stay below the chosen line": (_KEEPS, _OPTIONS, _BELOW),
+    "R5.4 summaries cite the recorded decision": (_SUMMARIES, _CITE),
+    "R5.4 the record lands in the task's commit": (_THE_RECORD, _COMMIT),
+    "R5.2 it sends the task back to a new subagent of the same role with the choice": (
+        _SAME_ROLE,
+        _NEW,
+        _CHOICE_OR_DECISION,
+    ),
+    "R5.2 a Status: DECISION is not an escalation or BLOCKED": (_DECISION, _NEGATION, _ESCALATION_OR_BLOCKED),
+    "R5.2 the design is not wrong, it left the choice open": (_NEGATION, _WRONG, _DESIGN_OR_PLAN),
+}
+
+
+def _open_decision_gaps(blocks: list[str]) -> list[str]:
+    """Return one message per rule of `_OPEN_DECISION_RULES` that no block mentioning a decision states in one
+    sentence."""
+    about = [block for block in blocks if _DECISION.search(block)]
+    return [
+        f"develop-feature: no sentence about a subagent's open decision says {label}"
+        for label, patterns in _OPEN_DECISION_RULES.items()
+        if not any(_in_one_sentence(block, *patterns) for block in about)
+    ]
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -1116,6 +1192,17 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         table counts as a single partition, so a mixed plan still works; and the Phase 3 task loop sends the
         `Parallel: yes` case to `## Parallel partitions`, otherwise building in list order."""
         gaps = _plan_without_partitions_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_develop_feature_asks_the_user_for_open_decisions(self) -> None:
+        """R5.2, R5.4: when a test-writer or implementer returns `Status: DECISION`, develop-feature pauses that task
+        (no other subagent for it, no fix round), shows the user the options with their advantages, disadvantages and
+        the recommendation, and waits for the user's choice; it records the choice in the task's `- Decision:` field
+        in tasks.md as `- Decision: <option> (user | recommended)` with the options kept below, so summaries cite it,
+        and that record lands in the task's commit; then it sends the task back to a new subagent of the same role
+        carrying the choice. A `Status: DECISION` is not an escalation or a BLOCKED: the design is not wrong."""
+        gaps = _open_decision_gaps(_blocks(DEVELOP_FEATURE_DIR / "SKILL.md"))
 
         self.assertEqual(gaps, [])
 

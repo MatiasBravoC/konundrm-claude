@@ -202,6 +202,20 @@ or a code or security review with a Critical finding no `finding-verifier` refut
    tests, evidence and `tasks.md` update land as **one** commit with `Task: T<n> · Covers: R…` in
    the body, without rerunning the check and without asking about pushing yet.
 
+**Open decisions.** When a `test-writer` or `implementer` returns `Status: DECISION` (the task
+admits two or more reasonable approaches the plan left open), pause that task: dispatch no other
+subagent for it and run no fix round for it. Show the user the subagent's `Decision:` report, the
+options with their advantages, disadvantages and the recommendation, and wait for the user's
+choice. Start that message with a line `RED: T<n> waits for a decision`, since the task's test may
+already be red and the stop gate ends a turn on a red tree only with a `RED:` or `BLOCKED:` line.
+
+Record the choice in `tasks.md` by adding the task's `- Decision:` field (or rewriting it, when
+the task already has one) as `- Decision: <option> (user)`, and keep the options from the
+subagent's `Decision:` report below it, so summaries cite the decision as recorded; that record
+lands in the task's commit. Then send the task to a new subagent of the same role with the same
+prompt, whose task block now carries the decision. A `Status: DECISION` is not an escalation nor a
+`BLOCKED`: the design is not wrong, it left the choice open.
+
 Never accept "it passes" from a subagent without running the command yourself. The plugin also
 audits each subagent when it finishes: files changed outside its role are sent back to it, then
 restored automatically.

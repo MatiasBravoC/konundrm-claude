@@ -246,11 +246,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T1
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T27** develop-feature pausa la tarea y pregunta al usuario por una decisión abierta, y la registra · `behavior` · Risk: low · Covers: R5.2, R5.4
+- [x] **T27** develop-feature pausa la tarea y pregunta al usuario por una decisión abierta, y la registra · `behavior` · Risk: low · Covers: R5.2, R5.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_asks_the_user_for_open_decisions`
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_develop_feature_asks_the_user_for_open_decisions`
   - Depends on: T26
+  - Rounds: spec 2 · code 2 · escalations 0
 
 - [ ] **T28** La plantilla de resumen de slice tiene todas las secciones que pide la spec · `behavior` · Risk: low · Covers: R6.1
   - Test: `P/hooks/tests/contract/test_templates.py::test_slice_summary_template_has_every_section` (qué cambió y por qué, requisitos cubiertos, tamaño, riesgos y tareas de riesgo alto, decisiones, rondas de revisión y replanteos, orden de lectura con archivos y rangos de líneas)
