@@ -338,11 +338,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Verify: `... -k test_develop_feature_writes_the_feature_summary`
   - Depends on: T38, T34
 
-- [ ] **T40** Cada lote de migración y cada tarea de limpieza van en su propia rama y PR · `behavior` · Risk: low · Covers: R9.3
+- [x] **T40** Cada lote de migración y cada tarea de limpieza van en su propia rama y PR · `behavior` · Risk: low · Covers: R9.3
   - Test: `P/hooks/tests/contract/test_skills.py::test_migrations_and_cleanups_use_one_branch_per_pull_request`
   - Files: `P/skills/migrate-code/SKILL.md`, `P/skills/tidy-codebase/SKILL.md` (modify)
   - Verify: `... -k test_migrations_and_cleanups_use_one_branch_per_pull_request`
   - Depends on: T4
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T41** Reescribir la historia de una PR ya subida pide visto bueno y usa `--force-with-lease` · `behavior` · Risk: low · Covers: R9.4
   - Test: `P/hooks/tests/contract/test_skills.py::test_rewriting_pushed_history_needs_a_yes`

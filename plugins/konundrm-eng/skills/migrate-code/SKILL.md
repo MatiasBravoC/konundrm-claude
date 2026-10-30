@@ -76,11 +76,13 @@ Update `inventory.md` after every file.
 ### 6. Batches
 
 Group verified files into batches within the pull request budget (Standards → Git and pull
-requests). For each batch: run the full check, dispatch `code-reviewer` on the batch (and
-`spec-reviewer`, with `model: opus` and `effort: high`, with the recipe as the criterion: the
-batch applies the recipe and nothing else), commit it as
+requests). Build each batch on its own branch, `migrate/<slug>-b<k>`, cut from the default branch
+once the groundwork every batch needs (the dependency bump, shims, characterization tests) has
+merged in the first pull request. For each batch: run the full check, dispatch `code-reviewer` on
+the batch (and `spec-reviewer`, with `model: opus` and `effort: high`, with the recipe as the
+criterion: the batch applies the recipe and nothing else), commit it as
 `refactor(<scope>): migrate <n> files from <old> to <new>`, and, with the
-user's yes, open its pull request with `opening-pull-requests`. Ask the user how many batches the
+user's yes, open its own pull request from that branch with `opening-pull-requests`. Ask the user how many batches the
 reviewers can take per week, and do not open more than that.
 
 ### 7. Finish
@@ -95,4 +97,5 @@ by the implementer, attempts, files left for people, and the time it took. Ask b
 - Behavior stays the same: the existing and characterization tests pass unchanged.
 - Never delete, skip or weaken a test to make a migrated file pass.
 - No new dependency without the user's yes (the dependency guard checks it too).
-- One migration per branch; unrelated fixes found on the way become notes in `report.md`.
+- One migration per set of branches (`migrate/<slug>-b<k>`, one per batch); unrelated fixes found
+  on the way become notes in `report.md`.

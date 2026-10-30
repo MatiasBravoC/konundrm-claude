@@ -114,6 +114,69 @@ class SkillModelsTest(unittest.TestCase):
         self.assertEqual(actual, expected)
 
 
+# R9.3: the unit of work each skill ships on its own branch and pull request, with the words that name it.
+_ONE_BRANCH_PER_UNIT_SKILLS = {
+    "migrate-code": ("batch", r"batch(?:es)?"),
+    "tidy-codebase": ("task", r"(?:task|cleanup|finding)s?"),
+}
+_OWN_TARGET = {
+    "branch": re.compile(r"\b(?:its own|own|a separate|a new|a fresh|a dedicated) branch\b|\bbranch of its own\b"),
+    "pull request": re.compile(r"\b(?:its own|own|a separate|its) pull request\b|\bpull request of its own\b"),
+}
+_ONE_ITEM_PER = r"\bone (\w+) per {target}\b"
+
+
+def _names_one_per_unit(block: str, unit: str, target: str) -> bool:
+    """Return whether a block from `_split_blocks` gives each unit of work its own `target` (branch or pull request).
+
+    Accepts "one <target> per <unit>", "a <target> for each <unit>", and a sentence about each <unit> that names "its
+    own <target>", "a <target> of its own" or, for a pull request, "its pull request".
+    """
+    per_unit = re.compile(rf"\b{target}\b(?: \S+){{0,4}} (?:per|for each|for every) {unit}\b")
+    if per_unit.search(block):
+        return True
+    each_unit = re.search(rf"\b(?:each|every|per) (?:\S+ ){{0,2}}{unit}\b", block)
+    return each_unit is not None and _OWN_TARGET[target].search(block) is not None
+
+
+def _shares_branch_or_pull_request(block: str, unit: str) -> list[str]:
+    """Return the "one <thing> per branch|pull request" phrases in a block whose <thing> is not the skill's unit."""
+    found = []
+    for target in ("branch", "pull request"):
+        for match in re.finditer(_ONE_ITEM_PER.format(target=target), block):
+            if not re.fullmatch(unit, match.group(1)):
+                found.append(match.group(0))
+    return found
+
+
+class OneBranchPerPullRequestTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_migrations_and_cleanups_use_one_branch_per_pull_request(self) -> None:
+        """R9.3: migrate-code puts each batch, and tidy-codebase each task, on its own branch with its own pull request.
+
+        A skill that puts several batches or tasks on one branch or one pull request (for example "one migration per
+        branch") fails, whatever the wording.
+        """
+        gaps = []
+        for skill, (unit_name, unit) in _ONE_BRANCH_PER_UNIT_SKILLS.items():
+            lines = (SKILLS_DIR / skill / "SKILL.md").read_text(encoding="utf-8").splitlines()
+            if lines[:1] == ["---"] and "---" in lines[1:]:
+                lines = lines[lines.index("---", 1) + 1 :]
+            blocks = _split_blocks(lines)
+
+            for target in ("branch", "pull request"):
+                if not any(_names_one_per_unit(block, unit, target) for block in blocks):
+                    gaps.append(f"{skill}: does not give each {unit_name} its own {target}")
+            gaps += [
+                f"{skill}: shares a branch or pull request across units: {phrase!r}"
+                for block in blocks
+                for phrase in _shares_branch_or_pull_request(block, unit)
+            ]
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
 class WritingPlansPartitionsTest(unittest.TestCase):
     def test_writing_plans_partitions_each_slice(self) -> None:
         """R3.1: writing-plans splits each slice into partitions ordered in waves, with rules its self-review checks.

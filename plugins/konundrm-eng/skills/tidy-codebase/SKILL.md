@@ -48,10 +48,11 @@ list and wait for the user to pick.
 
 ### 3. Fix
 
-For each approved task, in order: the `implementer` makes the change (refactor prompt from
-develop-feature's fix round, with the finding as the problem), you run the check, the
-`code-reviewer` reviews it, and `committing-changes` commits it as `refactor(…)`, `chore(…)` or
-`docs(…)`. With the user's yes, `opening-pull-requests` opens one pull request per task.
+For each approved task, in order, on its own branch from the default branch (`tidy/<slug>`): the
+`implementer` makes the change (refactor prompt from develop-feature's fix round, with the finding
+as the problem), you run the check, the `code-reviewer` reviews it, and `committing-changes`
+commits it as `refactor(…)`, `chore(…)` or `docs(…)`. With the user's yes, `opening-pull-requests`
+opens one pull request per task, from that task's branch.
 
 ### 4. Report
 
