@@ -63,10 +63,45 @@ find_check_word() {
   check_word=${check_word##*[[:space:]]}
 }
 
+# Sets command_value to the raw, still escaped text of a JSON string whose opening quote comes just
+# before $1, up to its first quote with no escaping backslash. Fails when that quote is not in $1,
+# or when finding it takes more than a few dozen steps: each step copies up to 8 KB, and a failure
+# only sends the event to Python (R5.3).
+cut_json_string() {
+  rest=$1
+  command_value=""
+  steps_left=64
+  while :; do
+    case $rest in
+      *'"'*) ;;
+      *) return 1 ;;
+    esac
+    segment=${rest%%'"'*}
+    rest=${rest#*'"'}
+    command_value=$command_value$segment
+    # Drops "\\" pairs from the end: an odd backslash left over escapes the quote.
+    unpaired=$segment
+    while :; do
+      steps_left=$((steps_left - 1))
+      [ "$steps_left" -gt 0 ] || return 1
+      case $unpaired in
+        *'\\') unpaired=${unpaired%??} ;;
+        *) break ;;
+      esac
+    done
+    case $unpaired in
+      *'\') command_value=$command_value'"' ;;
+      *) return 0 ;;
+    esac
+  done
+}
+
 # Succeeds only when the start of a PostToolUse event ($1) shows a whole command that cannot be the
 # check. Any doubt fails it, so Python runs (R5.3): no "command" key after "tool_input", the key
-# Python reads, a value cut off where the start ends, or a value with JSON escapes, whose raw text
-# differs from the command.
+# Python reads, a value cut off where the start ends, or a value with JSON escapes when the check
+# word holds a character JSON escapes or may escape (" \ /) or the value has a \u escape. Otherwise
+# the word is searched for in the escaped text, which spells every other printable ASCII character
+# as the command does.
 is_other_command() {
   case $1 in
     *'"tool_input":'*'"command":'*) ;;
@@ -76,15 +111,20 @@ is_other_command() {
   command_text=${command_text#*'"command":'}
   command_text=${command_text#"${command_text%%[! ]*}"}
   case $command_text in
-    '"'*'"'*) command_text=${command_text#'"'} ;;
+    '"'*) command_text=${command_text#'"'} ;;
     *) return 1 ;;
   esac
-  command_text=${command_text%%'"'*}
-  case $command_text in
-    *'\'*) return 1 ;;
-  esac
+  cut_json_string "$command_text" || return 1
   find_check_word
-  case $command_text in
+  case $command_value in
+    *'\u'*) return 1 ;;
+    *'\'*)
+      case $check_word in
+        *'"'* | *'\'* | */*) return 1 ;;
+      esac
+      ;;
+  esac
+  case $command_value in
     *"$check_word"*) return 1 ;;
   esac
   return 0

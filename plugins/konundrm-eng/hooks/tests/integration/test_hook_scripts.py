@@ -314,11 +314,14 @@ class HookScriptsTest(unittest.TestCase):
         # R5.3: none of these commands is the check, so Python starting proves run.sh ran the full
         # recorder because it could not read the command, not because it recognized the check.
         marker, _ = install_fake_python(Path(self._data.name))
+        # setUp's override is PASSING, whose last word, the one run.sh searches for, ends in '"'. JSON
+        # writes that quote as \", so run.sh cannot search the escaped command for the word.
+        self.assertIn('"', PASSING.split()[-1])
         base = {"session_id": "it-session", "cwd": str(self.root), "hook_event_name": "PostToolUse"}
         base["tool_name"] = "Bash"
         response = {"stdout": "ok", "stderr": "", "interrupted": False}
         events = {
-            "escaped quotes in the command": {
+            "escaped quotes in the command, with a check word that holds a quote": {
                 **base,
                 "tool_input": {"command": 'ls "my dir"'},
                 "tool_response": response,
@@ -347,6 +350,76 @@ class HookScriptsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             started[case] = marker.exists()
         self.assertEqual(started, dict.fromkeys(events, True), "run.sh skipped Python without reading the command")
+
+    @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
+    def test_run_sh_skips_python_for_a_quoted_command_that_is_not_the_check(self) -> None:
+        # R5.1, R5.3 (T42): run.sh reads a command with quotes or backslashes from its escaped text,
+        # up to the first unescaped quote, when the check word holds no character JSON may escape.
+        self.maxDiff = None
+        marker, stdin_copy = install_fake_python(Path(self._data.name))
+        root = self.root / "my project"  # a space, so cd to the root needs quotes
+        root.mkdir()
+        (root / "package.json").write_text('{"scripts": {"check": "x"}}')
+        discovered_env = {key: value for key, value in self.env.items() if key != "KONUNDRM_CHECK_CMD"}
+        discovered_env["CLAUDE_PROJECT_DIR"] = str(root)
+        cd_root = f'cd "{root.as_posix()}" && '
+
+        def launch(command: str, env: dict[str, str], *, escape_slashes: bool = False) -> tuple[bool, bytes]:
+            # tool_input goes last, so no quote follows the command's value in the bytes run.sh reads.
+            event = {
+                "session_id": "it-session",
+                "cwd": str(root),
+                "hook_event_name": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_response": {"stdout": "ok", "stderr": "", "interrupted": False},
+                "tool_input": {"command": command},
+            }
+            text = json.dumps(event)
+            if escape_slashes:  # valid JSON other encoders write: \/ for /
+                value = json.dumps(command)
+                text = text.replace(value, value.replace("/", "\\/"))
+            sent = (text + "\n").encode("ascii")
+            marker.unlink(missing_ok=True)
+            stdin_copy.unlink(missing_ok=True)
+            result = subprocess.run(
+                [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), "record_check_result.py"],
+                input=sent,
+                capture_output=True,
+                env=env,
+                timeout=60,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return marker.exists(), sent
+
+        overrides = {  # override → a command with escapes that runs it
+            'make "verify"': 'make "verify"',
+            "scripts\\verify.cmd": cd_root + "scripts\\verify.cmd",
+            "./scripts/verify.sh": cd_root + "./scripts/verify.sh",
+        }
+        for override, command in overrides.items():
+            self.assertTrue(quality_check.is_check_invocation(command, override, root, root), command)
+        check_command = cd_root + "npm run check"
+        self.assertTrue(quality_check.is_check_invocation(check_command, "npm run check", root, root))
+
+        started = {
+            command: launch(command, discovered_env)[0]
+            for command in ('ls "my dir"', 'git commit -m "x"', "ls C:\\tmp\\")
+        }
+        started[check_command], sent = launch(check_command, discovered_env)
+        received = stdin_copy.read_bytes() if stdin_copy.exists() else None
+        for override, command in overrides.items():
+            override_env = {**discovered_env, "KONUNDRM_CHECK_CMD": override}
+            started[f"{override}: {command}"] = launch(command, override_env, escape_slashes="/" in override)[0]
+
+        expected = {
+            'ls "my dir"': False,
+            'git commit -m "x"': False,
+            "ls C:\\tmp\\": False,
+            check_command: True,
+            **{f"{override}: {command}": True for override, command in overrides.items()},
+        }
+        self.assertEqual(started, expected, "Python started (True) or not (False) for these commands")
+        self.assertEqual(received, sent, "Python received a different event than run.sh")
 
     @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
     def test_run_sh_passes_the_event_intact_to_the_gate_and_the_guard(self) -> None:
@@ -450,6 +523,60 @@ def _suffix(rng: random.Random) -> str:
     return "".join(rng.choice(SUFFIX_PARTS) for _ in range(rng.randint(0, 3)))
 
 
+# Override cores with quotes, backslashes or slashes, which JSON writes, or may write, escaped
+# (\" \\ \/). In some the last word holds them, so run.sh cannot search for it in the escaped text.
+QUOTED_OVERRIDE_CORES = (
+    'make "verify"',
+    'node "scripts/check.js"',
+    ".\\scripts\\check.cmd",
+    "./scripts/check.sh",
+    '"/opt/tools/verify"',
+    '"/opt/tools/verify" --all',
+    "tools\\lint.cmd --fix",
+)
+
+
+def _cd_prefix(rng: random.Random, root: Path, has_space: bool) -> str:
+    """A ``cd <root> &&`` (or ``;``) prefix: none, quoted with ' or ", or bare when the root has no space."""
+    quote = rng.choice(("", "'", '"', '"', None, None))
+    if quote is None or (quote == "" and has_space):
+        return ""
+    path = rng.choice((root.as_posix(), str(root)))  # / or, on Windows, \ separators
+    spaces = " " * rng.randint(1, 2), " " * rng.randint(0, 2)
+    return f"cd{spaces[0]}{quote}{path}{quote}{spaces[1]}{rng.choice(('&&', ';'))} "
+
+
+def _readable_check_word(override: str | None, check: str) -> str | None:
+    """The check word run.sh searches for, or None when the override leaves it no word to read.
+
+    run.sh reads only an override in printable ASCII, so tabs, newlines or non-ASCII padding send
+    every command to Python before the escape guards are reached.
+    """
+    if override is not None and any(not " " <= char <= "~" for char in override):
+        return None
+    return quality_check._normalize(check).split()[-1]
+
+
+def _json_string(text: str, *, ensure_ascii: bool, escape_slashes: bool, unicode_chars: frozenset[str]) -> str:
+    """Writes text as a JSON string the way some encoder may.
+
+    Args:
+        text: The string to write.
+        ensure_ascii: Whether non-ASCII characters become \\uXXXX, as json.dumps does by default.
+        escape_slashes: Whether every / becomes \\/, as some encoders write.
+        unicode_chars: Printable ASCII characters written as \\u00XX instead of themselves.
+    """
+    pieces = []
+    for char in text:
+        if char in unicode_chars:
+            pieces.append(f"\\u{ord(char):04x}")
+        elif char == "/" and escape_slashes:
+            pieces.append("\\/")
+        else:
+            pieces.append(json.dumps(char, ensure_ascii=ensure_ascii)[1:-1])
+    return '"' + "".join(pieces) + '"'
+
+
 # Generators for events run.sh cannot read (R5.3). Every command is built from words without "check",
 # so Python starting can only come from the launcher's doubt, never from recognizing the check.
 ORDINARY_WORDS = ("ls", "-la", "git", "status", "echo", "hi", "make", "lint", "npm", "test", "pytest", "-q", "cat")
@@ -468,6 +595,8 @@ UNEXPECTED_SEPARATORS = (
 )
 NON_ASCII_CHARS = ("é", "ñ", "€", "\u00a0", "\u3000", "😀")
 FILL_ALPHABET = "abcdefxyz0123456789-_/. "  # no "k", so a fill never spells the check word
+# Last words of an override that JSON writes, or may write, escaped (\" \\ \/), without "check".
+ESCAPABLE_CHECK_WORDS = ('"verify"', "scripts\\verify.cmd", "./scripts/verify.sh", 'lint\\"all', "tools/lint")
 BLOCK = 8192  # the bytes run.sh's dd reads before it decides
 
 
@@ -487,10 +616,26 @@ def _bash_event(tool_input: object = None, **fields: object) -> dict:
 
 
 def _escaped_case(rng: random.Random) -> tuple[bytes, str | None]:
+    """A command with JSON escapes that run.sh cannot read.
+
+    Either the override's check word holds a character JSON may escape, so the word cannot be
+    searched for in the escaped text, or the value starts in the first 8 KB and its closing quote
+    falls past them.
+    """
     words = _ordinary_command(rng)
     at = rng.randint(0, len(words))
     command = words[:at] + "".join(rng.choice(ESCAPED_CHARS) for _ in range(rng.randint(1, 3))) + words[at:]
-    return json.dumps(_bash_event({"command": command})).encode("ascii"), None
+    if rng.random() < 0.5:
+        override = _ordinary_command(rng) + " " + rng.choice(ESCAPABLE_CHECK_WORDS)
+        return json.dumps(_bash_event({"command": command})).encode("ascii"), override
+    command = (command + " ") * rng.randint(20, 60)
+    response = {"stdout": "@FILL@", "stderr": "", "interrupted": False}
+    text = json.dumps({"tool_response": response, **_bash_event({"command": command}, tool_response=response)})
+    opening = text.index('"', text.index('"command":') + len('"command":'))
+    closing = opening + len(json.dumps(command)) - 1  # the first unescaped quote after the opening one
+    shift = rng.randint(BLOCK - closing, BLOCK - 1 - opening)
+    fill = "".join(rng.choice(FILL_ALPHABET) for _ in range(shift + len("@FILL@")))
+    return text.replace("@FILL@", fill).encode("ascii"), None
 
 
 def _far_case(rng: random.Random) -> tuple[bytes, str | None]:
@@ -601,23 +746,32 @@ class RunShFastPathPropertyTest(unittest.TestCase):
     """run.sh's fast path, outside HookScriptsTest so the slow property runs once per check."""
 
     def test_run_sh_starts_python_for_every_command_that_runs_the_check(self) -> None:
-        # R5.1 invariant: the fast path never skips a command quality_check would record as the check.
+        # R5.1, R5.3 invariant (T42): the fast path never skips a command quality_check would record
+        # as the check, also with quotes, backslashes, cd "<root>" &&, an override whose last word
+        # holds " \ or /, and whatever valid JSON the writer chose (\/, \u00XX, raw UTF-8).
         with tempfile.TemporaryDirectory() as data_name:
             data = Path(data_name)
             marker, _ = install_fake_python(data)
-            rng = random.Random(29)  # noqa: S311 - seeded for reproducible test data, not cryptography
             skipped = []
             checked = 0
-            for index in range(24):
-                root = data / f"project{index}"
+            reached = set()
+            for index in range(28):
+                # One generator per case, and every draw made whatever the temporary path, so each
+                # case's draws never depend on another case or the machine.
+                rng = random.Random(29 + index)  # noqa: S311 - seeded for reproducible test data, not cryptography
+                has_space = rng.random() < 0.5
+                root = data / (f"project {index}" if has_space else f"project{index}")
                 root.mkdir()
                 if rng.random() < 0.3:
                     files, override = rng.choice(DISCOVERED_PROJECTS)
                     for name, content in files.items():
                         (root / name).write_text(content)
                 else:
-                    core = _respace(rng, rng.choice(OVERRIDE_CORES)) + _suffix(rng)
-                    override = rng.choice(PADDING) + core + rng.choice(PADDING)
+                    cores = QUOTED_OVERRIDE_CORES if rng.random() < 0.5 else OVERRIDE_CORES
+                    core = _respace(rng, rng.choice(cores)) + _suffix(rng)
+                    # Mostly plain spaces, so run.sh reads the word and the escape guards decide.
+                    padding = PADDING if rng.random() < 0.3 else ("", " ", "  ")
+                    override = rng.choice(padding) + core + rng.choice(padding)
                 env = {**os.environ, "CLAUDE_PLUGIN_DATA": data_name, "CLAUDE_PROJECT_DIR": str(root)}
                 env.pop("KONUNDRM_CHECK_CMD", None)
                 if override is not None:
@@ -625,37 +779,78 @@ class RunShFastPathPropertyTest(unittest.TestCase):
                 check = quality_check.find_check_command(root, env)
                 self.assertIsNotNone(check)
                 form = rng.choice(sorted(quality_check._equivalent_forms(check)))
-                command = rng.choice(("", " ")) + _respace(rng, form) + _suffix(rng)
-                if rng.random() < 0.4:
-                    command = f"cd{' ' * rng.randint(1, 2)}'{root.as_posix()}'{' ' * rng.randint(0, 2)}&& {command}"
-                runs_check = quality_check.is_check_invocation(command, check, root, root)
-                if not runs_check or "\\" in command or '"' in command:
+                prefix = _cd_prefix(rng, root, has_space)
+                command = prefix + rng.choice(("", " ")) + _respace(rng, form) + _suffix(rng)
+                word = _readable_check_word(override, check) or ""
+                unicode_chars: frozenset[str] = frozenset()
+                if rng.random() < 0.3:
+                    # Half of them from the check word itself, so a plain word written as \u00XX
+                    # reaches run.sh's \u guard instead of the guard for words holding " \ or /.
+                    pool = sorted(set(word if word and rng.random() < 0.5 else form))
+                    unicode_chars = frozenset(rng.sample(pool, rng.randint(1, min(3, len(pool)))))
+                writer = {
+                    "ensure_ascii": rng.random() < 0.5,
+                    "escape_slashes": rng.random() < 0.3,
+                    "unicode_chars": unicode_chars,
+                }
+                tool_input_last = rng.random() < 0.5
+                if not quality_check.is_check_invocation(command, check, root, root):
                     continue
                 event = {
                     "session_id": "it-session",
                     "cwd": str(root),
                     "hook_event_name": "PostToolUse",
                     "tool_name": "Bash",
-                    "tool_input": {"command": command},
+                    "tool_input": {"command": "@COMMAND@"},
                     "tool_response": {"stdout": "ok", "stderr": "", "interrupted": False},
                 }
+                if tool_input_last:
+                    event["tool_input"] = event.pop("tool_input")
+                text = json.dumps(event, ensure_ascii=writer["ensure_ascii"])
+                sent = text.replace('"@COMMAND@"', _json_string(command, **writer)).encode("utf-8")
+                self.assertEqual(json.loads(sent)["tool_input"]["command"], command, "the writer broke the JSON")
+                # Which branch of run.sh's new decision this case reaches with a word it can read.
+                escaped = "\\" in command or '"' in command or (writer["escape_slashes"] and "/" in command)
+                escapable_word = any(char in word for char in '"\\/')
+                reached.update(
+                    feature
+                    for feature, present in (
+                        ('cd "<root>" &&', '"' in prefix),
+                        ("search in escaped text", not escapable_word and escaped),
+                        ('a check word with " \\ or /', escapable_word and escaped),
+                        ("\\/", writer["escape_slashes"] and "/" in command),
+                        ("\\u00XX in a plain check word", not escapable_word and bool(unicode_chars & set(word))),
+                    )
+                    if word and present
+                )
                 marker.unlink(missing_ok=True)
 
-                subprocess.run(
+                result = subprocess.run(
                     [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), "record_check_result.py"],
-                    input=json.dumps(event, ensure_ascii=False),
+                    input=sent,
                     capture_output=True,
-                    text=True,
-                    encoding="utf-8",
                     env=env,
                     timeout=60,
                 )
 
+                self.assertEqual(result.returncode, 0, result.stderr)
                 checked += 1
                 if not marker.exists():
-                    skipped.append((override, command))
+                    skipped.append((override, command, sent))
             self.assertGreaterEqual(checked, 15, "the generator produced too few commands that run the check")
-            self.assertEqual(skipped, [], "run.sh skipped Python for (KONUNDRM_CHECK_CMD, command) pairs")
+            self.assertEqual(
+                {
+                    'cd "<root>" &&',
+                    "search in escaped text",
+                    'a check word with " \\ or /',
+                    "\\/",
+                    "\\u00XX in a plain check word",
+                }
+                - reached,
+                set(),
+                "the generator never reached these forms",
+            )
+            self.assertEqual(skipped, [], "run.sh skipped Python for (KONUNDRM_CHECK_CMD, command, event) triples")
 
     def test_run_sh_hands_python_every_check_event_byte_for_byte(self) -> None:
         # R5.2 invariant: for an event whose command runs the check, the bytes Python reads are the
@@ -748,6 +943,89 @@ class RunShFastPathPropertyTest(unittest.TestCase):
                 if not marker.exists():
                     skipped.append((index, build.__name__, override, sent[:200], len(sent)))
             self.assertEqual(skipped, [], "run.sh skipped Python for events it could not read")
+
+    def test_run_sh_reads_the_command_up_to_its_first_unescaped_quote(self) -> None:
+        # R5.1, R5.3 invariant (T42): the command's value ends at its first unescaped quote, so a word
+        # after \" or after a run of backslashes and a quote is still in the command and starts Python,
+        # while one only after a value ending in \\, \\\\, ... (in a description or tool_response, or
+        # with nothing after it) does not. Commands are ASCII without a "u" after a backslash or control
+        # characters but newline and tab, so run.sh decides and Python starts iff the word is there.
+        specials = ('"', '\\"', "\\\\", "\t", "\n", *("\\" * run + '"' for run in range(1, 5)))
+        overrides = ((None, "check"), ("make verify", "verify"), ("npm run lint", "lint"))
+        with tempfile.TemporaryDirectory() as data_name:
+            marker, _ = install_fake_python(Path(data_name))
+            base_env = {**os.environ, "CLAUDE_PLUGIN_DATA": data_name, "CLAUDE_PROJECT_DIR": data_name}
+            base_env.pop("KONUNDRM_CHECK_CMD", None)
+            wrong = []
+            reached = set()
+            for index in range(24):
+                # One generator per case, so each case's draws never depend on another case or the machine.
+                rng = random.Random(97 + index)  # noqa: S311 - seeded for reproducible test data, not cryptography
+                override, word = rng.choice(overrides)
+                tokens = [rng.choice(ORDINARY_WORDS) for _ in range(rng.randint(1, 4))]
+                for _ in range(rng.randint(1, 6)):
+                    tokens.insert(rng.randint(0, len(tokens)), rng.choice(specials))
+                after_escaped_quote = False
+                if rng.random() < 0.5:
+                    quoted = [at + 1 for at, piece in enumerate(tokens) if piece.endswith('"') and piece != '"']
+                    at = rng.choice(quoted) if quoted and rng.random() < 0.8 else rng.randint(0, len(tokens))
+                    after_escaped_quote = at in quoted
+                    tokens.insert(at, word)
+                ends_in_backslashes = rng.random() < 0.4
+                if ends_in_backslashes:
+                    tokens.append("\\" * rng.randint(1, 4))
+                command = "".join(token + rng.choice(("", " ")) for token in tokens[:-1]) + tokens[-1]
+                trailing_word = rng.choice(("", "description", "tool_response"))
+                tool_input = {"command": command}
+                if trailing_word == "description":
+                    tool_input["description"] = f"runs {override or 'npm run check'}"
+                response = {"stdout": f"ran {override or 'npm run check'}" if trailing_word else "ok", "stderr": ""}
+                event = _bash_event(tool_input, tool_response=response)
+                tool_input_last = not trailing_word and rng.random() < 0.5
+                if tool_input_last:
+                    event["tool_input"] = event.pop("tool_input")
+                sent = json.dumps(event).encode("ascii")
+                self.assertLess(sent.index(b'"command":') + len(json.dumps(command)), BLOCK)
+                self.assertNotIn("\\u", json.dumps(command), "the generator left run.sh a \\u escape")
+                holds_word = word in command
+                reached.update(
+                    feature
+                    for feature, present in (
+                        ("the word after an escaped quote", holds_word and after_escaped_quote),
+                        ("a value ending in backslashes", not holds_word and ends_in_backslashes),
+                        ("the word after the value", not holds_word and trailing_word),
+                        ("tool_input last", not holds_word and tool_input_last),
+                        ("a value with quotes and backslashes", not holds_word and '"' in command and "\\" in command),
+                    )
+                    if present
+                )
+                env = base_env if override is None else {**base_env, "KONUNDRM_CHECK_CMD": override}
+                marker.unlink(missing_ok=True)
+
+                result = subprocess.run(
+                    [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), "record_check_result.py"],
+                    input=sent,
+                    capture_output=True,
+                    env=env,
+                    timeout=60,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                if marker.exists() != holds_word:
+                    wrong.append((index, override, command, holds_word, marker.exists()))
+            self.assertEqual(
+                {
+                    "the word after an escaped quote",
+                    "a value ending in backslashes",
+                    "the word after the value",
+                    "tool_input last",
+                    "a value with quotes and backslashes",
+                }
+                - reached,
+                set(),
+                "the generator never reached these forms",
+            )
+            self.assertEqual(wrong, [], "run.sh misread (case, override, command, holds the word, Python started)")
 
     def test_run_sh_hands_every_other_script_its_event_untouched(self) -> None:
         # R5.4 invariant: only record_check_result.py takes the fast path, so every other script,

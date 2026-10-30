@@ -68,12 +68,13 @@ Python todo comando con un escape JSON, camino que ahora cuesta ~100 ms más. Co
 caso de comillas escapadas de la prueba de T3 y el generador `_escaped_case` de su prueba de
 propiedad fijan la regla vieja; el test-writer los actualiza en el paso rojo. La prueba de propiedad
 de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se amplía a ellos. -->
-- [ ] **T42** `run.sh` decide también cuando el comando lleva comillas o barras escapadas: busca la palabra del check en el texto escapado, hasta la primera comilla sin escapar · `behavior` · Risk: medium · Covers: R5.1, R5.3
+- [x] **T42** `run.sh` decide también cuando el comando lleva comillas o barras escapadas: busca la palabra del check en el texto escapado, hasta la primera comilla sin escapar · `behavior` · Risk: medium · Covers: R5.1, R5.3
   - Test: `P/hooks/tests/integration/test_hook_scripts.py::test_run_sh_skips_python_for_a_quoted_command_that_is_not_the_check` (`ls "my dir"`, `git commit -m "x"` y un comando que termina en `\` → sin marcador; `cd "<raíz con un espacio>" && npm run check` → marcador y evento intacto; con un override cuya palabra lleva `"`, `\` o `/`, un comando con escapes → marcador)
   - Files: `P/hooks/run.sh` (modify)
   - Invariants: todo comando que corre el check arranca Python, también con comillas, barras o `cd "<raíz>" &&`; el valor del comando termina en la primera comilla no escapada.
   - Verify: `... -k test_run_sh_skips_python_for_a_quoted_command_that_is_not_the_check`
   - Depends on: T4
+  - Rounds: spec 3 · code 1 · escalations 0
 
 ### Partitions
 
