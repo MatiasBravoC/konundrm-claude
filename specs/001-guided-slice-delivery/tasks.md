@@ -53,12 +53,13 @@ de cada archivo (algunos son CRLF). -->
 
 ## Slice S2: replanteo de tareas trabadas
 
-- [ ] **T6** El rethinker no puede cambiar archivos · `behavior` · Risk: medium · Covers: R8.5
+- [x] **T6** El rethinker no puede cambiar archivos · `behavior` · Risk: medium · Covers: R8.5
   - Test: `P/hooks/tests/test_roles.py::test_read_only_roles_may_not_change_anything` (agrega `rethinker` a la lista)
   - Files: `P/hooks/scripts/roles.py` (modify)
   - Invariants: todo rol de solo lectura queda bloqueado para cualquier ruta (propiedad en T7)
   - Verify: `... -k test_read_only_roles_may_not_change_anything`
   - Depends on: —
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T7** Todo rol de solo lectura queda bloqueado para cualquier ruta · `property` · Risk: medium · Covers: R8.5
   - Test: `P/hooks/tests/test_roles.py::test_read_only_roles_are_denied_for_any_path`

@@ -10,7 +10,7 @@ from typing import Any
 from file_kinds import is_feature_document, is_test_path
 from hook_io import PLUGIN_NAME
 
-READ_ONLY_ROLES = frozenset({"spec-reviewer", "code-reviewer", "security-reviewer", "finding-verifier"})
+READ_ONLY_ROLES = frozenset({"spec-reviewer", "code-reviewer", "security-reviewer", "finding-verifier", "rethinker"})
 ROLES = frozenset({"test-writer", "implementer"}) | READ_ONLY_ROLES
 
 
@@ -45,7 +45,7 @@ def change_denial_reason(role: str | None, path: str) -> str | None:
     if role is None:
         return None
     if role in READ_ONLY_ROLES:
-        return f"The {role} is read-only. Report the problem in your review instead of changing {path}."
+        return f"The {role} is read-only. Describe the problem in your report instead of changing {path}."
     if is_feature_document(path):
         return (
             f"Only the orchestrator changes the feature documents, and {path} is one. Describe the "

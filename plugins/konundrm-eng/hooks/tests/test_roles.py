@@ -46,9 +46,12 @@ class ChangeDenialReasonTest(unittest.TestCase):
             "may not edit test files", change_denial_reason("implementer", "src/__tests__/Login.test.tsx") or ""
         )
 
-    def test_reviewers_may_not_change_anything(self) -> None:
-        for role in ("spec-reviewer", "code-reviewer", "security-reviewer", "finding-verifier"):
-            with self.subTest(role=role):
+    def test_read_only_roles_may_not_change_anything(self) -> None:
+        # R8.5: the rethinker is read-only, like the reviewers. The role is built from the agent_type
+        # the hooks receive, because the hooks never restrict an agent that agent_role does not map.
+        for name in ("spec-reviewer", "code-reviewer", "security-reviewer", "finding-verifier", "rethinker"):
+            with self.subTest(role=name):
+                role = agent_role({"agent_type": f"konundrm-eng:{name}"})
                 self.assertIn("read-only", change_denial_reason(role, "src/a.py") or "")
                 self.assertIn("read-only", change_denial_reason(role, "tests/test_a.py") or "")
 
