@@ -180,12 +180,13 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: —
   - Rounds: spec 1 · code 2 · escalations 0
 
-- [ ] **T56** Los gates de una sesión que trabaja en un worktree revisan ese worktree, no la copia principal · `behavior` · Risk: medium · Covers: R3.3
+- [x] **T56** Los gates de una sesión que trabaja en un worktree revisan ese worktree, no la copia principal · `behavior` · Risk: medium · Covers: R3.3
   - Test: `P/hooks/tests/test_project_paths.py::test_project_root_is_the_worktree_the_session_works_in` (con un repositorio y un worktree enlazado reales en carpetas temporales: con `CLAUDE_PROJECT_DIR` en la copia principal y el `cwd` del evento dentro del worktree, la raíz es el worktree; con el `cwd` dentro de la copia principal o fuera del repositorio, la raíz sigue siendo `CLAUDE_PROJECT_DIR`)
   - Files: `P/hooks/scripts/project_paths.py` (modify)
   - Invariants: la raíz es el worktree enlazado del mismo repositorio que contiene el `cwd`, y si no hay ninguno, `CLAUDE_PROJECT_DIR` (propiedad en el mismo test: 40 subcarpetas generadas con `random.Random(17)` entre las tres zonas)
   - Verify: `... -k test_project_root_is_the_worktree_the_session_works_in`
   - Depends on: T70
+  - Rounds: spec 3 · code 1 · escalations 0
 
 - [x] **T19** Al aprobar el plan, develop-feature pregunta aparte por el paralelo y guarda la respuesta · `behavior` · Risk: low · Covers: R3.2, R3.6
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_asks_about_parallel_partitions_once`
