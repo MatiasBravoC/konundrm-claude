@@ -1,7 +1,7 @@
 # Entrega guiada por slices, con particiones en paralelo
 
 - **Spec:** 001-guided-slice-delivery
-- **Status:** Approved <!-- Draft → Approved → Done -->
+- **Status:** Done <!-- Draft → Approved → Done -->
 - **Date:** 2026-10-29
 
 ## Problem

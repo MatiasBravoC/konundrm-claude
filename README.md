@@ -7,8 +7,9 @@ revisiones → verificación según el riesgo → commit → al cerrar cada entr
 pausa para que entiendas el código antes de seguir → pull requests revisados por una persona, uno
 apilado por entrega o uno solo. Las partes independientes de cada entrega se pueden construir en
 paralelo, una tarea trabada se replantea en vez de reintentarse y las decisiones de diseño las
-tomas tú. Cada rol corre en un subagente distinto, con el modelo y el esfuerzo que su trabajo
-pide, y los controles medibles los imponen hooks, no instrucciones que el modelo pueda olvidar.
+tomas tú, salvo que las apruebes de antemano y el flujo tome la opción recomendada. Cada rol corre
+en un subagente distinto, con el modelo y el esfuerzo que su trabajo pide, y los controles medibles
+los imponen hooks, no instrucciones que el modelo pueda olvidar.
 La barrera final es la misma de cualquier equipo: el hook de pre-commit, la CI y la protección de
 rama corren el mismo `check` (ver [Límites conocidos](#límites-conocidos)).
 

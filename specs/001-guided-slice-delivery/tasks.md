@@ -1,7 +1,7 @@
 # Tasks: Entrega guiada por slices, con particiones en paralelo
 
 - **Spec:** [requirements.md](requirements.md) · **Design:** [design.md](design.md)
-- **Status:** Approved <!-- Draft → Approved → Done -->
+- **Status:** Done <!-- Draft → Approved → Done -->
 - **Check command:** `npm run check`
 - **Base commit:** `b8c3142`
 - **Pull request budget:** 400 changed lines per slice

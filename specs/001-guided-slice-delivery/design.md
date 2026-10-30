@@ -1,7 +1,7 @@
 # Design: Entrega guiada por slices, con particiones en paralelo
 
 - **Spec:** [requirements.md](requirements.md)
-- **Status:** Approved <!-- Draft → Approved → Done -->
+- **Status:** Done <!-- Draft → Approved → Done -->
 
 ## Overview
 
