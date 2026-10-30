@@ -356,12 +356,13 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
 
 ## Slice S7: notas de mejora del plugin
 
-- [ ] **T42** El process-reviewer no puede cambiar archivos · `behavior` · Risk: medium · Covers: R7.1
+- [x] **T42** El process-reviewer no puede cambiar archivos · `behavior` · Risk: medium · Covers: R7.1
   - Test: `P/hooks/tests/test_roles.py::test_read_only_roles_may_not_change_anything` (agrega `process-reviewer`)
   - Files: `P/hooks/scripts/roles.py` (modify)
   - Invariants: lo cubre la propiedad de T7, que recorre todos los roles de solo lectura
   - Verify: `... -k test_read_only_roles`
   - Depends on: T7
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T43** Existe el agente process-reviewer: solo lectura, Sonnet high, notas con evidencia y skill o agente afectado, sin código ni datos del proyecto · `behavior` · Risk: low · Covers: R1.1, R7.1, R7.3
   - Test: `P/hooks/tests/contract/test_agents.py::test_the_process_reviewer_is_a_read_only_sonnet_agent`

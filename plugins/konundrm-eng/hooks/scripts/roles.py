@@ -10,7 +10,9 @@ from typing import Any
 from file_kinds import is_feature_document, is_test_path
 from hook_io import PLUGIN_NAME
 
-READ_ONLY_ROLES = frozenset({"spec-reviewer", "code-reviewer", "security-reviewer", "finding-verifier", "rethinker"})
+READ_ONLY_ROLES = frozenset(
+    {"spec-reviewer", "code-reviewer", "security-reviewer", "finding-verifier", "rethinker", "process-reviewer"}
+)
 ROLES = frozenset({"test-writer", "implementer"}) | READ_ONLY_ROLES
 
 
