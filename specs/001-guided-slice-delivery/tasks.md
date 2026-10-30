@@ -594,7 +594,7 @@ S3 y de agentes (T61, T63, T66 y T68). -->
   - Depends on: T68
   - Rounds: spec 1 · code 1 · escalations 0
 
-## Slice S10: versión 0.6.0 y README
+## Slice S10: versión 0.6.0, README y huecos de la revisión final
 
 <!-- Movido el 2026-10-30 por la sesión principal (permiso del usuario para decidir y su pedido de
 paralelizar más): T53 y T54 pasan de S8 a este último slice, para integrar S9 mientras se escriben y
@@ -610,6 +610,20 @@ para que el changelog cubra también S9. -->
   - Files: `README.md` (modify)
   - Verify: `npm run check`
   - Depends on: T53
+
+<!-- Agregadas el 2026-10-30 por la sesión principal (permiso del usuario para decidir) con los dos
+huecos que encontró la revisión de spec de toda la feature (Phase 4, paso 2). -->
+- [ ] **T77** Aprobar las decisiones de antemano se registra aparte de aprobar las pausas · `behavior` · Risk: low · Covers: R5.2, R5.3
+  - Test: `P/hooks/tests/contract/test_flows.py::test_pre_approved_decisions_are_recorded_apart_from_pauses` (Phase 2 registra `- **Decisions:** pre-approved` solo cuando el usuario aprobó de antemano las decisiones, y `- **Decisions:** ask` si no; Phase 3 toma la opción recomendada solo con `Decisions: pre-approved`, y con `Checkpoints: pre-approved` sola sigue pausando la tarea y preguntando; la plantilla de tasks.md trae la línea `Decisions:`; las reglas R5.3 de `test_pre_approved_checkpoints_do_not_stop` pasan a esta prueba)
+  - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/writing-plans/templates/tasks.md`, `P/CHANGELOG.md` (modify; el README lo ajusta la integración si nombra la aprobación de decisiones)
+  - Verify: `... -k test_pre_approved_decisions_are_recorded_apart_from_pauses`
+  - Depends on: T32, T53
+
+- [ ] **T78** Las features en paralelo usan worktrees fuera de la carpeta del proyecto · `behavior` · Risk: low · Covers: R9.2
+  - Test: `P/hooks/tests/contract/test_flows.py::test_parallel_features_use_worktrees_outside_the_project` (ningún bloque de develop-feature recomienda `claude --worktree` ni `.claude/worktrees/` como lugar donde construir; la frase sobre construir varias features a la vez dice crear cada worktree fuera de la carpeta del proyecto)
+  - Files: `P/skills/develop-feature/SKILL.md` (modify; el README lo ajusta la integración si repite la recomendación)
+  - Verify: `... -k test_parallel_features_use_worktrees_outside_the_project`
+  - Depends on: T21
 
 <!-- Example of a finished task, as develop-feature leaves it:
 - [x] **T1** … · `behavior` · Risk: low · Covers: R1.1

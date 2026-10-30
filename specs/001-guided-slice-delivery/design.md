@@ -77,7 +77,9 @@ def main(argv: list[str] | None = None) -> int
 
 Contratos en Markdown:
 
-- Encabezado de `tasks.md`: `- **Parallel:** yes | no` y `- **Checkpoints:** ask | pre-approved`.
+- Encabezado de `tasks.md`: `- **Parallel:** yes | no`, `- **Checkpoints:** ask | pre-approved` (las
+  pausas entre slices, R4.5) y `- **Decisions:** ask | pre-approved` (las decisiones abiertas, R5.3),
+  que el usuario aprueba por separado.
 - Cada slice termina con `### Partitions`: `| Wave | Partition | Tasks | Depends on |`; IDs de
   partición únicos en toda la feature (`P1`, `P2`…), rangos `T1–T3` permitidos.
 - Campo de tarea `- Decision:` con opciones, ventajas, desventajas y recomendación; tras elegir,
