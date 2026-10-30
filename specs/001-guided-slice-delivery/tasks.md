@@ -502,11 +502,12 @@ pedido de ser maximalista: las sugerencias de las revisiones de código que vale
   - Depends on: T14
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T63** Al iniciar sesión, las particiones se listan por número (P2 antes que P10) y fuera de una oleada en paralelo se muestra una sola tarea · `behavior` · Risk: low · Covers: R3.7
+- [x] **T63** Al iniciar sesión, las particiones se listan por número (P2 antes que P10) y fuera de una oleada en paralelo se muestra una sola tarea · `behavior` · Risk: low · Covers: R3.7
   - Test: `P/hooks/tests/test_session_doctor.py::test_lists_partitions_by_number_and_falls_back_to_one_task`
   - Files: `P/hooks/scripts/session_doctor.py` (modify)
   - Verify: `... -k test_lists_partitions_by_number_and_falls_back_to_one_task`
   - Depends on: T17
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T64** La prueba del rethinker revisa los veredictos en la línea `Verdict:` y cuenta MultiEdit como herramienta de escritura · `chore` · Risk: low · Covers: R8.1
   - Files: `P/hooks/tests/contract/test_agents.py` (modify `test_the_rethinker_is_a_read_only_opus_max_agent`)

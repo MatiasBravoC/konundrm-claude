@@ -116,6 +116,40 @@ class FeatureProgressContextTest(unittest.TestCase):
         self.assertIn("- specs/005-coupons: 1 of 4 tasks checked, next T2: Step 2", serial_context)
         self.assertNotIn("per partition", serial_context)
 
+    def test_lists_partitions_by_number_and_falls_back_to_one_task(self) -> None:
+        # R3.7: with Parallel on, partitions are listed by number (P2 before P10), and the session
+        # start falls back to a single next task when only one partition of the slice is pending or
+        # a pending task of the slice belongs to no partition.
+        folder = self.root / "specs" / "006-coupons"
+        folder.mkdir(parents=True)
+        header = "- **Status:** Approved\n- **Parallel:** yes\n\n## Slice S1: apply\n\n"
+        table = "### Partitions\n\n| Wave | Partition | Tasks | Depends on |\n| --- | --- | --- | --- |\n"
+        tasks = (
+            "- [x] **T1** Step 1 · `behavior`\n- [ ] **T2** Step 2 · `behavior`\n- [ ] **T3** Step 3 · `behavior`\n\n"
+        )
+        cases = {
+            "P10 listed before P2": (
+                tasks + table + "| 1 | P10 | T2 | — |\n| 1 | P2 | T1, T3 | — |\n",
+                "- specs/006-coupons: 1 of 3 tasks checked, next per partition: P2 T3, P10 T2",
+            ),
+            "only one partition pending": (
+                tasks + table + "| 1 | P1 | T2, T3 | — |\n| 1 | P2 | T1 | — |\n",
+                "- specs/006-coupons: 1 of 3 tasks checked, next T2: Step 2",
+            ),
+            "a pending task in no partition": (
+                tasks + table + "| 1 | P1 | T1, T2 | — |\n| 1 | P2 | T1 | — |\n",
+                "- specs/006-coupons: 1 of 3 tasks checked, next T2: Step 2",
+            ),
+        }
+        for case, (body, expected_line) in cases.items():
+            with self.subTest(case):
+                (folder / "tasks.md").write_text(header + body, encoding="utf-8")
+                context = feature_progress_context(self.root) or ""
+
+                self.assertIn(expected_line, context.splitlines())
+                if "per partition" not in expected_line:
+                    self.assertNotIn("per partition", context)
+
 
 if __name__ == "__main__":
     unittest.main()
