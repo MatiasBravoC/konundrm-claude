@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import re
 import unittest
 from pathlib import Path
 
-from .plugin_files import PLUGIN_ROOT, read_frontmatter
+from .plugin_files import PLUGIN_ROOT, read_frontmatter, read_section
 
 EVALS_DIR = PLUGIN_ROOT / "evals"
 
@@ -78,6 +80,80 @@ class BehaviorEvalsTest(unittest.TestCase):
         run a model, so the check only verifies their structure.
         """
         gaps = [gap for name in _NEW_MECHANISM_EVALS for gap in _eval_case_gaps(EVALS_DIR / name)]
+
+        self.assertEqual(gaps, [])
+
+
+_CHANGELOG_PATH = PLUGIN_ROOT / "CHANGELOG.md"
+_CHANGELOG_MANIFEST_PATH = PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
+# This feature (guided slice delivery) ships as 0.6.0 (requirements.md, Constraints).
+_CHANGELOG_FEATURE_VERSION = (0, 6, 0)
+# Released entries only: `## [Unreleased]` has no digits, so it never matches.
+_CHANGELOG_RELEASE_HEADING = re.compile(r"^## (\[(\d+)\.(\d+)\.(\d+)\].*)$")
+_CHANGELOG_MECHANISMS = (
+    ("model and effort per role", re.compile(r"\bmodel and effort (?:per|for each|for every) role\b")),
+    ("the rethinker", re.compile(r"\brethinker\b")),
+    ("parallel partitions", re.compile(r"\bpartitions?\b")),
+    ("slice pauses", re.compile(r"\bslice checkpoints?\b|\bpauses? (?:after|at the end of) (?:each|every) slice\b")),
+    ("slice summaries", re.compile(r"\bslice summar(?:y|ies)\b")),
+    ("the feature summary", re.compile(r"\bfeature summar(?:y|ies)\b")),
+    ("improvement notes", re.compile(r"\bimprovement notes?\b")),
+)
+
+
+def _changelog_released_entries() -> list[tuple[tuple[int, int, int], str]]:
+    """Return `(version, heading)` for each released CHANGELOG entry, newest first.
+
+    `heading` is the heading line without its leading `## `, ready for `read_section`.
+    """
+    entries = []
+    for line in _CHANGELOG_PATH.read_text(encoding="utf-8").splitlines():
+        match = _CHANGELOG_RELEASE_HEADING.match(line)
+        if match:
+            version = (int(match.group(2)), int(match.group(3)), int(match.group(4)))
+            entries.append((version, match.group(1)))
+    return entries
+
+
+def _changelog_mechanism_gaps(entries: list[tuple[tuple[int, int, int], str]]) -> list[str]:
+    """Return one gap per new mechanism the 0.6.0 entry does not name, or one gap when that entry is missing."""
+    heading = next((heading for version, heading in entries if version == _CHANGELOG_FEATURE_VERSION), None)
+    if heading is None:
+        return ["CHANGELOG.md: there is no [0.6.0] entry"]
+    text = read_section(_CHANGELOG_PATH, heading).lower().replace("`", "")
+    text = re.sub(r"\s+", " ", text)
+    return [
+        f"CHANGELOG.md [0.6.0]: the entry does not name {label}"
+        for label, pattern in _CHANGELOG_MECHANISMS
+        if not pattern.search(text)
+    ]
+
+
+class VersionAndChangelogTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_version_and_changelog_agree(self) -> None:
+        """R10.1: plugin.json's version is the first CHANGELOG release, 0.6.0 or later; 0.6.0 names each mechanism.
+
+        The first released entry is the first `## [<x.y.z>]` heading, so a `## [Unreleased]` heading is skipped. The
+        0.6.0 entry is looked up by its version, not by position, so the check stays true after later releases put
+        newer entries above it. It must name model and effort per role, the rethinker, parallel partitions, slice
+        pauses, slice summaries, the feature summary and improvement notes.
+        """
+        manifest_version = json.loads(_CHANGELOG_MANIFEST_PATH.read_text(encoding="utf-8"))["version"]
+        entries = _changelog_released_entries()
+
+        gaps = []
+        if not entries:
+            gaps.append("CHANGELOG.md: there is no released `## [<x.y.z>]` entry")
+        else:
+            first_version, first_heading = entries[0]
+            first_text = ".".join(str(part) for part in first_version)
+            if manifest_version != first_text:
+                gaps.append(f"plugin.json version {manifest_version} is not the first CHANGELOG entry {first_heading}")
+            if first_version < _CHANGELOG_FEATURE_VERSION:
+                gaps.append(f"CHANGELOG.md: the first released entry {first_heading} is older than 0.6.0")
+        gaps += _changelog_mechanism_gaps(entries)
 
         self.assertEqual(gaps, [])
 

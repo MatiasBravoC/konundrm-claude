@@ -599,11 +599,12 @@ S3 y de agentes (T61, T63, T66 y T68). -->
 <!-- Movido el 2026-10-30 por la sesión principal (permiso del usuario para decidir y su pedido de
 paralelizar más): T53 y T54 pasan de S8 a este último slice, para integrar S9 mientras se escriben y
 para que el changelog cubra también S9. -->
-- [ ] **T53** La versión es 0.6.0 y el changelog la describe · `behavior` · Risk: low · Covers: R10.1
+- [x] **T53** La versión es 0.6.0 y el changelog la describe · `behavior` · Risk: low · Covers: R10.1
   - Test: `P/hooks/tests/contract/test_release.py::test_version_and_changelog_agree` (la versión de plugin.json es la de la primera entrada del changelog, que nombra modelo y esfuerzo por rol, rethinker, particiones, pausas por slice, resúmenes y notas de mejora)
   - Files: `P/.claude-plugin/plugin.json`, `P/CHANGELOG.md` (modify)
   - Verify: `... -k test_version_and_changelog_agree`
   - Depends on: T52
+  - Rounds: spec 2 · code 2 · escalations 0
 
 - [ ] **T54** El README describe el flujo nuevo: agentes, pausas, entregas y notas de mejora · `chore` · Risk: low · Covers: —
   - Files: `README.md` (modify)

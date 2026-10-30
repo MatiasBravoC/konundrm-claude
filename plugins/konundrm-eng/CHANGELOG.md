@@ -5,6 +5,152 @@ All notable changes to `konundrm-eng` are documented here. The format follows
 [Semantic Versioning](https://semver.org/). Bump `version` in `.claude-plugin/plugin.json` with
 every release; installed copies only update when it changes.
 
+## [0.6.0] - 2026-10-30
+
+Guided slice delivery. A 61-task feature ran for about three days in one session, with the session
+and every subagent on Opus 5.5 at effort max (about US$1,300 at API prices), and ended with
+thousands of lines its developer had not followed. This release spends model effort where it
+pays, builds the independent parts of each slice in parallel, pauses after each slice so the
+developer understands it before the next one, keeps reviews small with one stacked pull request
+per slice, and records what could make the plugin better. Requires Claude Code 2.1.295 or later,
+as 0.5.0 did; that already covers the per-dispatch `effort` parameter.
+
+### Added
+
+- `rethinker` agent (`opus`/`max`, read-only): when a task fails its fifth review, or the same
+  review a third time, develop-feature and fix-bug stop the fix rounds and ask it why the attempts
+  keep failing. It answers `NEW APPROACH`, `ADJUST` or `PLAN CHANGE`, says whether to keep or set
+  aside the current attempt, and gives instructions for the test-writer and the implementer. A
+  plan change waits for the user. An attempt set aside is stashed with a message naming the task
+  and recovered by its SHA, never discarded; the report is saved as
+  `specs/<NNN-slug>/evidence/T<n>-rethink.md`. A task that still fails two reviews after its
+  rethink goes to the user. `roles.py` lists it as read-only, so the hooks hold it to that.
+- Parallel partitions inside each slice: writing-plans ends every slice with a `### Partitions`
+  table (`| Wave | Partition | Tasks | Depends on |`) that groups its tasks into partitions (sets
+  of tasks one session builds in order) and waves (partitions built at the same time: no
+  dependency between them, no shared file but `tasks.md` and `evidence/`, at most three). Task
+  ranges such as `T1–T3` are accepted, and task IDs match by number, so `T01` is `T1`. After plan
+  approval, develop-feature asks separately whether to build in parallel, offering it only when
+  the partitions' checks and end-to-end tests can run at once on the machine, and records the
+  answer as `- **Parallel:** yes | no` in the `tasks.md` header. With a yes it builds a wave's
+  first partition itself and each other one in a partition session
+  (`/konundrm-eng:develop-feature specs/<NNN-slug> --partition P<k>`) with its own Git worktree
+  outside the checkout, on a `wave/<NNN-slug>-p<k>` branch. It cherry-picks the partitions onto
+  the feature branch one at a time, running the check after each, stops on a conflict outside the
+  plan's boxes, and ends the wave with one code review across it. A resumed session finishes an
+  unfinished wave first, judging by each task's commit, and the session start names the next task
+  of each partition in the wave in progress.
+- Slice checkpoint: once a slice's last task is committed (or its last wave integrated),
+  develop-feature writes the slice summary `specs/<NNN-slug>/summaries/S<k>.md` from
+  `templates/slice-summary.md` (what changed and why, requirements covered, size, risks and
+  high-risk tasks, decisions, review rounds and rethinks, and a reading order with files and line
+  ranges) and commits it as `docs(<scope>): summarize slice S<k>`. It then pauses after each
+  slice: shows the summary, asks two or three short questions about the slice's code, explains
+  the right answer with file and lines when one is wrong, and waits for the go-ahead, which never
+  depends on the answers. Changes asked at the pause become new tasks or a plan change approved
+  before the next slice. With `- **Checkpoints:** pre-approved` in the `tasks.md` header (set when
+  the user approves the pauses in the request or with the plan) it writes and commits the summary
+  and goes on without stopping.
+- Design decisions with the user: writing-plans records a `- Decision:` field, with each option's
+  pros and cons and a recommendation, when a task has two or more reasonable approaches, and the
+  user picks one at plan approval. A test-writer or implementer that meets an approach the plan
+  left open returns `Status: DECISION`; develop-feature pauses that task, shows the options and
+  records `- Decision: <option> (user)`. Under `Checkpoints: pre-approved` it takes the
+  recommended option and records `(recommended)`. The slice summaries cite every decision.
+- Feature summary: in its finish phase develop-feature writes `specs/<NNN-slug>/summary.md` from
+  `templates/feature-summary.md` (spec, module ownership, slice summaries, decisions,
+  requirements with tests and evidence, rethinks, refuted findings, suggestions not applied and
+  how to test the feature) and commits it with the final `docs(<scope>)` commit. Every pull
+  request of the feature links it.
+- `process-reviewer` agent (`sonnet`/`high`, read-only, listed in `roles.py`): at each slice
+  checkpoint, after the summary commit, and at the end of the feature, after the feature summary,
+  develop-feature asks it to read the flow's record (review rounds, escalations, rethinks, blocked
+  subagents, gate events, user corrections) and propose improvement notes for the plugin, each
+  with its evidence and the skill or agent it affects, never with project code, secrets or
+  personal data.
+- `improvement_notes.py` (`--project`, `--feature`, `--scope`, notes on stdin) appends the
+  improvement notes with date, project and feature to one central file shared by all your
+  projects, `<Claude config dir>/konundrm-eng/improvements.md` (`CLAUDE_CONFIG_DIR`, else
+  `~/.claude`). It keeps the notes only up to the first line that may start code and removes
+  secrets and e-mail addresses. When the central file cannot be written, the notes go to
+  `specs/<NNN-slug>/improvement-notes.md` and the user is warned.
+- Tests, run by the check, for every agreement that can be checked without a model: model and
+  effort per role, which skills set either, each role's permissions, the plan template and how it
+  is read, the task-commit search, the CI review's settings, every new step of the flow, the
+  version and this changelog. The new contract tests live under `hooks/tests/contract/`, and
+  each names the requirements it covers; the others are added to the hook test files they
+  extend, such as `test_roles.py` and `test_tasks_document.py`.
+- Evals: `behavior-slice-checkpoint`, `behavior-design-decision`, `behavior-slice-summary`,
+  `behavior-feature-summary` and `behavior-improvement-notes`.
+
+### Changed
+
+- Model and effort per role: agent frontmatter sets them instead of inheriting the session's.
+  test-writer and implementer `opus`/`medium` (before `inherit`), spec-reviewer `sonnet`/`high`,
+  code-reviewer `opus`/`high`, security-reviewer `opus`/`xhigh`, finding-verifier `opus`/`high`.
+- develop-feature has a `## Model and effort` section: every fix round runs the test-writer or
+  implementer on `opus`/`high`, and so does every writer dispatch after a rethink; a high-risk
+  task runs its test-writer, implementer and spec review on `opus`/`high`; the whole-feature spec
+  review in the finish phase runs on `opus`/`high`. Every other dispatch omits both parameters,
+  so the frontmatter applies. fix-bug follows the same rule keyed to the bug's risk;
+  reviewing-pull-requests and migrate-code run their whole-pull-request or whole-batch spec
+  review, and migrate-code its retries, on `opus`/`high`.
+- writing-plans raises its own effort to `xhigh` while active, and gains a partition step and the
+  decision rule. No other skill sets `model` or `effort`, so a long session never switches either
+  midway.
+- Delivery: after the feature's final verification and with a yes to push, develop-feature
+  offers one stacked pull request per slice (the default) or a single pull request with every
+  slice. Stacked, `risk:high` goes only on the slices that hold a high-risk task. Single, with a
+  high-risk task, it warns first that `risk:high` will cover the whole feature and runs mutation
+  testing locally on all the changed code when the tool works on the machine.
+- opening-pull-requests builds each slice's description from its slice summary, links the feature
+  summary as a URL pinned to the final commit, and lists the pull request's commits in order under
+  `## Commits, one per task`, each with its task ID.
+- The `claude-review.yml` template runs the CI review on `claude-opus-5-5` at `--effort medium`.
+- migrate-code puts each batch on its own branch (`migrate/<slug>-b<k>`) and tidy-codebase each
+  task (`tidy/<slug>`), each with its own pull request.
+- Rewriting a pushed pull request (a rebase onto the updated default branch) needs the user's yes
+  for that rewrite and pushes with `--force-with-lease`.
+
+### Fixed
+
+- Task commits are found with `git log -E --grep '^Task: T<n>( |$)'` in develop-feature and
+  opening-pull-requests. The plain `--grep "Task: T1"` also matched T10 to T19, so in a plan of ten
+  or more tasks a resumed session could miscount, and a pull request could be cut at the wrong
+  commit.
+- Parallel sessions work in worktrees outside the project folder, never under
+  `.claude/worktrees/`. The gates check the linked worktree a session runs in instead of the main
+  checkout, and the subagent audit compares and restores only in the root it snapshotted when the
+  subagent started.
+- A private-key header of any type (DH, X25519, ED448 and others) is detected as a secret.
+
+### Known limitations
+
+- CI mutation testing on a `risk:high` pull request covers everything it changed, not only the
+  files of its high-risk tasks.
+- measure-impact does not merge the gate events of parallel sessions: each worktree logs its own.
+- The behavior evals run a model, so they stay outside the check and CI; run them with
+  `claude plugin eval`.
+- Nothing applies the improvement notes to the plugin by itself: read
+  `<Claude config dir>/konundrm-eng/improvements.md` and decide what to change.
+
+### Upgrading
+
+Copy the changed setup-project templates into repositories prepared before 0.6.0, or run
+`/konundrm-eng:setup-project` again: the `claude_args` of `.github/workflows/claude-review.yml`
+(`--model claude-opus-5-5` and `--effort medium`) and the `## Commits, one per task` section of
+`.github/pull_request_template.md`. Run sessions at `high`: each agent now sets its own effort, so
+the session's level, `max` included, no longer reaches them. `CLAUDE_CODE_EFFORT_LEVEL`, when
+set, still overrides every agent's effort and the per-dispatch levels the orchestrators pass, so
+leave it unset. Every agent now names its own model, so neither `CLAUDE_CODE_SUBAGENT_MODEL` nor
+a `/model` switch reaches any of them (in 0.5.0 the variable reached the reviewers, and a switch
+reached the test-writer and the implementer). `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` would put
+every role, and the orchestrators' per-dispatch `opus`/`high` overrides, on one model, so leave
+it unset too. To run a role on another model or effort, edit the agent's frontmatter. Plans
+written with 0.5.0 still run, slice by slice, with no partitions and no parallel question. A
+plan without a `Checkpoints:` line reads as `ask` and pauses after each slice; add
+`- **Checkpoints:** pre-approved` to its header to keep an unattended run going.
+
 ## [0.5.0] - 2026-10-20
 
 A gap analysis against what large software companies publish about programming with AI (Google,
