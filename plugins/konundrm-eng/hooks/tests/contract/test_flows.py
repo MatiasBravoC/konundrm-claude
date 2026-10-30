@@ -1644,6 +1644,34 @@ def _notes_gaps(skill: Path, prompts: Path) -> list[str]:
     return gaps + _notes_prompt_gaps(prompts)
 
 
+# A session that stops between a slice's last task commit and its summary commit resumes through Phase 0 (R4.1, R6.1):
+# a Phase 0 block that names the summary commit must say a slice with every task committed but no summary commit runs
+# the Slice checkpoint before the next slice's first task, so resuming never skips the summary and the pause.
+_RESUME_CHECKPOINT_MISSING = re.compile(r"\b(?:missing|lacks|lacking|without|has no)\b")
+_RESUME_CHECKPOINT_RULES: dict[str, Callable[[str], bool]] = {
+    "R4.1, R6.1 a slice whose every task has its commit but whose summary commit is missing": lambda block: (
+        _in_one_sentence(block, _EVERY_TASK_COMMIT, _COMMIT, _CHECKPOINT_SUMMARY_COMMIT, _RESUME_CHECKPOINT_MISSING)
+    ),
+    "R4.1 running the Slice checkpoint before the next slice's first task": lambda block: any(
+        _CHECKPOINT_LINK in sentence and _CHECKPOINT_BEFORE.search(sentence) and _CHECKPOINT_NEXT_SLICE.search(sentence)
+        for sentence in _sentences(block)
+    ),
+}
+
+
+def _resume_checkpoint_gaps(skill: Path) -> list[str]:
+    """Return one message when no block of develop-feature's `## Phase 0: Prepare` section names the summary commit,
+    else one per rule of _RESUME_CHECKPOINT_RULES that no such block states."""
+    blocks = [block for block in _section_blocks(skill, "Phase 0: Prepare") if _CHECKPOINT_SUMMARY_COMMIT.search(block)]
+    if not blocks:
+        return ["develop-feature Phase 0: no block names the summary commit docs(<scope>): summarize slice S<k>"]
+    return [
+        f"develop-feature Phase 0: no sentence says {label}"
+        for label, rule in _RESUME_CHECKPOINT_RULES.items()
+        if not any(rule(block) for block in blocks)
+    ]
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -1828,6 +1856,15 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         changing the plugin on the strength of the notes; and dispatch-prompts.md has a `## process-reviewer` prompt,
         named in its Contents, that names the six parts of the flow record and the scope."""
         gaps = _notes_gaps(DEVELOP_FEATURE_DIR / "SKILL.md", DEVELOP_FEATURE_DIR / "reference" / "dispatch-prompts.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_resume_runs_a_missing_slice_checkpoint_first(self) -> None:
+        """R4.1, R6.1: when develop-feature resumes a slice whose every task has its commit but whose summary commit
+        `docs(<scope>): summarize slice S<k>` is missing (the session stopped between the two), its `## Phase 0:
+        Prepare` section runs the Slice checkpoint before the next slice's first task, so the slice's summary and pause
+        are never skipped."""
+        gaps = _resume_checkpoint_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 

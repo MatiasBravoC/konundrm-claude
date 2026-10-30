@@ -84,6 +84,11 @@ to work that has shown it needs it.
      (`docs(<scope>): report partition P<k>`) and whose folder has no session open, start that
      session again there with the same `--partition P<k>` prompt (it resumes from its own
      commits). Never build another partition's tasks here.
+   - When every task of a slice has its commit here but the slice's commit
+     `docs(<scope>): summarize slice S<k>` is missing (the session stopped between the two), run
+     the [Slice checkpoint](#slice-checkpoint) for that slice before the next slice's first task.
+     Look for that commit with `git log -E --grep '^docs\(.+\): summarize slice S<k>$'` (anchored,
+     so S1 never matches S10).
    - Continue at the first task without a commit among the tasks this session builds (in a
      parallel wave, the main session builds only the wave's first partition).
 2. Confirm the repository root and that the tree is clean. If unrelated changes are pending, ask
