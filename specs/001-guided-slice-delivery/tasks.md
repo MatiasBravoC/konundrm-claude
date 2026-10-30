@@ -232,11 +232,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
 
 ## Slice S5: pausa por slice, decisiones y resumen de slice
 
-- [ ] **T25** El plan propone decisiones de diseño con opciones y recomendación, que se eligen al aprobarlo · `behavior` · Risk: low · Covers: R5.1, R5.4
+- [x] **T25** El plan propone decisiones de diseño con opciones y recomendación, que se eligen al aprobarlo · `behavior` · Risk: low · Covers: R5.1, R5.4
   - Test: `P/hooks/tests/contract/test_skills.py::test_writing_plans_lists_design_decisions`
   - Files: `P/skills/writing-plans/SKILL.md`, `P/skills/writing-plans/templates/tasks.md` (modify)
   - Verify: `... -k test_writing_plans_lists_design_decisions`
   - Depends on: T16, T15
+  - Rounds: spec 2 · code 1 · escalations 0
 
 - [ ] **T26** test-writer e implementer devuelven una decisión en vez de elegir entre enfoques no decididos · `behavior` · Risk: low · Covers: R5.2
   - Test: `P/hooks/tests/contract/test_agents.py::test_writers_return_a_decision_instead_of_choosing`

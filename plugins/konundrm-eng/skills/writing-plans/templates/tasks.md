@@ -30,6 +30,10 @@ and a wave holds at most three partitions. "Depends on" lists the partitions it 
   - Files: `src/<path>/<module>.py` (new)
   - Verify: `<command that runs only this test>`
   - Depends on: —
+  - Decision: <what to choose; only when the task has two or more reasonable approaches>
+    - Option A: <approach> · pros: <…> · cons: <…>
+    - Option B: <approach> · pros: <…> · cons: <…>
+    - Recommendation: <option, and why>
 
 - [ ] **T2** <Invariant, stated as a rule for every valid input> · `property` · Risk: medium · Covers: R1.2
   - Test: `tests/<path>/test_<module>.py::test_<invariant>_for_any_<input>`
@@ -73,5 +77,9 @@ and a wave holds at most three partitions. "Depends on" lists the partitions it 
 
 <!-- Example of a finished task, as develop-feature leaves it:
 - [x] **T1** … · `behavior` · Risk: low · Covers: R1.1
+  - Decision: Option A (user)
+    - Option A: <approach> · pros: <…> · cons: <…>
+    - Option B: <approach> · pros: <…> · cons: <…>
+    - Recommendation: <option, and why>
   - Rounds: spec 1 · code 1 · escalations 0
 -->

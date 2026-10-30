@@ -81,7 +81,8 @@ Contratos en Markdown:
 - Cada slice termina con `### Partitions`: `| Wave | Partition | Tasks | Depends on |`; IDs de
   partición únicos en toda la feature (`P1`, `P2`…), rangos `T1–T3` permitidos.
 - Campo de tarea `- Decision:` con opciones, ventajas, desventajas y recomendación; tras elegir,
-  `- Decision: <opción> (user | recommended)`.
+  `- Decision: <opción> (user | recommended)`, con las opciones conservadas debajo para que los
+  resúmenes las citen (R5.4).
 - `test-writer` e `implementer` pueden devolver `Status: DECISION` con las opciones.
 - Informes: `RETHINK:` del rethinker; `IMPROVEMENT NOTES:` del process-reviewer (título,
   evidencia, skill o agente afectado, cambio sugerido; nunca código ni datos del proyecto).

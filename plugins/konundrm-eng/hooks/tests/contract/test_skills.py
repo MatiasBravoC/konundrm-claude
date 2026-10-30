@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-from .plugin_files import SKILLS_DIR, read_frontmatter
-from .test_flows import _split_blocks
+from .plugin_files import PLUGIN_ROOT, SKILLS_DIR, read_frontmatter
+from .test_flows import _in_one_sentence, _split_blocks
 
 _WRITING_PLANS = SKILLS_DIR / "writing-plans" / "SKILL.md"
 _PARTITIONS_HEADER = re.compile(r"\bwave\W+partition\W+tasks\W+depends on\b")
@@ -135,6 +138,206 @@ class WritingPlansPartitionsTest(unittest.TestCase):
         ]
 
         self.assertEqual(gaps, [], "writing-plans/SKILL.md:\n" + "\n".join(gaps))
+
+
+# R5.1, R5.4: design decisions in the plan. The patterns run on blocks from _split_blocks (lowercased, without
+# backticks, single-spaced), each rule within one sentence so an unrelated sentence cannot satisfy it.
+_WRITING_PLANS_TEMPLATE = SKILLS_DIR / "writing-plans" / "templates" / "tasks.md"
+_DECISION_FIELD = re.compile(r"\bdecision:")
+_TWO_OR_MORE = re.compile(r"\b(?:two or more|more than one|several|multiple)\b")
+_APPROACHES = re.compile(r"\b(?:approach|option|alternative)e?s\b")
+_OPTION = re.compile(r"\b(?:approach|option|alternative)(?:e?s)?\b")
+_ADVANTAGES = re.compile(r"\b(?:advantages?|pros)\b")
+_DISADVANTAGES = re.compile(r"\b(?:disadvantages?|cons|drawbacks?)\b")
+_RECOMMENDATION = re.compile(r"\brecommend\w*")
+_DECISIONS = re.compile(r"\bdecisions?\b")
+_SHOWS = re.compile(r"\b(?:show|present|list|ask)\w*")
+_USER = re.compile(r"\buser\b")
+_CHOOSES = re.compile(r"\b(?:choos|chose|pick|select)\w*")
+_ACCEPTS = re.compile(r"\baccept\w*")
+_DECIDED_FORM = re.compile(r"\bdecision: <[^>]+> \(user \| recommended\)")
+_REWRITES = re.compile(r"\b(?:rewrit|replac|record|becom|updat|turn)\w*")
+_WHO_CHOSE = re.compile(r"\bwho\b(?: \S+){0,2} (?:chose|picked|decided|made)\b")
+_SUMMARIES = re.compile(r"\bsummar\w*")
+_CITE = re.compile(r"\b(?:cite|quote|reference)s?\b")
+_NO_DECISION_FIELD = re.compile(r"\b(?:no|omit\w*|without|skip\w*)\b(?: \S+){0,3} decision:")
+_NO_OPEN_CHOICE = re.compile(
+    r"\b(?:only one|a single|one) (?:reasonable )?(?:approach|option|way)\b"
+    r"|\b(?:no|without an?) (?:open |real )?(?:choice|alternative)s?\b|\bnothing to (?:choose|decide)\b"
+)
+_NAMED_OPTIONS = re.compile(r"(?<!<)\b(?:approach|option|alternative)(?:e?s)?\b(?!>)")
+_KEEPS = re.compile(r"\b(?:keep\w*|kept|remain\w*|stay\w*|retain\w*|preserv\w*)\b")
+_BELOW = re.compile(r"\b(?:below|under|underneath|beneath)\b")
+_TEMPLATE_TASK_LINE = re.compile(r"- \[[ xX]\] \*\*(?P<id>T\d+)\*\*")
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_FINISHED_DECISION_LINE = re.compile(r"(?P<indent>\s*)- Decision: .+ \((?:user|recommended)\)\s*$")
+
+# R5.1, R5.4: what writing-plans/SKILL.md must say about decisions, outside its Approval step.
+_DECISION_RULES: dict[str, Callable[[str], bool]] = {
+    "a task with two or more reasonable approaches records them in its `- Decision:` field": lambda b: _in_one_sentence(
+        b, _TWO_OR_MORE, _APPROACHES, _DECISION_FIELD
+    ),
+    "the `- Decision:` field gives each option's advantages and disadvantages": lambda b: _in_one_sentence(
+        b, _OPTION, _ADVANTAGES, _DISADVANTAGES
+    ),
+    "the `- Decision:` field gives a recommendation": lambda b: _in_one_sentence(
+        _DECIDED_FORM.sub("", b), _DECISION_FIELD, _RECOMMENDATION
+    ),
+    "after choosing, the field is rewritten as `- Decision: <option> (user | recommended)`": lambda b: _in_one_sentence(
+        b, _DECIDED_FORM, _REWRITES
+    ),
+    "the decided `- Decision:` line keeps the options below it": lambda b: _in_one_sentence(
+        b, _DECIDED_FORM, _KEEPS, _NAMED_OPTIONS, _BELOW
+    ),
+    "the decided field records who chose": lambda b: _in_one_sentence(b, _DECISIONS, _WHO_CHOSE),
+    "summaries cite the recorded decision": lambda b: _in_one_sentence(b, _DECISIONS, _SUMMARIES, _CITE),
+    "a task without an open choice has no `- Decision:` field": lambda b: _in_one_sentence(
+        b, _NO_DECISION_FIELD, _NO_OPEN_CHOICE
+    ),
+}
+
+# R5.1: what the Approval step must say about the decisions. The decided form's "(user | recommended)" is dropped
+# before the recommendation rules, so the format alone cannot stand in for offering or accepting a recommendation.
+_APPROVAL_RULES: dict[str, Callable[[str], bool]] = {
+    "shows the decisions to the user": lambda b: _in_one_sentence(b, _SHOWS, _DECISIONS),
+    "the user picks an option or accepts the recommendation": lambda b: _in_one_sentence(
+        _DECIDED_FORM.sub("", b), _USER, _CHOOSES, _ACCEPTS, _RECOMMENDATION
+    ),
+}
+
+
+def _split_approval(lines: list[str]) -> tuple[list[str], list[str]]:
+    """Return a skill's `### ... Approval` subsection lines and the remaining lines, as `_split_self_review` does."""
+    start = next(
+        (index for index, line in enumerate(lines) if line.startswith("### ") and "approval" in line.lower()),
+        None,
+    )
+    if start is None:
+        return [], lines
+    headings_after_start = (index for index in range(start + 1, len(lines)) if _is_section_heading(lines[index]))
+    end = next(headings_after_start, len(lines))
+    return lines[start:end], lines[:start] + lines[end:]
+
+
+def _decision_skill_gaps(skill_text: str) -> list[str]:
+    """Return the decision rules (R5.1, R5.4) a writing-plans SKILL.md text lacks, one message per rule."""
+    approval_lines, other_lines = _split_approval(skill_text.splitlines())
+    body_blocks = _split_blocks(other_lines)
+    approval_blocks = _split_blocks(approval_lines)
+    gaps = [f"rule missing: {label}" for label, says in _DECISION_RULES.items() if not any(map(says, body_blocks))]
+    if not approval_lines:
+        gaps.append("no `### ... Approval` step")
+    gaps += [
+        f"Approval step does not say: {label}"
+        for label, says in _APPROVAL_RULES.items()
+        if not any(map(says, approval_blocks))
+    ]
+    return gaps
+
+
+def _template_decision_items(template_text: str) -> dict[str, str]:
+    """Return each template task's `- Decision:` sub-item by task ID, lowercased and single-spaced.
+
+    The sub-item is its `- Decision:` line plus every following line indented deeper (wrapped text or nested
+    options). HTML comments are dropped first, as `read_tasks` drops them, so only a real task's field counts.
+    """
+    items: dict[str, list[str]] = {}
+    task_id = None
+    decision_indent = None
+    for line in _HTML_COMMENT.sub("", template_text).splitlines():
+        indent = len(line) - len(line.lstrip())
+        if decision_indent is not None and line.strip() and indent > decision_indent and task_id is not None:
+            items[task_id].append(line)
+            continue
+        decision_indent = None
+        match = _TEMPLATE_TASK_LINE.match(line)
+        if match or line.startswith("#"):
+            task_id = match.group("id") if match else None
+        elif task_id is not None and indent and line.lstrip().startswith("- Decision:"):
+            items[task_id] = [line]
+            decision_indent = indent
+    return {task: " ".join(" ".join(lines).replace("`", "").lower().split()) for task, lines in items.items()}
+
+
+def _read_template_tasks(path: Path) -> dict[str, Any]:
+    """Return a tasks.md's tasks by ID, parsed with the hooks' own `tasks_document.read_tasks`."""
+    scripts = str(PLUGIN_ROOT / "hooks" / "scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    document = importlib.import_module("tasks_document").read_tasks(path)
+    return {task.id: task for task in document.tasks}
+
+
+def _decision_template_gaps(template_text: str, parsed_tasks: dict[str, Any]) -> list[str]:
+    """Return what the tasks.md template lacks for R5.1: a task with a full `- Decision:` example that still parses.
+
+    Args:
+        template_text: The template's text.
+        parsed_tasks: The template's tasks as `read_tasks` returns them, by task ID.
+    """
+    items = _template_decision_items(template_text)
+    if not items:
+        return ["no task carries a `- Decision:` example"]
+    complete = [
+        task
+        for task, item in items.items()
+        if all(pattern.search(item) for pattern in (_OPTION, _ADVANTAGES, _DISADVANTAGES, _RECOMMENDATION))
+    ]
+    if not complete:
+        return ["no `- Decision:` example names options with advantages, disadvantages and a recommendation"]
+    return [
+        f"{task}, which carries the `- Decision:` example, does not parse with its risk, slice and partition"
+        for task in complete
+        if task not in parsed_tasks
+        or None in (parsed_tasks[task].risk, parsed_tasks[task].slice, parsed_tasks[task].partition)
+    ]
+
+
+def _finished_decision_gaps(template_text: str) -> list[str]:
+    """Return what the template's finished-task example lacks for R5.4: a decided line with its options kept.
+
+    Looks inside the template's HTML comments for a `- Decision: <option> (user)` or `(recommended)` line followed by
+    at least two deeper-indented lines that name an option, so summaries can still cite the options after the choice.
+    """
+    for comment in _HTML_COMMENT.findall(template_text):
+        lines = comment.splitlines()
+        for index, line in enumerate(lines):
+            match = _FINISHED_DECISION_LINE.match(line)
+            if match is None:
+                continue
+            nested_options = 0
+            for nested in lines[index + 1 :]:
+                if not nested.strip() or len(nested) - len(nested.lstrip()) <= len(match.group("indent")):
+                    break
+                if nested.lstrip().startswith("- ") and _NAMED_OPTIONS.search(nested.lower()):
+                    nested_options += 1
+            if nested_options >= 2:
+                return []
+    return ["the finished-task example does not keep two or more options under its decided `- Decision:` line"]
+
+
+class WritingPlansDecisionsTest(unittest.TestCase):
+    def test_writing_plans_lists_design_decisions(self) -> None:
+        """R5.1, R5.4: the plan records design decisions with options and a recommendation, chosen at approval.
+
+        writing-plans/SKILL.md says that a task with two or more reasonable approaches records them in a `- Decision:`
+        field with each option's advantages and disadvantages and a recommendation; a task without an open choice has
+        none; the Approval step shows the decisions to the user, who picks one or accepts the recommendation; and the
+        field's first line is then rewritten as `- Decision: <option> (user | recommended)`, recording who chose, with
+        the options kept below it so summaries can cite them. The tasks.md template shows such a field on a task that
+        `read_tasks` still parses, and its finished-task example keeps the options under the decided line.
+        """
+        with _WRITING_PLANS.open(encoding="utf-8", newline=None) as handle:
+            skill_text = handle.read()
+        with _WRITING_PLANS_TEMPLATE.open(encoding="utf-8", newline=None) as handle:
+            template_text = handle.read()
+        parsed_tasks = _read_template_tasks(_WRITING_PLANS_TEMPLATE)
+
+        gaps = [f"writing-plans/SKILL.md: {gap}" for gap in _decision_skill_gaps(skill_text)]
+        gaps += [f"templates/tasks.md: {gap}" for gap in _decision_template_gaps(template_text, parsed_tasks)]
+        gaps += [f"templates/tasks.md: {gap}" for gap in _finished_decision_gaps(template_text)]
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
 
 
 # R9.1: the anchored, exact-ID form every skill must use to find a task's commit.

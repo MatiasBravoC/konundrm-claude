@@ -71,6 +71,11 @@ Use [templates/tasks.md](templates/tasks.md). Rules for each task:
   higher one.
 - Tasks with nothing to test (config, scaffolding, docs) are typed `chore` and carry a verify
   command instead of a test.
+- **Decisions:** when a task has two or more reasonable approaches, record them in its
+  `- Decision:` field, each option with its advantages and disadvantages, plus your recommendation.
+  A task with only one reasonable approach has no `- Decision:` field. Once chosen, rewrite the
+  field's first line as `- Decision: <option> (user | recommended)` and keep the options below
+  it, which records who chose. Summaries cite these decisions and their options as recorded.
 
 ### 5. Slices
 
@@ -128,3 +133,7 @@ develop-feature can build the partitions of one wave at the same time when the u
 Show the ownership table, the threats (if any) and the task list grouped by slice (IDs and titles
 only) with each slice's partitions, and ask for an explicit yes before setting `Status: Approved`. When called from
 `develop-feature`, return control to it.
+
+Present each open decision with its options, advantages, disadvantages and recommendation. The
+user picks an option or accepts the recommendation; rewrite the first line of each
+`- Decision:` field with the choice, keeping its options below, before approving.
