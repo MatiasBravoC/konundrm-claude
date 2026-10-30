@@ -521,6 +521,21 @@ pedido de ser maximalista: las sugerencias de las revisiones de código que vale
   - Verify: `... -k test_ci_review_runs_on_opus_at_medium_effort`
   - Depends on: T5
 
+<!-- Agregadas el 2026-10-30 por la sesión principal (permiso del usuario para decidir): T71 por
+una sugerencia de la revisión de código de T29; T72 porque en T27 un nombre de módulo repetido
+(`_RECORDS`) reemplazó en silencio la regla de T19 y la dejó sin poder fallar. -->
+- [ ] **T71** Al retomar, un slice terminado sin el commit de su resumen hace primero su pausa · `behavior` · Risk: low · Covers: R4.1, R6.1
+  - Test: `P/hooks/tests/contract/test_flows.py::test_resume_runs_a_missing_slice_checkpoint_first` (Phase 0: si todas las tareas de un slice tienen commit y falta su commit `summarize slice S<k>`, corre el Slice checkpoint antes de la primera tarea del slice siguiente)
+  - Files: `P/skills/develop-feature/SKILL.md` (modify)
+  - Verify: `... -k test_resume_runs_a_missing_slice_checkpoint_first`
+  - Depends on: T29
+
+- [ ] **T72** Ningún archivo de pruebas de contrato define dos veces un mismo nombre de nivel de módulo · `behavior` · Risk: low · Covers: R10.2
+  - Test: `P/hooks/tests/contract/test_meta.py::test_contract_tests_define_each_module_name_once` (una segunda asignación, `def` o `class` del mismo nombre reemplaza en silencio la primera y la prueba que la usaba deja de poder fallar)
+  - Files: — (puede pasar al llegar: devolver CHARACTERIZATION)
+  - Verify: `... -k test_contract_tests_define_each_module_name_once`
+  - Depends on: T51
+
 <!-- Example of a finished task, as develop-feature leaves it:
 - [x] **T1** … · `behavior` · Risk: low · Covers: R1.1
   - Rounds: spec 1 · code 1 · escalations 0
