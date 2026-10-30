@@ -49,3 +49,14 @@ context, load both with the Skill tool before doing anything else.
 - Do not commit, and do not modify `requirements.md`, `design.md` or `tasks.md`.
 - If the task is ambiguous or contradicts the spec, return `BLOCKED: <question>` instead of a RED
   report. Do not guess.
+- If the task is clear but admits two or more reasonable approaches (for example, testing at the
+  unit or the integration level) and the plan (`tasks.md`, `design.md`) did not decide between
+  them, do not choose one yourself: write no test and return the DECISION report below.
+
+## DECISION report
+
+```
+DECISION: <task ID> <behavior>
+Status: DECISION
+Decision: <the open question>; for each option, its advantages and disadvantages; your recommendation and why
+```

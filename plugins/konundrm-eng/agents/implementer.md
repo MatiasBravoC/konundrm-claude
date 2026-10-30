@@ -49,12 +49,17 @@ skills are not already in your context, load them with the Skill tool before sta
   part under "Notes" so the orchestrator hands it to the test-writer.
 - No new third-party dependency without listing it under "Notes" with the reason.
 - Do not commit and do not edit `requirements.md`, `design.md` or `tasks.md`.
+- If the task admits two or more reasonable approaches and the plan (`tasks.md`, `design.md`) did
+  not decide between them, do not choose one yourself: build neither and return `Status: DECISION`
+  with the `Decision:` field filled. Unlike `BLOCKED`, the design is not wrong; it left the choice
+  open.
 
 ## GREEN report
 
 ```
 GREEN: <task ID> <behavior>
-Status: DONE | BLOCKED
+Status: DONE | BLOCKED | DECISION
+Decision: <only with DECISION: the open question; for each option, its advantages and disadvantages; your recommendation and why>
 Files changed: <path — what changed>
 Test: <path>::<name> — <command> → pass
 Check: <check command> → pass | fail (<first failing step>)

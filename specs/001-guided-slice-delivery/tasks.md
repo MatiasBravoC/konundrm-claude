@@ -239,11 +239,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T16, T15
   - Rounds: spec 2 · code 1 · escalations 0
 
-- [ ] **T26** test-writer e implementer devuelven una decisión en vez de elegir entre enfoques no decididos · `behavior` · Risk: low · Covers: R5.2
+- [x] **T26** test-writer e implementer devuelven una decisión en vez de elegir entre enfoques no decididos · `behavior` · Risk: low · Covers: R5.2
   - Test: `P/hooks/tests/contract/test_agents.py::test_writers_return_a_decision_instead_of_choosing`
   - Files: `P/agents/test-writer.md`, `P/agents/implementer.md` (modify)
   - Verify: `... -k test_writers_return_a_decision_instead_of_choosing`
   - Depends on: T1
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T27** develop-feature pausa la tarea y pregunta al usuario por una decisión abierta, y la registra · `behavior` · Risk: low · Covers: R5.2, R5.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_asks_the_user_for_open_decisions`

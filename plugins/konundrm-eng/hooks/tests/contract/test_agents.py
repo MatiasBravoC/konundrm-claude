@@ -11,10 +11,36 @@ RETHINKER = AGENTS_DIR / "rethinker.md"
 RETHINKER_FIELDS = {"name": "rethinker", "model": "opus", "effort": "max"}
 WRITING_TOOLS = frozenset({"Edit", "Write", "NotebookEdit"})
 RETHINK_VERDICTS = ("NEW APPROACH", "ADJUST", "PLAN CHANGE")
+WRITERS = (AGENTS_DIR / "test-writer.md", AGENTS_DIR / "implementer.md")
 
 # R8.1's two questions, in plain words. They run on text from _plain_words, so a reworded or wrapped sentence counts.
 _WHY_ATTEMPTS_FAIL = re.compile(r"\b(?:why|reasons?|root[- ]causes?)\b[^.]{0,80}?\bfail(?:s|ed|ing|ures?)?\b")
 _WHAT_TO_DO_DIFFERENTLY = re.compile(r"\b(?:different(?:ly)?|instead|alternatives?)\b")
+
+# R5.2's DECISION report: a `Status:` line offering DECISION, and a `Decision:` field naming these parts.
+_DECISION_STATUS = re.compile(r"^\s*status:[^\n]*\bdecision\b", re.MULTILINE)
+_DECISION_FIELD = re.compile(r"^\s*decision:", re.MULTILINE)
+_DECISION_PARTS = {
+    "the options": re.compile(r"\b(?:options?|approach(?:es)?|alternatives?)\b"),
+    "each option's advantages": re.compile(r"\b(?:advantages?|pros|benefits?|upsides?|strengths?)\b"),
+    "each option's disadvantages": re.compile(r"\b(?:disadvantages?|cons|drawbacks?|downsides?|weaknesses?)\b"),
+    "a recommendation": re.compile(r"\brecommend(?:s|ed|ations?)?\b"),
+}
+# R5.2's rule, in plain words outside the report format, so a reworded or wrapped sentence counts.
+_DECISION_RULE = {
+    "the task admits two or more reasonable approaches": re.compile(
+        r"\b(?:two or more|2 or more|more than one|several|multiple)\b[^.]{0,60}?\b(?:approach|option|alternative|way)"
+    ),
+    "the plan did not decide between them": re.compile(
+        r"\b(?:plan|design|tasks md|design md)\b[^.]{0,80}?\b(?:not|never|nor)\b"
+        r"[^.]{0,30}?\b(?:decide|settle|choose|pick)|\bundecided\b"
+    ),
+    "the agent does not choose one itself": re.compile(
+        r"\binstead of (?:choosing|picking|deciding)\b"
+        r"|\b(?:do not|don't|never|without) (?:choos|pick|decid)"
+    ),
+    "it returns the DECISION report": re.compile(r"\bstatus: decision\b|\bdecision report\b"),
+}
 
 
 def _plain_words(text: str) -> str:
@@ -82,6 +108,44 @@ def _rethink_report_gaps(text: str) -> list[str]:
     ]
 
 
+def _prose(text: str) -> str:
+    """Return a Markdown text without its fenced blocks, in plain words, with `.md` as ` md` so a sentence goes on."""
+    kept: list[str] = []
+    inside = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            inside = not inside
+        elif not inside:
+            kept.append(line)
+    return _plain_words(re.sub(r"\.md\b", " md", "\n".join(kept)))
+
+
+def _decision_report_gaps(text: str) -> list[str]:
+    """Return what R5.2's report lacks: a fenced report offering `Status: DECISION`, its `Decision:` field and parts."""
+    reports = [block.lower() for block in _fenced_blocks(text) if _DECISION_STATUS.search(block.lower())]
+    if not reports:
+        return ["no fenced report offers 'Status: DECISION'"]
+    with_field = [block for block in reports if _DECISION_FIELD.search(block)]
+    if not with_field:
+        return ["the fenced report offering 'Status: DECISION' has no 'Decision:' field"]
+    fields = _plain_words("\n".join(with_field))
+    return [
+        f"the DECISION report does not name {part}"
+        for part, pattern in _DECISION_PARTS.items()
+        if pattern.search(fields) is None
+    ]
+
+
+def _decision_rule_gaps(text: str) -> list[str]:
+    """Return a message for each part of R5.2's rule that the instructions outside the report format do not state."""
+    prose = _prose(text)
+    return [
+        f"the instructions do not say {part}"
+        for part, pattern in _DECISION_RULE.items()
+        if pattern.search(prose) is None
+    ]
+
+
 class AgentModelsTest(unittest.TestCase):
     def test_each_role_has_its_agreed_model_and_effort(self) -> None:
         """R1.1, R10.1: each role runs on its agreed model and effort."""
@@ -121,6 +185,25 @@ class RethinkerAgentTest(unittest.TestCase):
             + _rethinker_purpose_gaps(text)
             + _rethink_report_gaps(text)
         )
+
+        self.assertEqual(gaps, [])
+
+
+class WritersDecisionTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_writers_return_a_decision_instead_of_choosing(self) -> None:
+        """R5.2: when a task admits two or more reasonable approaches that the plan (tasks.md, design.md) did not
+        decide, the test-writer and the implementer do not choose one: their instructions say to return a fenced
+        report offering `Status: DECISION`, whose `Decision:` field gives the options, each one's advantages and
+        disadvantages, and a recommendation.
+
+        Pausing the task and asking the user is develop-feature's side of R5.2, not tested here.
+        """
+        gaps = []
+        for agent in WRITERS:
+            text = agent.read_text(encoding="utf-8")  # universal newlines, like read_frontmatter
+            gaps += [f"{agent.name}: {gap}" for gap in _decision_report_gaps(text) + _decision_rule_gaps(text)]
 
         self.assertEqual(gaps, [])
 
