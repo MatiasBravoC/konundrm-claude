@@ -447,12 +447,13 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T47
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T59** La búsqueda de correos de la limpieza corre en tiempo lineal · `behavior` · Risk: medium · Covers: R7.3
+- [x] **T59** La búsqueda de correos de la limpieza corre en tiempo lineal · `behavior` · Risk: medium · Covers: R7.3
   - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_handles_long_word_runs_quickly` (`"A" * 40000`, `"a." * 20000` y textos parecidos se limpian en menos de 2 segundos; hoy tardan unos 8)
   - Files: `P/hooks/scripts/improvement_notes.py` (modify)
   - Invariants: los correos siguen tapados (la propiedad de T47 sigue pasando)
   - Verify: `... -k test_scrub_handles_long_word_runs_quickly`
   - Depends on: T47
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T50** develop-feature pide notas al process-reviewer en cada pausa de slice y al final, y las guarda con el script sin tocar el plugin · `behavior` · Risk: low · Covers: R7.1, R7.5
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_records_improvement_notes`

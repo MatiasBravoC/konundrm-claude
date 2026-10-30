@@ -9,6 +9,7 @@ import string
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from dataclasses import dataclass, field
 from datetime import date
@@ -896,6 +897,29 @@ class ScrubTest(unittest.TestCase):
                     self.assertIn(secret_marker, scrubbed)
                     for leaked in ("-----BEGIN", "-----END", "PRIVATE KEY", *body_lines):
                         self.assertNotIn(leaked, scrubbed, scrubbed)
+
+    def test_scrub_handles_long_word_runs_quickly(self) -> None:
+        # R7.3, T59: the e-mail search runs in linear time, so a note holding a long run of the
+        # characters an address is made of, with no "@" or no domain after it, is scrubbed in well
+        # under 2 seconds (the quadratic search took about 8 on 40,000 characters).
+        # No input starts with a line that may be code, so the whole text reaches redaction.
+        run_length = 40000
+        adversarial_notes = {
+            '"A" * 40000': "A" * run_length,
+            '"a." * 20000': "a." * (run_length // 2),
+            '"7" * 40000': "7" * run_length,
+            '"a+" * 20000': "a+" * (run_length // 2),
+            '"a-_" run ending in "@"': "a-_" * (run_length // 3) + "@",
+            '"ana@" before a dotless domain run': "ana@" + "b-" * (run_length // 2),
+            "long run, then a real address far away": "a" * run_length + " escribió a ana@x.cl.",
+        }
+        for label, notes in adversarial_notes.items():
+            with self.subTest(notes=label):
+                start_seconds = time.perf_counter()
+                improvement_notes.scrub(notes)
+                elapsed_seconds = time.perf_counter() - start_seconds
+
+                self.assertLess(elapsed_seconds, 2.0, f"scrub took {elapsed_seconds:.2f} s on {label}")
 
     def test_scrubbed_notes_never_keep_secrets_code_or_emails(self) -> None:
         # R7.3 (Threats, row 1): over 400 generated notes, scrub keeps the prose before the first line that

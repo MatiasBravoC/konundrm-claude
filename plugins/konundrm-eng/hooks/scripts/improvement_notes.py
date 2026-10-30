@@ -66,7 +66,13 @@ _HTML_BLOCK_OPENER = re.compile(r"<[A-Za-z/?!]")
 # Three or more backticks or tildes in a kept line (an inline span, a strikethrough, a fence after a
 # separator only str.splitlines ends lines at); reduced to one character so no fence remains.
 _FENCE_CHARACTER_RUN = re.compile(r"([`~])\1{2,}")
-_EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+# An e-mail address, or else the rest of a run of the characters a local part is made of. A match
+# that fails as an address from some point of a run fails from every later point of it too (the
+# "@" and the domain it reaches are the same), so the run is consumed whole and each character
+# is tried as an address's start a bounded number of times: the search is linear, never quadratic
+# on a long run with no "@" or no dotted domain after it. A search resumes where the previous
+# address ended, so it finds exactly the addresses "[\w.+-]+@[\w-]+\.[\w.-]+" finds.
+_EMAIL_OR_LOCAL_RUN = re.compile(r"(?P<email>[\w.+-]+@[\w-]+\.[\w.-]+)|[\w.+-]+")
 # A whole private key: the BEGIN header secret_patterns detects through the first END line of any
 # private key type, or through the end of the text when END is missing, since the header alone
 # leaves the key body.
@@ -190,10 +196,14 @@ def _redact_until_clean(text: str) -> str:
         redacted = _PRIVATE_KEY_BLOCK.sub(_SECRET_MARKER, text)
         for secret in SECRET_PATTERNS:
             redacted = secret.pattern.sub(_SECRET_MARKER, redacted)
-        redacted = _EMAIL.sub(_EMAIL_MARKER, redacted)
+        redacted = _EMAIL_OR_LOCAL_RUN.sub(_redact_email, redacted)
         if redacted == text:
             return text
         text = redacted
+
+
+def _redact_email(match: re.Match[str]) -> str:
+    return _EMAIL_MARKER if match.group("email") else match.group()
 
 
 def append_notes(
