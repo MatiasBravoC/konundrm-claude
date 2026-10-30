@@ -352,6 +352,9 @@ wave is integrated:
    answer, citing the file and the lines that show it.
 5. Wait for the user's go-ahead before starting the next slice. Never make the go-ahead depend on
    the answers.
+6. When the user asks for changes at the pause, turn the changes into new tasks in `tasks.md` or
+   into a plan change to `design.md`/`tasks.md`, and wait for the user to approve them before
+   starting the next slice. Never make those changes on the spot, outside the task loop.
 
 ## Phase 4: Finish
 

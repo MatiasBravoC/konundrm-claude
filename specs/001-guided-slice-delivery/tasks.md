@@ -274,11 +274,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T29
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T31** Los cambios pedidos en la pausa se vuelven tareas o un cambio de plan antes del slice siguiente · `behavior` · Risk: low · Covers: R4.4
+- [x] **T31** Los cambios pedidos en la pausa se vuelven tareas o un cambio de plan antes del slice siguiente · `behavior` · Risk: low · Covers: R4.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_changes_asked_at_a_checkpoint_become_tasks`
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_changes_asked_at_a_checkpoint_become_tasks`
   - Depends on: T29
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T32** Con checkpoints aprobados de antemano, escribe el resumen, toma la opción recomendada y sigue sin preguntar · `behavior` · Risk: low · Covers: R4.5, R5.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_pre_approved_checkpoints_do_not_stop`

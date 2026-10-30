@@ -1230,6 +1230,57 @@ def _questions_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# Changes the user asks for at the slice pause (R4.4). These run on the blocks of develop-feature's
+# `## Slice checkpoint` section, each rule within one sentence (_in_one_sentence) so an unrelated sentence cannot
+# satisfy it. The approval rule asks for an approval of the changes themselves, so the go-ahead sentence alone ("wait
+# for the user's go-ahead before starting the next slice") cannot satisfy it.
+_CHANGES_WHEN = re.compile(r"\b(?:when|whenever|if)\b")
+_CHANGES_ASKED = re.compile(
+    r"\b(?:ask|request)\w*(?: \S+){0,3} changes\b|\bchanges\b(?: \S+){0,3} (?:asked|requested)\b"
+)
+_CHANGES_AT_THE_PAUSE = re.compile(r"\b(?:at|during|in) (?:the|this|that|each) (?:pause|checkpoint|stop)\b")
+_CHANGES_CHANGES = re.compile(r"\bchanges\b")  # plural, so "plan change" alone does not name the asked changes
+_CHANGES_TURNS = re.compile(r"\b(?:turn|convert|becom|record|add)\w*")
+_CHANGES_NEW_TASKS = re.compile(r"\bnew tasks?\b")
+_CHANGES_DESIGN_MD = re.compile(r"\bdesign\.md\b")
+_CHANGES_APPROVES = re.compile(r"\bapprov\w*")  # not _CHECKPOINT_GO_AHEAD: the go-ahead is not an approval of changes
+_CHANGES_APPROVED_ITEM = re.compile(r"\b(?:them|changes|new tasks?|plan change)\b")
+# The negation governs the verb ("never make those changes"), so a stray "no" elsewhere in the sentence does not count.
+_CHANGES_NEVER_MAKES = re.compile(r"\b(?:never|not|don't)\b(?: \S+){0,2} (?:mak|edit|chang|appl|implement|cod)\w*")
+_CHANGES_OUTSIDE = re.compile(r"\boutside\b")
+
+# What develop-feature's `## Slice checkpoint` section must say about changes asked at the pause, each in one sentence.
+_CHANGES_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R4.4 when the user asks for changes at the pause": (_CHANGES_WHEN, _USER, _CHANGES_ASKED, _CHANGES_AT_THE_PAUSE),
+    "R4.4 the changes become new tasks in tasks.md": (_CHANGES_CHANGES, _CHANGES_TURNS, _CHANGES_NEW_TASKS, _TASKS_MD),
+    "R4.4 or a plan change to design.md/tasks.md": (_CHANGES_CHANGES, _CHANGES_TURNS, _PLAN_EDIT, _CHANGES_DESIGN_MD),
+    "R4.4 the user approves them before the next slice starts": (
+        _CHANGES_APPROVES,
+        _USER,
+        _CHANGES_APPROVED_ITEM,
+        _CHECKPOINT_BEFORE,
+        _CHECKPOINT_NEXT_SLICE,
+    ),
+    "R4.4 the changes are never made on the spot, outside the task loop": (
+        _CHANGES_NEVER_MAKES,
+        _CHANGES_OUTSIDE,
+        _TASK_LOOP,
+    ),
+}
+
+
+def _changes_gaps(skill: Path) -> list[str]:
+    """Return one message per part of R4.4 that develop-feature's `## Slice checkpoint` section lacks."""
+    blocks = _section_blocks(skill, "Slice checkpoint")
+    if not blocks:
+        return ["develop-feature: SKILL.md has no '## Slice checkpoint' section"]
+    return [
+        f"develop-feature Slice checkpoint: no sentence says {label}"
+        for label, patterns in _CHANGES_RULES.items()
+        if not any(_in_one_sentence(block, *patterns) for block in blocks)
+    ]
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -1382,6 +1433,15 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         user answers wrong or says they don't know, it explains the right answer citing the file and the lines that
         show it; and the go-ahead never depends on the answers."""
         gaps = _questions_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_changes_asked_at_a_checkpoint_become_tasks(self) -> None:
+        """R4.4: when the user asks for changes at the slice pause, develop-feature's `## Slice checkpoint` section
+        turns them into new tasks in tasks.md or a plan change to design.md/tasks.md, which the user approves before
+        the next slice starts (an approval of the changes, not the go-ahead alone), and never makes them on the spot,
+        outside the task loop."""
+        gaps = _changes_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 
