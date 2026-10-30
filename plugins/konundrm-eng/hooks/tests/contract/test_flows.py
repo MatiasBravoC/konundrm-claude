@@ -1676,6 +1676,196 @@ def _delivery_gaps(skill: str, blocks: list[str], *, at_push_approval: bool) -> 
     return gaps
 
 
+# R6.3: the feature summary develop-feature writes when the feature ends, and every pull request links.
+_DELIVERY_SUMMARY_FILE = re.compile(r"\bspecs/<nnn-slug>/summary\.md\b")
+_DELIVERY_SUMMARY_MENTION = re.compile(r"(?<![\w/-])(?:specs/<nnn-slug>/)?summary\.md\b|\bfeature summary\b")
+_DELIVERY_SUMMARY_TEMPLATE = re.compile(r"\btemplates/feature-summary\.md\b")
+_DELIVERY_FINAL_VERIFICATION = re.compile(r"\bfinal verification\b")
+_DELIVERY_STATUS_DONE = re.compile(r"\bstatus: ?done\b")
+_DELIVERY_LINKS = re.compile(r"\blink\w*")
+_DELIVERY_DESCRIPTION = re.compile(r"\bdescriptions?\b|\bbod(?:y|ies)\b")
+# "every pull request", "all of the feature's pull requests": nothing between the quantifier and "pull request" but
+# determiners, so a word that picks some of them ("each stacked pull request", "every slice pull request") fails.
+_DELIVERY_EVERY_PULL_REQUEST = re.compile(
+    r"\b(?:every|each|all)\b(?: of)?(?: (?:the|its|their|these|those|feature's)){0,2} pull requests?\b"
+)
+# Both deliveries named as alternatives of one rule ("stacked or single", "single or a stacked one"), so a rule that
+# names one delivery ("of a stacked delivery") or a look-alike ("single-slice") fails.
+_DELIVERY_BOTH_DELIVERIES = re.compile(
+    r"\bstack\w*(?: \S+){0,2} (?:or|and)(?: an?| the)? single\b(?!-)"
+    r"|\bsingle\b(?!-)(?: \S+){0,2} (?:or|and)(?: an?| the)? stack\w*"
+)
+# Words that make a rule conditional, optional or narrowed to some pull requests ("only the last one", "when asked").
+# A scope that is no condition ("With a feature folder, ...") holds none of them.
+_DELIVERY_NARROWING = re.compile(
+    r"\b(?:only|if|when|whenever|unless|once|until|provided|otherwise|except\w*|excluding|but|besides|beyond|none"
+    r"|neither|some|optional\w*|may|might|could|can(?:not|'t)?|last|first|ask\w*|wants?|chooses?|prefer\w*)\b"
+    r"|\b(?:as long as|in case|other than|apart from|save for)\b"
+)
+# Words that take a step back ("leave it out", "omit it", "drop it", "remove it").
+_DELIVERY_RETRACTS = re.compile(
+    r"\bomit\w*|\bleav\w*(?: \S+){0,4} out\b|\bdrop\w*|\bignor\w*|\bdiscard\w*|\bbypass\w*|\bremov\w*|\bexclud\w*"
+)
+_DELIVERY_LIST_NUMBER = re.compile(r"(\d+)\. ")
+
+
+def _delivery_is_unconditional(sentence: str) -> bool:
+    """Return whether a sentence is neither negated, skipped, made conditional, narrowed nor retracted."""
+    return not any(pattern.search(sentence) for pattern in (_NEGATION, _SKIP, _DELIVERY_NARROWING, _DELIVERY_RETRACTS))
+
+
+def _delivery_writes_the_summary(sentence: str) -> bool:
+    """Return whether a sentence writes the feature summary to specs/<NNN-slug>/summary.md."""
+    return bool(_WRITES.search(sentence) and _DELIVERY_SUMMARY_FILE.search(sentence))
+
+
+def _delivery_summary_retractions(blocks: list[str], step: str) -> list[str]:
+    """Return one message per Phase 4 sentence that negates, skips, conditions, narrows or retracts writing the summary.
+
+    Checked are every sentence of the step that writes the summary, and every other Phase 4 sentence that names the
+    summary or that step ("Skip step 4 for a feature with one slice"), so no sentence anywhere takes the rule back.
+
+    Args:
+        blocks: develop-feature's Phase 4 blocks, from `_section_blocks`.
+        step: The block (list item) that writes the summary.
+    """
+    number = _DELIVERY_LIST_NUMBER.match(step)
+    step_reference = re.compile(rf"\bstep {number.group(1)}\b" if number else r"(?!)")
+    about_the_summary = [
+        sentence
+        for block in blocks
+        for sentence in _sentences(block)
+        if _DELIVERY_SUMMARY_MENTION.search(sentence) or step_reference.search(sentence)
+    ]
+    return [
+        f"develop-feature Phase 4: a sentence takes back writing the summary: {sentence.strip()!r}"
+        for sentence in dict.fromkeys(_sentences(step) + about_the_summary)
+        if not _delivery_is_unconditional(sentence)
+    ]
+
+
+def _delivery_summary_order_gaps(blocks: list[str]) -> list[str]:
+    """Return one message per R6.3 rule develop-feature's Phase 4 breaks about writing the feature summary.
+
+    The summary is written from templates/feature-summary.md to specs/<NNN-slug>/summary.md after the final
+    verification and before `Status: Done` and the delivery choice, so it lands in the feature's commits. It is
+    written unconditionally: see `_delivery_summary_retractions`.
+    """
+    numbered = [(index, sentence) for index, block in enumerate(blocks) for sentence in _sentences(block)]
+    writing = [position for position, (_, sentence) in enumerate(numbered) if _delivery_writes_the_summary(sentence)]
+    if not writing:
+        return ["develop-feature Phase 4: no sentence writes the feature summary to specs/<NNN-slug>/summary.md"]
+    at = writing[0]
+    block = blocks[numbered[at][0]]
+    gaps = _delivery_summary_retractions(blocks, block)
+    if not _DELIVERY_SUMMARY_TEMPLATE.search(block):
+        gaps.append(
+            "develop-feature Phase 4: the step that writes the summary does not use templates/feature-summary.md"
+        )
+
+    def positions(matches: Callable[[str], bool]) -> list[int]:
+        return [position for position, (_, sentence) in enumerate(numbered) if position != at and matches(sentence)]
+
+    verification = positions(lambda sentence: _DELIVERY_FINAL_VERIFICATION.search(sentence) is not None)
+    status_done = positions(lambda sentence: _DELIVERY_STATUS_DONE.search(sentence) is not None)
+    delivery = positions(_delivery_offers_both)
+    if not any(position < at for position in verification):
+        gaps.append("develop-feature Phase 4: the summary is not written after the final verification")
+    if not status_done or any(position < at for position in status_done):
+        gaps.append("develop-feature Phase 4: the summary is not written before Status: Done")
+    if not delivery or any(position < at for position in delivery):
+        gaps.append("develop-feature Phase 4: the summary is not written before the delivery choice")
+    return gaps
+
+
+def _delivery_links_the_summary(sentence: str) -> bool:
+    """Return whether a sentence links the feature summary from the description of every pull request, naming both
+    deliveries ("stacked or single") as the pull requests it covers."""
+    return all(
+        pattern.search(sentence)
+        for pattern in (
+            _DELIVERY_LINKS,
+            _DELIVERY_SUMMARY_MENTION,
+            _DELIVERY_DESCRIPTION,
+            _DELIVERY_EVERY_PULL_REQUEST,
+            _DELIVERY_BOTH_DELIVERIES,
+        )
+    )
+
+
+# A sentence about the feature summary's link: it names summary.md, the feature summary or the summary link, or it
+# points at a link ("that link", "no link") while talking about descriptions. The slice summaries
+# (`summaries/S<k>.md`), "the summary's links" and "evidence links" are none of these.
+_DELIVERY_SUMMARY_LINK = re.compile(r"\bsummary links?\b|\blinks? to (?:the |its |their )?(?:feature )?summary\b")
+_DELIVERY_A_LINK = re.compile(r"\b(?:that|this|the|its|their|same|such|said|a|an|any|no) links?\b")
+# The one sentence allowed outside the linking paragraph to leave the link out: "<cases> have no summary.md, so their
+# descriptions carry no summary link", where every case is a branch that has no summary.md.
+_DELIVERY_NO_SUMMARY = re.compile(r"(?P<cases>.+?) (?:has|have) no (?:specs/<nnn-slug>/)?summary\.md\b(?P<rest>.*)")
+_DELIVERY_NO_SUMMARY_REST = re.compile(
+    r"(?:,? so (?:their|its|the) (?:pull request )?descriptions? (?:carr(?:y|ies)|ha(?:ve|s)|gets?) no"
+    r" (?:feature )?summary link)?"
+)
+_DELIVERY_CASE_SEPARATOR = re.compile(r",(?: (?:and|or))? | (?:and|or) ")
+_DELIVERY_CASE_WITHOUT_SUMMARY = re.compile(
+    r"(?:(?:a|an|any|every|each) )?(?:fix-bug branch(?:es)?|small changes? without slices"
+    r"|features? built before the (?:feature )?summary existed)"
+)
+
+
+def _delivery_mentions_the_link(sentence: str) -> bool:
+    """Return whether a sentence names the feature summary or its link (see `_DELIVERY_SUMMARY_LINK`)."""
+    return bool(
+        _DELIVERY_SUMMARY_MENTION.search(sentence)
+        or _DELIVERY_SUMMARY_LINK.search(sentence)
+        or (_DELIVERY_A_LINK.search(sentence) and _DELIVERY_DESCRIPTION.search(sentence))
+    )
+
+
+def _delivery_leaves_out_only_branches_without_a_summary(sentence: str) -> bool:
+    """Return whether a sentence is the allowed one: "<cases> have no summary.md, so their descriptions carry no
+    summary link", where each case is a fix-bug branch, a small change without slices or a feature built before the
+    summary existed, and nothing after it adds another pull request, slice or delivery."""
+    shape = _DELIVERY_NO_SUMMARY.fullmatch(sentence.strip())
+    if shape is None or not _DELIVERY_NO_SUMMARY_REST.fullmatch(shape.group("rest").strip()):
+        return False
+    cases = _DELIVERY_CASE_SEPARATOR.split(shape.group("cases"))
+    return all(_DELIVERY_CASE_WITHOUT_SUMMARY.fullmatch(case.strip()) for case in cases)
+
+
+def _delivery_link_gaps(blocks: list[str]) -> list[str]:
+    """Return one message per R6.3 rule opening-pull-requests breaks about linking the feature summary.
+
+    Some block links summary.md from the description of every pull request, stacked or single, and no sentence of the
+    skill takes the link back. Every sentence of a block that links it must be unconditional: no negation, skip,
+    condition ("when", "if"), narrowing ("only the last") or retraction ("leave it out"); a leading scope that is no
+    condition ("With a feature folder, link ...") passes. Every other sentence that names the summary or its link
+    (`_delivery_mentions_the_link`) must be unconditional too, or be the one sentence that leaves the link out of the
+    branches that have no summary.md (`_delivery_leaves_out_only_branches_without_a_summary`).
+
+    Args:
+        blocks: opening-pull-requests' blocks, from `_blocks`.
+    """
+    linking = [block for block in blocks if any(_delivery_links_the_summary(s) for s in _sentences(block))]
+    if not linking:
+        return [
+            "opening-pull-requests: no sentence links the feature summary from the description of every pull request,"
+            " stacked or single"
+        ]
+    in_linking = [sentence for block in linking for sentence in _sentences(block)]
+    elsewhere = [
+        sentence
+        for block in blocks
+        if block not in linking
+        for sentence in _sentences(block)
+        if _delivery_mentions_the_link(sentence) and not _delivery_leaves_out_only_branches_without_a_summary(sentence)
+    ]
+    return [
+        f"opening-pull-requests: a sentence takes back linking the summary: {sentence.strip()!r}"
+        for sentence in in_linking + elsewhere
+        if not _delivery_is_unconditional(sentence)
+    ]
+
+
 class FeatureDeliveryFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -1689,6 +1879,21 @@ class FeatureDeliveryFlowTest(unittest.TestCase):
         gaps = _delivery_gaps("develop-feature Phase 4", develop_feature, at_push_approval=True) + _delivery_gaps(
             "opening-pull-requests", opening_pull_requests, at_push_approval=False
         )
+
+        self.assertEqual(gaps, [])
+
+    def test_develop_feature_writes_the_feature_summary(self) -> None:
+        """R6.3: when the feature ends, develop-feature's Phase 4 writes the feature summary from
+        templates/feature-summary.md to specs/<NNN-slug>/summary.md, after the final verification and before
+        Status: Done and the delivery choice, with no Phase 4 sentence taking that step back; and opening-pull-requests
+        links it from the description of every pull request, stacked or single, with no sentence anywhere in
+        opening-pull-requests making the link conditional, narrowing or retracting it, except the one that leaves it
+        out of the branches that have no summary.md (a fix-bug branch, a small change without slices, a feature built
+        before the summary existed)."""
+        develop_feature = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Phase 4: Finish")
+        opening_pull_requests = _blocks(SKILLS_DIR / "opening-pull-requests" / "SKILL.md")
+
+        gaps = _delivery_summary_order_gaps(develop_feature) + _delivery_link_gaps(opening_pull_requests)
 
         self.assertEqual(gaps, [])
 

@@ -126,6 +126,14 @@ attribution). The summary's links are relative to `summaries/` (`../requirements
 resolves links in a pull request body against the pull request page, so rewrite them to
 repository paths.
 
+With a feature folder, link `specs/<NNN-slug>/summary.md` from the description of every pull
+request, stacked or single, as a full URL: `https://github.com/<owner>/<repo>/blob/<commit>/specs/<NNN-slug>/summary.md`.
+`<commit>` is the SHA of the feature's final `docs(<scope>)` commit, which holds the summary, so
+the link keeps working after the slice branches are merged and deleted.
+
+A fix-bug branch, a small change without slices and a feature built before the summary existed
+have no `summary.md`, so their descriptions carry no summary link.
+
 ### 5. Ask, then push and open
 
 Show the user every branch, its base, title, labels and draft state, and wait for an explicit

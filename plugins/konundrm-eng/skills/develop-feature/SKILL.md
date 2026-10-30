@@ -379,11 +379,17 @@ With `Checkpoints: pre-approved` in the `tasks.md` header, still write and commi
 3. Perform the final verification from `requirements.md` against the real application. Run it
    when it can be automated and save the evidence in `specs/<NNN-slug>/evidence/final.md`;
    otherwise give the user the exact steps.
-4. If the feature changed a fact the project's `AGENTS.md` or `CLAUDE.md` states (a command, a
+4. Write the feature summary from `templates/feature-summary.md` to `specs/<NNN-slug>/summary.md`,
+   filling every section from the three documents, `summaries/`, `evidence/` and the feature's
+   commits. It goes into the final commit of step 6, which lands before any slice branch is cut
+   or pushed. A stacked slice whose branch ends at an earlier commit reaches the summary through
+   its pull request's link, pinned to the SHA of that final commit (`opening-pull-requests`).
+5. If the feature changed a fact the project's `AGENTS.md` or `CLAUDE.md` states (a command, a
    layer, an ownership rule), update that line in the same final commit, so the next session does
    not read stale instructions.
-5. Set the three documents to `Status: Done` in a final `docs(<scope>)` commit.
-6. Report: commits made, a table mapping each requirement ID to its test(s) and evidence, the
+6. Set the three documents to `Status: Done` and commit them with `summary.md` in a final
+   `docs(<scope>)` commit.
+7. Report: commits made, a table mapping each requirement ID to its test(s) and evidence, the
    risk level of each task, Suggestions not applied, refuted findings, each rethink (its evidence
    file and the message of any stash it left), and anything escalated.
    When any task was `high`, tell the user to read that diff before pushing. **Ask before

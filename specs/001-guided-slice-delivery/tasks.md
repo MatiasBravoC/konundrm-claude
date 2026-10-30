@@ -332,11 +332,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T28
   - Rounds: spec 3 · code 1 · escalations 0
 
-- [ ] **T39** develop-feature escribe el resumen final y cada PR lo enlaza · `behavior` · Risk: low · Covers: R6.3
+- [x] **T39** develop-feature escribe el resumen final y cada PR lo enlaza · `behavior` · Risk: low · Covers: R6.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_writes_the_feature_summary`
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/opening-pull-requests/SKILL.md` (modify)
   - Verify: `... -k test_develop_feature_writes_the_feature_summary`
   - Depends on: T38, T34
+  - Rounds: spec 4 · code 3 · escalations 0
 
 - [x] **T40** Cada lote de migración y cada tarea de limpieza van en su propia rama y PR · `behavior` · Risk: low · Covers: R9.3
   - Test: `P/hooks/tests/contract/test_skills.py::test_migrations_and_cleanups_use_one_branch_per_pull_request`
