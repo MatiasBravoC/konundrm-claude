@@ -146,11 +146,12 @@ de cada archivo (algunos son CRLF). -->
   - Verify: `... -k test_names_each_partitions_next_task_when_they_run_in_parallel`
   - Depends on: T14
 
-- [ ] **T18** Los commits de una tarea se buscan por ID exacto · `behavior` · Risk: low · Covers: R9.1
+- [x] **T18** Los commits de una tarea se buscan por ID exacto · `behavior` · Risk: low · Covers: R9.1
   - Test: `P/hooks/tests/contract/test_skills.py::test_task_commits_are_found_by_exact_id` (ninguna skill usa `--grep "Task: T<n>"`; develop-feature y opening-pull-requests usan `-E --grep '^Task: T<n>( |$)'`)
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/opening-pull-requests/SKILL.md` (modify)
   - Verify: `... -k test_task_commits_are_found_by_exact_id`
   - Depends on: T1
+  - Rounds: spec 1 · code 1 · escalations 0
 
 <!-- T55–T59: agregadas el 2026-10-30 con el visto bueno del usuario, a partir de hallazgos de las
 revisiones de código y de las sesiones paralelas. -->

@@ -57,7 +57,8 @@ runs this solved slightly more tasks than running everything at `high`, for less
 1. If `$ARGUMENTS` points to an existing `specs/<NNN-slug>/`, **resume**: read its files, skip
    stages whose documents are `Approved`, take the base commit from the `tasks.md` header, and
    continue at the first task without a commit. A checked box only counts when
-   `git log --grep "Task: T<n>"` finds its commit; uncheck any box that has none.
+   `git log -E --grep '^Task: T<n>( |$)'` finds its commit (anchored, so T1 never matches T10);
+   uncheck any box that has none.
 2. Confirm the repository root and that the tree is clean. If unrelated changes are pending, ask
    the user to commit or stash them first; never mix them into feature commits.
 3. Get the check command from the plugin, the same one its hooks run: the session context names

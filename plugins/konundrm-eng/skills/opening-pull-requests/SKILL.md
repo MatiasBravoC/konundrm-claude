@@ -48,7 +48,7 @@ going on: big pull requests get worse reviews.
 With a feature folder (`specs/<NNN-slug>/tasks.md` with `## Slice S<n>` headings), each slice is
 one pull request:
 
-1. Find each task's commit: `git log --format=%H --grep "Task: T<n>" <base>..HEAD`.
+1. Find each task's commit: `git log --format=%H -E --grep '^Task: T<n>( |$)' <base>..HEAD`.
 2. Slice `S<k>` ends at the last commit of its tasks. The spec-and-plan commit belongs to the
    first slice; the final `Status: Done` commit to the last.
 3. Create a branch at each slice end: `git branch <branch>-s<k> <sha>` (the last slice keeps the

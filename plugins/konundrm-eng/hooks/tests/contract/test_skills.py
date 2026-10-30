@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
+import tempfile
 import unittest
 from collections.abc import Callable
+from pathlib import Path
 
 from .plugin_files import SKILLS_DIR, read_frontmatter
 from .test_flows import _split_blocks
@@ -131,6 +135,56 @@ class WritingPlansPartitionsTest(unittest.TestCase):
         ]
 
         self.assertEqual(gaps, [], "writing-plans/SKILL.md:\n" + "\n".join(gaps))
+
+
+# R9.1: the anchored, exact-ID form every skill must use to find a task's commit.
+_EXACT_TASK_GREP = "-E --grep '^Task: T<n>( |$)'"
+_INLINE_CODE = re.compile(r"`([^`\n]+)`")
+_SKILLS_THAT_FIND_TASK_COMMITS = ("develop-feature", "opening-pull-requests")
+
+
+def _git(repo: Path, *args: str) -> str:
+    """Run git in repo with a fixed identity and no user or system config, returning stdout."""
+    base_env = {key: os.environ[key] for key in ("PATH", "SYSTEMROOT") if key in os.environ}
+    env = {**base_env, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(repo / "no-global-config")}
+    command = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", *args]
+    return subprocess.run(
+        command, cwd=repo, env=env, capture_output=True, text=True, encoding="utf-8", check=True
+    ).stdout
+
+
+class TaskCommitLookupTest(unittest.TestCase):
+    def test_task_commits_are_found_by_exact_id(self) -> None:
+        """R9.1: skills find a task's commit by its exact ID, so T1 never matches T10 to T19.
+
+        No skill searches with a substring `--grep "Task: T<n>"`; develop-feature and opening-pull-requests use
+        `git log -E --grep '^Task: T<n>( |$)'`, and that pattern, run by git, finds only the T1 commit among T1,
+        T10 and T19.
+        """
+        docs = sorted([*SKILLS_DIR.glob("*/SKILL.md"), *SKILLS_DIR.glob("*/reference/*.md")])
+        gaps = []
+        for doc in docs:
+            with doc.open(encoding="utf-8", newline=None) as handle:
+                text = handle.read()
+            name = doc.relative_to(SKILLS_DIR).as_posix()
+            for code in _INLINE_CODE.findall(text):
+                if "--grep" in code and "Task: T" in code and _EXACT_TASK_GREP not in code:
+                    gaps.append(f"{name}: substring task search `{code}`")
+        for skill in _SKILLS_THAT_FIND_TASK_COMMITS:
+            text = (SKILLS_DIR / skill / "SKILL.md").read_text(encoding="utf-8")
+            if _EXACT_TASK_GREP not in text:
+                gaps.append(f"{skill}/SKILL.md: lacks `{_EXACT_TASK_GREP}`")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _git(repo, "init", "-q")
+            for task in ("T1", "T10", "T19"):
+                _git(repo, "commit", "-q", "--allow-empty", "-m", f"feat: {task}", "-m", f"Task: {task} · Covers: R1")
+            found = _git(repo, "log", "--format=%s", "-E", "--grep", "^Task: T1( |$)").split()
+        if found != ["feat:", "T1"]:
+            gaps.append(f"git log -E --grep '^Task: T1( |$)' found {found}, expected only the T1 commit")
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
 
 
 if __name__ == "__main__":
