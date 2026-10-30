@@ -385,6 +385,87 @@ def _fix_bug_escalation_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# The parallel question (R3.2, R3.6). These run on blocks from _blocks, in Phase 2 (and Phase 0 for the resume).
+_PARALLEL = re.compile(r"\bparallel\b")
+_ASKS = re.compile(r"\bask(?:s|ed|ing)?\b")
+_APPROVES = re.compile(r"\bapprov\w*")
+_SEPARATELY = re.compile(r"\bseparate(?:ly)?\b|\bof its own\b|\bown question\b|\bapart\b|\bon its own\b")
+_TWO_OR_MORE_PARTITIONS = re.compile(
+    r"\b(?:two|2) or more partitions\b|\bmore than one partition\b|\b(?:several|multiple) partitions\b"
+)
+_CONDITION = re.compile(r"\b(?:when|whenever|if|only)\b")
+_AT_THE_SAME_TIME = re.compile(r"\bat the same time\b|\bconcurrent\w*|\bsimultaneous\w*|\bat once\b")
+_END_TO_END = re.compile(r"\bend[- ]to[- ]end\b|\be2e\b")
+_SAYS_WHY = re.compile(r"\b(?:say|says|saying|explain\w*|tell\w*|state\w*|give\w*)\b(?: \S+){0,4} (?:why|the reason)\b")
+_RECORDS = re.compile(r"\b(?:record|writ|sav|stor|set|keep|put)\w*")
+_PARALLEL_HEADER_LINE = "**parallel:**"
+_RESUMED = re.compile(r"\bresum\w*")
+_REUSES_THE_ANSWER = re.compile(
+    r"\b(?:keep|read|use|reuse|follow|honou?r|take|respect)s?\b|\bwithout asking\b|\b(?:not|never) ask\w*\b"
+)
+
+# What develop-feature must say about the parallel question, each in one paragraph or list item of Phase 2 that
+# asks about building in parallel.
+_PARALLEL_QUESTION_STEPS: dict[str, Callable[[str], bool]] = {
+    "R3.2 asking it as a question of its own, apart from the plan approval": lambda block: (
+        _SEPARATELY.search(block) is not None
+    ),
+    "R3.2 asking only when a slice has a wave of two or more partitions": lambda block: (
+        "wave" in block and _TWO_OR_MORE_PARTITIONS.search(block) is not None and _CONDITION.search(block) is not None
+    ),
+    "R3.2 offering parallel only when the partitions' checks and end-to-end tests can run at the same time": (
+        lambda block: (
+            "only" in block
+            and "check" in block
+            and _END_TO_END.search(block) is not None
+            and _AT_THE_SAME_TIME.search(block) is not None
+        )
+    ),
+    "R3.2 saying why when it does not offer parallel": lambda block: _SAYS_WHY.search(block) is not None,
+    "R3.6 recording the answer in the tasks.md header line '- **Parallel:**'": lambda block: (
+        _PARALLEL_HEADER_LINE in block and "tasks.md" in block and _RECORDS.search(block) is not None
+    ),
+}
+
+
+def _is_the_parallel_question(block: str) -> bool:
+    """Return whether a block asks the user whether to build partitions in parallel."""
+    return _PARALLEL.search(block) is not None and _ASKS.search(block) is not None
+
+
+def _keeps_the_answer_on_resume(block: str) -> bool:
+    """Return whether a block says a resumed session keeps (reads) the recorded parallel answer, not asking again."""
+    return (
+        _RESUMED.search(block) is not None
+        and _PARALLEL.search(block) is not None
+        and _REUSES_THE_ANSWER.search(block) is not None
+    )
+
+
+def _parallel_question_gaps(skill: Path) -> list[str]:
+    """Return one message per part of R3.2 and R3.6 that develop-feature's Phase 2 (or Phase 0, for the resume)
+    lacks."""
+    plan = _section_blocks(skill, "Phase 2: Plan")
+    if not plan:
+        return ["develop-feature: SKILL.md has no '## Phase 2: Plan' section"]
+    first_approval = next((index for index, block in enumerate(plan) if _APPROVES.search(block)), len(plan))
+    questions = [block for block in plan[first_approval:] if _is_the_parallel_question(block)]
+    gaps = (
+        []
+        if questions
+        else ["develop-feature Phase 2: no paragraph or list item, after the plan approval, asks about parallel"]
+    )
+    gaps += [
+        f"develop-feature Phase 2: the parallel question does not cover {label}"
+        for label, says_it in _PARALLEL_QUESTION_STEPS.items()
+        if not any(says_it(block) for block in questions)
+    ]
+    resume_blocks = plan + _section_blocks(skill, "Phase 0: Prepare")
+    if not any(_keeps_the_answer_on_resume(block) for block in resume_blocks):
+        gaps.append("develop-feature: no paragraph or list item says a resumed session keeps the parallel answer")
+    return gaps
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -441,6 +522,16 @@ class DevelopFeatureFlowTest(unittest.TestCase):
 
         gaps = _rethink_gaps(skill) + _after_rethink_gaps(skill)
         gaps += _escalation_gaps(skill) + _rethinker_prompt_gaps(prompts)
+
+        self.assertEqual(gaps, [])
+
+    def test_develop_feature_asks_about_parallel_partitions_once(self) -> None:
+        """R3.2, R3.6: after the plan is approved, develop-feature's Phase 2 asks, as a question of its own and only
+        when some slice has a wave of two or more partitions, whether to build them in parallel; it offers parallel
+        only when those partitions' checks and end-to-end tests can run at the same time on the machine and otherwise
+        says why; it records the answer in tasks.md's `- **Parallel:**` header line, and a resumed session keeps that
+        answer instead of asking again."""
+        gaps = _parallel_question_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 

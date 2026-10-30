@@ -76,6 +76,15 @@ explicitly approves `requirements.md`. Then, unless already on a feature branch,
 
 Run the `konundrm-eng:writing-plans` skill on the approved spec, with the base SHA in the
 `tasks.md` header. Do not continue until the user explicitly approves `design.md` and `tasks.md`.
+
+Then, only when some slice has a wave of two or more partitions, ask a separate question: whether
+to build those partitions in parallel, one session per partition. Offer parallel only when the
+partitions' checks and end-to-end tests can run at the same time on this machine; they cannot when
+they need a fixed port, a shared local database, a container name or another single resource.
+Otherwise, say why and build in order; when unsure, say so and recommend building in order. Record
+the answer in the `tasks.md` header line `- **Parallel:** yes` or `no` (`no` unless the user says
+yes). A resumed session keeps that parallel answer and never asks again.
+
 Then commit the three documents as `docs(<scope>): add spec and plan for <slug>`, so every
 later commit contains only its task. From here on, work autonomously until the feature is done or
 an escalation rule fires.

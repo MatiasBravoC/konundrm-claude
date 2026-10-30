@@ -172,11 +172,12 @@ revisiones de código y de las sesiones paralelas. -->
   - Verify: `... -k test_project_root_is_the_worktree_the_session_works_in`
   - Depends on: —
 
-- [ ] **T19** Al aprobar el plan, develop-feature pregunta aparte por el paralelo y guarda la respuesta · `behavior` · Risk: low · Covers: R3.2, R3.6
+- [x] **T19** Al aprobar el plan, develop-feature pregunta aparte por el paralelo y guarda la respuesta · `behavior` · Risk: low · Covers: R3.2, R3.6
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_asks_about_parallel_partitions_once`
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_develop_feature_asks_about_parallel_partitions_once`
   - Depends on: T16
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T20** Una sesión de partición construye solo su partición y deja su informe · `behavior` · Risk: low · Covers: R3.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_a_partition_session_builds_only_its_partition` (`--partition P<n>` en el argument-hint; nunca edita design, requirements ni otras particiones; informe `evidence/P<k>.md`; nunca hace push; PLAN CHANGE la detiene con `BLOCKED:`)
