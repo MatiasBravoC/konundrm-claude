@@ -70,11 +70,12 @@ de cada archivo (algunos son CRLF). -->
   - Depends on: T6
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T8** Existe el agente rethinker: solo lectura, Opus con esfuerzo max y veredictos NEW APPROACH, ADJUST o PLAN CHANGE · `behavior` · Risk: low · Covers: R8.1
+- [x] **T8** Existe el agente rethinker: solo lectura, Opus con esfuerzo max y veredictos NEW APPROACH, ADJUST o PLAN CHANGE · `behavior` · Risk: low · Covers: R8.1
   - Test: `P/hooks/tests/contract/test_agents.py::test_the_rethinker_is_a_read_only_opus_max_agent`
   - Files: `P/agents/rethinker.md` (new)
   - Verify: `... -k test_the_rethinker_is_a_read_only_opus_max_agent`
   - Depends on: T6, T1
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T9** develop-feature replantea una tarea trabada en vez de seguir arreglándola · `behavior` · Risk: low · Covers: R8.1, R8.2, R8.3, R8.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_rethinks_a_stuck_task` (sección `## Rethink`: quinta revisión fallida o tercera de la misma; el intento se guarda con stash y nunca se descarta; PLAN CHANGE espera al usuario; dos fallas más llevan al usuario; la lista de Escalation ya no pregunta a la tercera falla; `dispatch-prompts.md` tiene `## rethinker`)
