@@ -325,11 +325,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T34
   - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T38** La plantilla de resumen final tiene todas las secciones que pide la spec · `behavior` · Risk: low · Covers: R6.3
+- [x] **T38** La plantilla de resumen final tiene todas las secciones que pide la spec · `behavior` · Risk: low · Covers: R6.3
   - Test: `P/hooks/tests/contract/test_templates.py::test_feature_summary_template_has_every_section`
   - Files: `P/skills/develop-feature/templates/feature-summary.md` (new)
   - Verify: `... -k test_feature_summary_template_has_every_section`
   - Depends on: T28
+  - Rounds: spec 3 · code 1 · escalations 0
 
 - [ ] **T39** develop-feature escribe el resumen final y cada PR lo enlaza · `behavior` · Risk: low · Covers: R6.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_writes_the_feature_summary`
