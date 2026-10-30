@@ -606,10 +606,11 @@ para que el changelog cubra también S9. -->
   - Depends on: T52
   - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T54** El README describe el flujo nuevo: agentes, pausas, entregas y notas de mejora · `chore` · Risk: low · Covers: —
+- [x] **T54** El README describe el flujo nuevo: agentes, pausas, entregas y notas de mejora · `chore` · Risk: low · Covers: —
   - Files: `README.md` (modify)
   - Verify: `npm run check`
   - Depends on: T53
+  - Rounds: spec 2 · code 2 · escalations 0
 
 <!-- Agregadas el 2026-10-30 por la sesión principal (permiso del usuario para decidir) con los dos
 huecos que encontró la revisión de spec de toda la feature (Phase 4, paso 2). -->

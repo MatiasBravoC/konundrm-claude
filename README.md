@@ -3,11 +3,14 @@
 Marketplace de plugins de Claude Code de Konundrm. Contiene un plugin, **`konundrm-eng`**, que
 convierte las skills de ingeniería en un flujo fijo: especificar → planificar en entregas del
 tamaño de un pull request → por cada tarea, test en rojo → implementación en verde → refactor →
-revisiones → verificación según el riesgo → commit → pull request revisado por una persona. Cada
-rol corre en un subagente distinto y los controles medibles los imponen hooks, no instrucciones
-que el modelo pueda olvidar. La barrera final es la misma de cualquier equipo: el hook de
-pre-commit, la CI y la protección de rama corren el mismo `check` (ver
-[Límites conocidos](#límites-conocidos)).
+revisiones → verificación según el riesgo → commit → al cerrar cada entrega, su resumen y una
+pausa para que entiendas el código antes de seguir → pull requests revisados por una persona, uno
+apilado por entrega o uno solo. Las partes independientes de cada entrega se pueden construir en
+paralelo, una tarea trabada se replantea en vez de reintentarse y las decisiones de diseño las
+tomas tú. Cada rol corre en un subagente distinto, con el modelo y el esfuerzo que su trabajo
+pide, y los controles medibles los imponen hooks, no instrucciones que el modelo pueda olvidar.
+La barrera final es la misma de cualquier equipo: el hook de pre-commit, la CI y la protección de
+rama corren el mismo `check` (ver [Límites conocidos](#límites-conocidos)).
 
 Las prácticas vienen de lo que publican las empresas que programan con IA a escala (ver
 [De dónde salen las prácticas](#de-dónde-salen-las-prácticas)).
@@ -23,7 +26,7 @@ konundrm-claude/
     ├── .claude-plugin/plugin.json         nombre y versión
     ├── CHANGELOG.md
     ├── skills/                            17 skills (ver tabla)
-    ├── agents/                            6 subagentes (ver tabla)
+    ├── agents/                            8 subagentes (ver tabla)
     ├── hooks/hooks.json                   controles automáticos (ver tabla)
     ├── hooks/run.sh                       lanzador: encuentra Python 3.10+ y corre el script pedido
     ├── hooks/scripts/                     hooks y herramientas en Python (solo librería estándar), un módulo por responsabilidad
@@ -43,19 +46,19 @@ subagentes (`code-reviewer`, como en la documentación de subagentes).
 | --- | --- | --- |
 | `engineering-standards` | Claude y los subagentes | Fuente única: SOLID, Definition of Done, tests (propiedades, tests inestables, regresión), nombres, docs, Git y pull requests pequeños, severidad de revisión, errores, seguridad, verificación según riesgo e integridad de los gates |
 | `writing-specs` | Claude o `/konundrm-eng:writing-specs` | Entrevista y escribe `requirements.md` con criterios EARS y IDs trazables |
-| `writing-plans` | Claude o `/konundrm-eng:writing-plans` | Escribe `design.md` (con amenazas si hay riesgo alto) y `tasks.md`: tareas de 2–5 minutos con su riesgo, agrupadas en entregas del tamaño de un pull request |
+| `writing-plans` | Claude o `/konundrm-eng:writing-plans` | Escribe `design.md` (con amenazas si hay riesgo alto) y `tasks.md`: tareas de 2–5 minutos con su riesgo, agrupadas en entregas del tamaño de un pull request y, dentro de cada una, en particiones que se pueden construir en paralelo. Deja los enfoques abiertos como decisiones, con pros, contras y una recomendación. Sube su propio esfuerzo a `xhigh` |
 | `test-driven-development` | Claude y el `test-writer` | Escribe un test en rojo (de ejemplo o de propiedad) y se detiene; exige cinco corridas verdes |
 | `designing-modules` | Claude y el `implementer` | Decide qué módulo es dueño de cada responsabilidad y busca duplicados con `find_duplicates.py` |
 | `adding-test-coverage` | Claude | Cubre código existente con tests de ejemplo y de propiedades; agrega mutation testing |
 | `documenting-code` | Claude y el `implementer` | Doc-comments estilo Google y el encabezado de cada módulo |
 | `naming-identifiers` | Claude y el `implementer` | Auditoría de nombres y renombrado seguro |
 | `committing-changes` | Claude | Commits atómicos en Conventional Commits, sin emojis, solo con el check en verde |
-| `opening-pull-requests` | Claude | Hace push (con permiso) y abre un pull request por entrega, apilados, con la tabla requisito → test → evidencia y el riesgo |
+| `opening-pull-requests` | Claude | Hace push (con permiso) y abre un pull request apilado por entrega, o uno solo con todas. Arma cada descripción desde el resumen de la entrega, con la tabla requisito → test → evidencia, el riesgo y los commits de cada tarea, y enlaza el resumen de la feature |
 | `reviewing-pull-requests` | Claude, o la CI con `claude-review.yml` | Revisa un PR con los revisores del plugin y publica solo hallazgos verificados; nunca aprueba |
-| `develop-feature` | Solo `/konundrm-eng:develop-feature` | Orquestador de features: encadena todo, verifica según el riesgo y termina en pull requests |
-| `fix-bug` | Solo `/konundrm-eng:fix-bug` | Orquestador de bugs: reproduce, test de regresión en rojo, causa raíz, arreglo mínimo, revisiones y un commit `fix` con `Escaped-gate:` |
-| `migrate-code` | Solo `/konundrm-eng:migrate-code` | Migraciones grandes: inventario determinista, receta aprobada, codemods primero, cada archivo con su gate y lotes del tamaño de un PR |
-| `tidy-codebase` | Solo `/konundrm-eng:tidy-codebase` | Limpieza periódica: duplicados, silenciadores viejos, código sin uso e instrucciones desactualizadas, en cambios pequeños |
+| `develop-feature` | Solo `/konundrm-eng:develop-feature` | Orquestador de features: encadena todo, construye en paralelo si lo apruebas, replantea las tareas trabadas, se detiene tras cada entrega con su resumen, verifica según el riesgo, escribe el resumen de la feature y termina en pull requests (ver [Cómo avanza una feature](#cómo-avanza-una-feature)) |
+| `fix-bug` | Solo `/konundrm-eng:fix-bug` | Orquestador de bugs: reproduce, test de regresión en rojo, causa raíz, arreglo mínimo, revisiones (con replanteo si el arreglo se traba) y un commit `fix` con `Escaped-gate:` |
+| `migrate-code` | Solo `/konundrm-eng:migrate-code` | Migraciones grandes: inventario determinista, receta aprobada, codemods primero, cada archivo con su gate y lotes del tamaño de un PR, cada uno en su rama y con su pull request |
+| `tidy-codebase` | Solo `/konundrm-eng:tidy-codebase` | Limpieza periódica: duplicados, silenciadores viejos, código sin uso e instrucciones desactualizadas, en cambios pequeños, cada uno en su rama y con su pull request |
 | `setup-project` | Solo `/konundrm-eng:setup-project` | Prepara un repo: `check`, pre-commit con secretos, CI con Semgrep y mutación, revisión con IA, `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json` y protección de rama |
 | `measure-impact` | Solo `/konundrm-eng:measure-impact` | Reporta si el flujo mejora la entrega: defectos escapados y de qué gate escaparon, retrabajo, gates y pull requests |
 
@@ -70,27 +73,92 @@ detalles largos viven en archivos de referencia a un nivel de distancia.
 
 ### Subagentes
 
-| Agente | Precarga | Puede editar |
-| --- | --- | --- |
-| `test-writer` | standards, test-driven-development | Solo archivos de test |
-| `implementer` | standards, designing-modules, naming-identifiers, documenting-code | Todo menos tests y los documentos de la feature (`requirements`, `design`, `tasks`) |
-| `spec-reviewer` | standards | Nada (solo lectura) |
-| `code-reviewer` | standards | Nada (solo lectura) |
-| `security-reviewer` | standards | Nada (solo lectura): revisa como atacante las tareas de riesgo alto, contra las amenazas de `design.md` |
-| `finding-verifier` | standards | Nada (solo lectura): intenta refutar cada hallazgo Critical antes de que se corrija |
+| Agente | Modelo / esfuerzo | Precarga | Puede editar |
+| --- | --- | --- | --- |
+| `test-writer` | `opus` / `medium` | standards, test-driven-development | Solo archivos de test |
+| `implementer` | `opus` / `medium` | standards, designing-modules, naming-identifiers, documenting-code | Todo menos tests y los documentos de la feature (`requirements`, `design`, `tasks`) |
+| `spec-reviewer` | `sonnet` / `high` | standards | Nada (solo lectura) |
+| `code-reviewer` | `opus` / `high` | standards | Nada (solo lectura) |
+| `security-reviewer` | `opus` / `xhigh` | standards | Nada (solo lectura): revisa como atacante las tareas de riesgo alto, contra las amenazas de `design.md` |
+| `finding-verifier` | `opus` / `high` | standards | Nada (solo lectura): intenta refutar cada hallazgo Critical antes de que se corrija |
+| `rethinker` | `opus` / `max` | standards, designing-modules | Nada (solo lectura): busca por qué una tarea trabada sigue fallando y dice qué hacer distinto |
+| `process-reviewer` | `sonnet` / `high` | standards | Nada (solo lectura): propone mejoras al plugin desde el registro del flujo |
 
-Los agentes que escriben (`test-writer`, `implementer`) usan el modelo de la sesión. Los revisores no fijan
-modelo, así que con `CLAUDE_CODE_SUBAGENT_MODEL=<modelo>` revisan con un modelo distinto al que escribió
-el código, lo que reduce los puntos ciegos compartidos.
+Cada agente fija su modelo y su esfuerzo en su frontmatter, en vez de heredar los de la sesión, para
+gastar esfuerzo donde rinde. Los orquestadores suben el `test-writer` y el `implementer` a
+`opus`/`high` en las rondas de arreglo, en las tareas de riesgo alto y después de un replanteo, y
+corren en `opus`/`high` la revisión de spec de la feature completa (y la de cada tarea de riesgo
+alto). La revisión de spec de cada tarea de riesgo bajo o medio corre en Sonnet, un modelo
+distinto al de quienes escribieron el código, lo que reduce los puntos ciegos compartidos.
+`writing-plans` sube su propio esfuerzo a `xhigh` mientras planifica; ninguna otra skill cambia el
+modelo ni el esfuerzo de la sesión.
+
+Para que esos valores se respeten, deja sin definir `CLAUDE_CODE_EFFORT_LEVEL` y
+`CLAUDE_CODE_SUBAGENT_MODEL_FORCE`. La primera pasa por encima del `effort` de cada agente y del
+que fija cada despacho; con la segunda en `1`, todos los subagentes usan un solo modelo, sin
+importar su `model` ni el del despacho. `CLAUDE_CODE_SUBAGENT_MODEL` es solo un valor por defecto
+que el `model` de cada agente reemplaza. El esfuerzo de la sesión rige solo para la sesión
+principal, la del orquestador, no para los agentes. Para cambiar el modelo o el esfuerzo de un
+rol, edita el frontmatter de su agente.
+
+### Cómo avanza una feature
+
+- **Particiones en paralelo.** `writing-plans` cierra cada entrega con una tabla `### Partitions`
+  que agrupa sus tareas en particiones (tareas que una sesión construye en orden) y olas
+  (particiones sin dependencias entre sí ni archivos compartidos, salvo `tasks.md` y `evidence/`;
+  como máximo tres). Después de aprobar el plan, `develop-feature` pregunta aparte si construir en
+  paralelo, y lo ofrece solo si los checks y los tests end-to-end de las particiones pueden correr
+  a la vez en tu máquina. Con un sí, construye la primera partición de cada ola y abre (o te da
+  para abrir) una sesión por cada otra
+  (`/konundrm-eng:develop-feature specs/<NNN-slug> --partition P<k>`), con su propio worktree de
+  Git fuera de la carpeta del proyecto. Integra las particiones de a una, con el check después de
+  cada una, se detiene ante un conflicto que no sean las casillas del plan y cierra la ola con una
+  revisión de código sobre toda ella. Un plan sin esa tabla se construye en orden, como antes.
+- **Replanteo.** Una tarea que falla cinco revisiones, o tres veces la misma, no se reintenta: se
+  replantea. El `rethinker` explica por qué los intentos fallan y propone un enfoque nuevo, un
+  ajuste o un cambio de plan; un cambio de plan espera tu aprobación. Si el intento actual se
+  aparta, queda en `git stash` con un mensaje que nombra la tarea y se recupera por su SHA, nunca
+  se descarta. El informe queda en `specs/<NNN-slug>/evidence/T<n>-rethink.md`. Si la tarea sigue
+  fallando dos revisiones más, te pregunta. `fix-bug` hace lo mismo con un bug.
+- **Decisiones de diseño contigo.** Cuando una tarea admite dos o más enfoques razonables, el plan
+  te los muestra al aprobarlo, con pros, contras y una recomendación, y tú eliges. Si un subagente
+  encuentra durante la construcción un enfoque que el plan dejó abierto, esa tarea se pausa hasta
+  que elijas. Cada decisión queda registrada en `tasks.md` y los resúmenes la citan.
+- **Pausa por entrega.** Al cerrar cada entrega, el orquestador escribe y commitea su resumen,
+  `specs/<NNN-slug>/summaries/S<k>.md`: qué cambió y por qué, requisitos, tamaño, riesgos,
+  decisiones, rondas de revisión y replanteos, y un orden de lectura con archivos y líneas. Te lo
+  muestra, te hace dos o tres preguntas sobre el código de la entrega y, si una respuesta está
+  mal, explica la correcta con archivo y líneas. Espera tu visto bueno, que nunca depende de las
+  respuestas; lo que pidas cambiar ahí pasa a ser tareas nuevas o un cambio de plan aprobado antes
+  de la entrega siguiente. Con `- **Checkpoints:** pre-approved` en el encabezado de `tasks.md`
+  (queda así si apruebas las pausas al pedir la feature o con el plan) escribe el resumen y sigue
+  sin detenerse, y en las decisiones abiertas toma la opción recomendada.
+- **Resumen de la feature.** Al final escribe `specs/<NNN-slug>/summary.md`: el problema, qué
+  módulo es dueño de qué, los resúmenes de cada entrega, las decisiones, los requisitos con sus
+  tests y evidencia, los replanteos, los hallazgos refutados, las sugerencias no aplicadas y cómo
+  probar la feature.
+- **Entrega.** Después de la verificación final, y solo si apruebas el push, te ofrece un pull
+  request apilado por entrega (por defecto) o uno solo con todas. Apilados, `risk:high` va solo en
+  las entregas con una tarea de riesgo alto; con uno solo y alguna tarea de riesgo alto, avisa
+  antes que `risk:high` cubrirá la feature completa. Cada descripción sale del resumen de su
+  entrega y enlaza el resumen de la feature.
+- **Notas de mejora.** Al cerrar cada entrega y al final de la feature, el `process-reviewer`
+  lee el registro del flujo (rondas de revisión, escalamientos, replanteos, subagentes bloqueados,
+  eventos de los gates y tus correcciones) y propone mejoras al plugin, cada una con su evidencia.
+  `improvement_notes.py` las guarda, sin código, secretos ni correos, en un archivo común a todos
+  tus proyectos: `~/.claude/konundrm-eng/improvements.md` (o bajo `CLAUDE_CONFIG_DIR`, en
+  `konundrm-eng/improvements.md`, si está definida). Si no puede escribirlo, las deja en
+  `specs/<NNN-slug>/improvement-notes.md` y te avisa. Nada las aplica al plugin por sí solo: tú
+  decides cuáles llevar a un cambio.
 
 ### Controles automáticos (hooks)
 
 | Hook | Cuándo | Qué hace |
 | --- | --- | --- |
-| `session_doctor.py` | Al iniciar la sesión, también después de compactar | Le dice a Claude el comando `check` y las features en curso con su próxima tarea, para que una sesión larga retome su lugar. Avisa si falta Git o si siguen instaladas las skills antiguas. Si no hay Python, avisa `run.sh` |
+| `session_doctor.py` | Al iniciar la sesión, también después de compactar | Le dice a Claude el comando `check` y las features en curso con su próxima tarea (con particiones en paralelo, la próxima de cada partición de la ola en curso), para que una sesión larga retome su lugar. Avisa si falta Git o si siguen instaladas las skills antiguas. Si no hay Python, avisa `run.sh` |
 | `enforce_role_boundaries.py` | Antes de cada edición | Impone las columnas "Puede editar" de la tabla anterior según el subagente que edita (respuesta inmediata) |
 | `block_secret_writes.py` | Antes de cada edición | Si el contenido trae algo con forma de credencial real (claves de AWS, GitHub, Stripe, Anthropic, OpenAI, llaves privadas…), te pregunta antes de escribirlo |
-| `audit_subagent_changes.py` | Al iniciar y al terminar cada subagente | Compara el árbol de trabajo antes y después, sin importar con qué herramienta cambió (Edit, Bash, scripts). Si un rol tocó lo que no le corresponde, se lo devuelve una vez; si insiste, restaura esos archivos y avisa |
+| `audit_subagent_changes.py` | Al iniciar y al terminar cada subagente | Compara el árbol de trabajo antes y después, sin importar con qué herramienta cambió (Edit, Bash, scripts), solo en el árbol que fotografió al iniciar el subagente (el worktree de la sesión). Si un rol tocó lo que no le corresponde, se lo devuelve una vez; si insiste, restaura esos archivos y avisa |
 | `format_and_lint.py` | Después de cada edición | Formatea y pasa el linter al archivo con las herramientas que el proyecto ya usa (ruff, biome, prettier, eslint) y devuelve a Claude los errores que quedan |
 | `gate_git_commit.py` | Antes de cada comando Bash/PowerShell | Bloquea `git commit` si el check falla, si intenta saltarse los hooks, si lo hace un subagente o si los cambios agregan un silenciador sin motivo (`# noqa`, `# type: ignore`, `eslint-disable`, un test saltado o enfocado). Pregunta si agregan algo con forma de credencial. Detecta el commit aunque venga envuelto (`env`, `sudo`, `&`, `bash -c`, `pwsh -Command`, `cmd /c`). Falla cerrado: si el propio hook se rompe, deniega el commit |
 | `guard_new_dependencies.py` | Antes de cada comando Bash/PowerShell | Contra el *slopsquatting* y las dependencias riesgosas: antes de instalar o ejecutar un paquete nuevo consulta el registro público y OSV.dev. Te pide confirmación, con todos los motivos, si no existe, tiene menos de 30 días, casi no se descarga, no se pudo verificar, su última versión tiene vulnerabilidades conocidas o su licencia falta o es copyleft fuerte o de red, propietaria o no libre. Si OSV reporta esa versión como malware, bloquea el comando |
@@ -100,9 +168,10 @@ el código, lo que reduce los puntos ciegos compartidos.
 El turno puede terminar con problemas a propósito solo cuando el mensaje final tiene una línea
 `RED:` (entrega de TDD) o `BLOCKED:` (escalamiento a la persona).
 
-Las skills también usan dos herramientas del plugin: `find_duplicates.py` (bloques de seis o más
-líneas que el cambio copió de otra parte del proyecto; `--all` para todo el repo) y
-`metrics_report.py` (el informe de `measure-impact`).
+Las skills también usan tres herramientas del plugin: `find_duplicates.py` (bloques de seis o más
+líneas que el cambio copió de otra parte del proyecto; `--all` para todo el repo),
+`metrics_report.py` (el informe de `measure-impact`) e `improvement_notes.py` (guarda las notas de
+mejora del `process-reviewer`, ver [Cómo avanza una feature](#cómo-avanza-una-feature)).
 
 Los gates que bloquean, preguntan o restauran algo dejan un evento en un log local por proyecto
 (en los datos del plugin, nunca en el repo), que `/konundrm-eng:measure-impact` cruza con el
@@ -148,8 +217,10 @@ apaga el guard. `KONUNDRM_PR_BUDGET` cambia el presupuesto de líneas por pull r
   sin `sh` en Windows), Claude Code bloquea el comando en vez de dejarlo pasar sin revisar. Sin
   Python, `run.sh` deniega solo los comandos que mencionan un commit.
 - **La auditoría de subagentes atribuye cambios por tiempo.** Corre los subagentes de
-  konundrm-eng de a uno por árbol de trabajo (`develop-feature` ya lo hace). Para trabajar en
-  paralelo, usa un worktree y una sesión por feature: los gates funcionan por árbol de trabajo.
+  konundrm-eng de a uno por árbol de trabajo. `develop-feature` ya lo hace, también al construir
+  en paralelo: cada sesión de partición trabaja en su propio worktree, fuera de la carpeta del
+  proyecto. Si abres sesiones paralelas por tu cuenta, dale a cada una su worktree fuera de la
+  carpeta del proyecto: los gates revisan el worktree en que corre la sesión.
 - **El gate de commit revisa el árbol de trabajo completo, no cada commit parcial.** En Python, el
   framework pre-commit sí corre el `check` sobre lo preparado de cada commit (guarda aparte el
   resto); husky y la CI revisan el árbol o la punta del pull request.
@@ -166,6 +237,10 @@ apaga el guard. `KONUNDRM_PR_BUDGET` cambia el presupuesto de líneas por pull r
   riesgo alto en Python, la mutación se exige en el job `risk:high` de la CI (o usa WSL).
 - **Las métricas son una aproximación.** "Defecto escapado" es un `fix` que toca archivos que una
   tarea cambió en los 30 días anteriores; los eventos de los gates se registran por máquina.
+- **`measure-impact` no junta los eventos de los gates de sesiones paralelas.** Cada worktree
+  registra los suyos por separado.
+- **La mutación en CI de un pull request `risk:high` cubre todo lo que cambia**, no solo los
+  archivos de sus tareas de riesgo alto.
 - **`record_check_result.py` confía en que Claude Code reporta los comandos fallidos como
   `PostToolUseFailure`**, como dice su documentación y como se comprobó en Claude Code 2.1.295.
   Además ignora corridas interrumpidas, en segundo plano o con código de salida distinto de 0.
@@ -225,8 +300,11 @@ puede ver.
 1. En cada repositorio, una vez: `/konundrm-eng:setup-project`. Deja el comando `check`, las
    reglas de arquitectura, pre-commit, CI, `AGENTS.md`, `CLAUDE.md` y la configuración del equipo.
 2. Para cada feature: `/konundrm-eng:develop-feature agregar login con Google`. Aprobarás la spec
-   y el plan; después el orquestador trabaja solo hasta los commits y te pregunta antes de hacer
-   push y abrir un pull request por entrega.
+   y el plan, eligiendo en las decisiones de diseño que quedaron abiertas, y, si hace falta, dirás
+   si construir en paralelo. Después el orquestador trabaja solo y se detiene tras cada entrega
+   para mostrarte su resumen y hacerte unas preguntas, salvo que hayas aprobado las pausas de
+   antemano. Al final te pregunta antes de hacer push y te deja elegir entre un pull request
+   apilado por entrega o uno solo (ver [Cómo avanza una feature](#cómo-avanza-una-feature)).
 3. Para retomar una feature: `/konundrm-eng:develop-feature specs/003-google-login`.
 4. Para cada bug: `/konundrm-eng:fix-bug #123` o la descripción del problema.
 5. Para una migración grande: `/konundrm-eng:migrate-code pasar de Enzyme a Testing Library`.
@@ -257,6 +335,11 @@ ruff format --check . && ruff check . && mypy
 python -m unittest discover -s plugins/konundrm-eng/hooks/tests -t plugins/konundrm-eng/hooks
 ```
 
+Esos tests incluyen los de contrato de `hooks/tests/contract/`, que comprueban sin un modelo los
+acuerdos entre skills, agentes y plantillas: el modelo y el esfuerzo de cada rol, sus permisos,
+cada paso del flujo, la versión y el `CHANGELOG.md`. Cada uno nombra en su docstring los
+requisitos que cubre.
+
 ```bash
 claude plugin eval plugins/konundrm-eng --allow-tools Bash Write Edit
 ```
@@ -264,14 +347,16 @@ claude plugin eval plugins/konundrm-eng --allow-tools Bash Write Edit
 Los casos de comportamiento escriben archivos, crean repos y hacen commits, así que necesitan
 `--allow-tools`; sin ese permiso el runner los marca como "not granted". Los casos que usan
 subagentes (`behavior-review-*`, `behavior-verifier-*`, `behavior-fix-bug-*`,
-`behavior-develop-feature-*`) se comparan mejor con `--ablation none`, porque en el brazo sin
+`behavior-develop-feature-*` y los cinco del flujo por entregas: `behavior-slice-checkpoint`,
+`behavior-design-decision`, `behavior-slice-summary`, `behavior-feature-summary` y
+`behavior-improvement-notes`) se comparan mejor con `--ablation none`, porque en el brazo sin
 plugin los agentes no existen. `behavior-develop-feature-end-to-end` corre una feature completa:
 es largo y caro, para antes de publicar una versión.
 
 En Windows el runner no tiene sandbox para la shell y rechaza cualquier caso con `Bash`
 concedido. Ahí usa `--allow-tools Write Edit`: los casos que necesitan git
-(`behavior-commit-*`, `behavior-fix-bug-*`, `behavior-develop-feature-*`) solo pueden pasar en
-Linux o macOS.
+(`behavior-commit-*`, `behavior-fix-bug-*`, `behavior-develop-feature-*` y los cinco del flujo
+por entregas) solo pueden pasar en Linux o macOS.
 
 Los evals cubren tres cosas: que cada skill se active con su pedido (`triggers-*`), que no se
 active la skill vecina ni ninguna en preguntas ajenas (`not-*`, `no-trigger-*`), y que las skills
@@ -279,7 +364,9 @@ críticas se comporten como prometen, evaluado por un juez LLM (`behavior-*`: TD
 rojo, la spec entrevista antes de escribir, el commit no hace push sin permiso, el gate de commit
 se respeta en vez de saltarse, un bug empieza con su test de regresión, la revisión aprueba un
 cambio limpio sin inventar hallazgos, la cobertura incluye propiedades, un hallazgo falso se
-refuta con evidencia y una feature completa sigue el flujo).
+refuta con evidencia, una feature completa sigue el flujo, cada entrega termina en una pausa con
+su resumen, una decisión abierta se te pregunta, la feature termina con su resumen y el
+`process-reviewer` deja notas de mejora).
 
 Para publicar un cambio, sube `version` en `plugin.json` siguiendo versionado semántico y anota el
 cambio en `CHANGELOG.md`. Sin ese cambio de versión, las instalaciones existentes no se actualizan.
