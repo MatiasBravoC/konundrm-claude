@@ -509,10 +509,11 @@ pedido de ser maximalista: las sugerencias de las revisiones de código que vale
   - Depends on: T17
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T64** La prueba del rethinker revisa los veredictos en la línea `Verdict:` y cuenta MultiEdit como herramienta de escritura · `chore` · Risk: low · Covers: R8.1
+- [x] **T64** La prueba del rethinker revisa los veredictos en la línea `Verdict:` y cuenta MultiEdit como herramienta de escritura · `chore` · Risk: low · Covers: R8.1
   - Files: `P/hooks/tests/contract/test_agents.py` (modify `test_the_rethinker_is_a_read_only_opus_max_agent`)
   - Verify: `... -k test_the_rethinker_is_a_read_only_opus_max_agent`
   - Depends on: T8
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T65** La prueba de roles de solo lectura confirma el nombre del rol antes de la denegación · `chore` · Risk: low · Covers: R8.5
   - Files: `P/hooks/tests/test_roles.py` (modify `test_read_only_roles_may_not_change_anything` y los nombres de los ayudantes de la propiedad)

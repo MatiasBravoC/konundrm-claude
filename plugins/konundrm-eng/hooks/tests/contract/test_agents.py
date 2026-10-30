@@ -11,7 +11,8 @@ RETHINKER = AGENTS_DIR / "rethinker.md"
 RETHINKER_FIELDS = {"name": "rethinker", "model": "opus", "effort": "max"}
 PROCESS_REVIEWER = AGENTS_DIR / "process-reviewer.md"
 PROCESS_REVIEWER_FIELDS = {"name": "process-reviewer", "model": "sonnet", "effort": "high"}
-WRITING_TOOLS = frozenset({"Edit", "Write", "NotebookEdit"})
+# The tools the role hook guards: the PreToolUse matcher in hooks/hooks.json.
+WRITING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 RETHINK_VERDICTS = ("NEW APPROACH", "ADJUST", "PLAN CHANGE")
 WRITERS = (AGENTS_DIR / "test-writer.md", AGENTS_DIR / "implementer.md")
 
@@ -135,15 +136,35 @@ def _rethinker_purpose_gaps(text: str) -> list[str]:
 
 
 def _rethink_report_gaps(text: str) -> list[str]:
-    """Return what the report format lacks: a fenced report whose first line starts with `RETHINK:`, or a verdict."""
-    reports = "\n".join(block for block in _fenced_blocks(text) if block.strip().startswith("RETHINK:"))
+    """Return what the report format lacks: a fenced report whose first line starts with `RETHINK:`, its `Verdict:`
+    line, or a verdict on that line; a verdict outside R8.1's three is a gap too.
+
+    The verdicts are read from the `Verdict:` line alone, split on `|`, so a verdict named elsewhere in the report
+    does not count as offered.
+    """
+    reports = [block for block in _fenced_blocks(text) if block.strip().startswith("RETHINK:")]
     if not reports:
         return ["no fenced report whose first line starts with 'RETHINK:'"]
-    return [
-        f"the RETHINK: report does not offer the verdict {verdict}"
-        for verdict in RETHINK_VERDICTS
-        if re.search(rf"\b{re.escape(verdict)}\b", reports) is None
+    verdict_lines = [
+        line.strip()[len("Verdict:") :]
+        for block in reports
+        for line in block.splitlines()
+        if line.strip().startswith("Verdict:")
     ]
+    if not verdict_lines:
+        return ["the RETHINK: report has no 'Verdict:' line"]
+    offered = [part.strip() for line in verdict_lines for part in line.split("|")]
+    missing = [
+        f"the RETHINK: report's Verdict: line does not offer {verdict}"
+        for verdict in RETHINK_VERDICTS
+        if verdict not in offered
+    ]
+    extra = [
+        f"the RETHINK: report's Verdict: line offers {verdict!r}, which is not one of {list(RETHINK_VERDICTS)}"
+        for verdict in offered
+        if verdict not in RETHINK_VERDICTS
+    ]
+    return missing + extra
 
 
 def _prose(text: str) -> str:
@@ -245,9 +266,9 @@ class RethinkerAgentTest(unittest.TestCase):
 
     def test_the_rethinker_is_a_read_only_opus_max_agent(self) -> None:
         """R8.1, R1.1: agents/rethinker.md defines the rethinker on opus at max effort, read-only by its tools (its
-        tools: list has no Edit, Write or NotebookEdit), that explains why a stuck task's attempts keep failing and
-        what to do differently, in a fenced report that starts with a `RETHINK:` line and offers the verdicts
-        NEW APPROACH, ADJUST and PLAN CHANGE.
+        tools: list has no Edit, Write, MultiEdit or NotebookEdit), that explains why a stuck task's attempts keep
+        failing and what to do differently, in a fenced report that starts with a `RETHINK:` line and whose
+        `Verdict:` line offers exactly the verdicts NEW APPROACH, ADJUST and PLAN CHANGE, separated by `|`.
 
         The hooks' read-only rule for the rethinker role is tested in test_roles.py.
         """
@@ -268,10 +289,10 @@ class ProcessReviewerAgentTest(unittest.TestCase):
 
     def test_the_process_reviewer_is_a_read_only_sonnet_agent(self) -> None:
         """R1.1, R7.1, R7.3: agents/process-reviewer.md defines the process-reviewer on sonnet at high effort,
-        read-only by its tools (its tools: list has no Edit, Write or NotebookEdit), that reviews the flow's record
-        (review rounds, escalations, rethinks, blocked subagents, gate events, user corrections) and proposes
-        improvements to the plugin in a fenced report that starts with an `IMPROVEMENT NOTES:` line and gives each
-        note's title, evidence, affected skill or agent and suggested change; its notes never carry source code,
+        read-only by its tools (its tools: list has no Edit, Write, MultiEdit or NotebookEdit), that reviews the
+        flow's record (review rounds, escalations, rethinks, blocked subagents, gate events, user corrections) and
+        proposes improvements to the plugin in a fenced report that starts with an `IMPROVEMENT NOTES:` line and gives
+        each note's title, evidence, affected skill or agent and suggested change; its notes never carry source code,
         secrets or personal data and describe the problem in general terms instead.
 
         Dispatching it and saving its notes belong to develop-feature (T50); the hooks' read-only rule for the
