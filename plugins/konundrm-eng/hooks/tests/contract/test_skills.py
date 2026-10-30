@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .plugin_files import PLUGIN_ROOT, SKILLS_DIR, read_frontmatter
-from .test_flows import _in_one_sentence, _split_blocks
+from .test_flows import _NEGATION, _blocks, _in_one_sentence, _sentences, _split_blocks
 
 _WRITING_PLANS = SKILLS_DIR / "writing-plans" / "SKILL.md"
 _PARTITIONS_HEADER = re.compile(r"\bwave\W+partition\W+tasks\W+depends on\b")
@@ -386,6 +386,58 @@ class TaskCommitLookupTest(unittest.TestCase):
             found = _git(repo, "log", "--format=%s", "-E", "--grep", "^Task: T1( |$)").split()
         if found != ["feat:", "T1"]:
             gaps.append(f"git log -E --grep '^Task: T1( |$)' found {found}, expected only the T1 commit")
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
+# R6.2: opening-pull-requests builds a slice's pull request description from that slice's summary file.
+_DELIVERY_OPENING_PULL_REQUESTS = SKILLS_DIR / "opening-pull-requests" / "SKILL.md"
+_DELIVERY_SLICE_SUMMARY_PATH = re.compile(r"\bsummaries/s<k>\.md\b")
+_DELIVERY_DESCRIPTION = re.compile(r"\bdescriptions?\b")
+_DELIVERY_BUILT_FROM = re.compile(
+    r"\b(?:use[sd]?|using|build\w*|built|fill\w*|draw\w*|based? on|deriv\w*|compos\w*|tak\w*|from)\b"
+)
+_DELIVERY_WHEN_IT_EXISTS = re.compile(
+    r"\b(?:when|if|whenever|once)\b(?: \S+){0,8} (?:exists?|is present|is there|was written|has been written)\b"
+)
+
+
+def _delivery_slice_summary_gaps(blocks: list[str]) -> list[str]:
+    """Return what opening-pull-requests' blocks lack to build each slice's description from its summary (R6.2)."""
+    summary_blocks = [block for block in blocks if _DELIVERY_SLICE_SUMMARY_PATH.search(block)]
+    if not summary_blocks:
+        return ["never names the slice's summary file `summaries/S<k>.md`"]
+    gaps = []
+    if not any(
+        any(
+            _DELIVERY_SLICE_SUMMARY_PATH.search(sentence)
+            and _DELIVERY_DESCRIPTION.search(sentence)
+            and _DELIVERY_BUILT_FROM.search(sentence)
+            and not _NEGATION.search(sentence)
+            for sentence in _sentences(block)
+        )
+        for block in summary_blocks
+    ):
+        gaps.append("no sentence builds the slice's pull request description from `summaries/S<k>.md`")
+    if not any(_DELIVERY_WHEN_IT_EXISTS.search(block) for block in summary_blocks):
+        gaps.append("does not say the summary is used when `summaries/S<k>.md` exists")
+    return gaps
+
+
+class SlicePullRequestSummaryTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_slice_pull_requests_use_the_slice_summary(self) -> None:
+        """R6.2: when a slice's summary exists, its pull request description is built from it.
+
+        opening-pull-requests/SKILL.md names the slice's summary file `summaries/S<k>.md` and, in one paragraph or
+        list item, says that when that file exists the description of that slice's pull request is built from it
+        (in one sentence, not negated).
+        """
+        gaps = [
+            f"opening-pull-requests/SKILL.md: {gap}"
+            for gap in _delivery_slice_summary_gaps(_blocks(_DELIVERY_OPENING_PULL_REQUESTS))
+        ]
 
         self.assertEqual(gaps, [], "\n".join(gaps))
 

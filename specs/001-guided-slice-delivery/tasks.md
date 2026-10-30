@@ -288,11 +288,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T29, T27
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T33** La descripción de la PR de cada slice usa su resumen · `behavior` · Risk: low · Covers: R6.2
+- [x] **T33** La descripción de la PR de cada slice usa su resumen · `behavior` · Risk: low · Covers: R6.2
   - Test: `P/hooks/tests/contract/test_skills.py::test_slice_pull_requests_use_the_slice_summary`
   - Files: `P/skills/opening-pull-requests/SKILL.md` (modify)
   - Verify: `... -k test_slice_pull_requests_use_the_slice_summary`
   - Depends on: T29
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ## Slice S6: entrega final y resumen de la feature
 

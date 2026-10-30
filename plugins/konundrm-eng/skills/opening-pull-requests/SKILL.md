@@ -92,6 +92,14 @@ For a fix-bug branch, the table has the `B1` criterion and the regression test, 
 why" states the root cause and the escaped gate. Keep the attribution lines configured for the
 session.
 
+When `specs/<NNN-slug>/summaries/S<k>.md` exists, build that slice's description from it: its
+"What changed and why" feeds What and why, "Requirements covered" the table, "Risks and high-risk
+tasks" and "Reading order" Risk and where to look first, "Decisions" and the review rounds How it
+was built. Add what the summary lacks (evidence links, the check result, the stacked-on line, the
+attribution). The summary's links are relative to `summaries/` (`../requirements.md`), and GitHub
+resolves links in a pull request body against the pull request page, so rewrite them to
+repository paths.
+
 ### 5. Ask, then push and open
 
 Show the user every branch, its base, title, labels and draft state, and wait for an explicit
