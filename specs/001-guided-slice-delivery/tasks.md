@@ -5,6 +5,7 @@
 - **Check command:** `npm run check`
 - **Base commit:** `b8c3142`
 - **Pull request budget:** 400 changed lines per slice
+- **Checkpoints:** pre-approved <!-- el usuario lo aprobó durante la corrida (2026-10-30): seguir sin pausas entre slices -->
 
 <!-- Rutas relativas a la raíz del repositorio; P = plugins/konundrm-eng.
 Verify de una prueba: python -m unittest discover -s plugins/konundrm-eng/hooks/tests -t plugins/konundrm-eng/hooks -k <test_name>
