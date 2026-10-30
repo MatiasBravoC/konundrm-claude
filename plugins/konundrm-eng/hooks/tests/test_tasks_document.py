@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import sys
 import tempfile
 import unittest
@@ -36,6 +37,55 @@ TASKS = """# Tasks: Coupons
   - Rounds: spec 9 · code 9 · escalations 9
 -->
 """
+
+RANGE_SEPARATORS = ("\u2013", "\u2014", "-", "..", "to")
+TASK_COUNT = 60
+
+# A Tasks-cell item: (first, last, is_single). A single ID uses only `first`.
+Item = tuple[int, int, bool]
+
+
+def _generate_rows(rng: random.Random) -> list[list[Item]]:
+    """Up to five rows of up to four items over T1-T60; about half of the ranges run backwards."""
+    return [
+        [(rng.randint(1, TASK_COUNT), rng.randint(1, TASK_COUNT), rng.random() < 0.4) for _ in range(rng.randint(0, 4))]
+        for _ in range(rng.randint(1, 5))
+    ]
+
+
+def _render_item(rng: random.Random, item: Item) -> str:
+    """One Tasks-cell item as Markdown: an ID or a range with a random separator, spacing and bold."""
+    first, last, is_single = item
+    if is_single:
+        text = f"T{first}"
+    else:
+        space = rng.choice(("", " "))
+        text = f"T{first}{space}{rng.choice(RANGE_SEPARATORS)}{space}T{last}"
+    return f"**{text}**" if rng.random() < 0.3 else text
+
+
+def _render_partitions(rng: random.Random, rows: list[list[Item]]) -> str:
+    """A Partitions table whose row i holds partition P<i>, with whole cells bold at random."""
+    lines = ["| Wave | Partition | Tasks | Depends on |", "| --- | --- | --- | --- |"]
+    for index, items in enumerate(rows, start=1):
+        cell = ", ".join(_render_item(rng, item) for item in items) or "\u2014"
+        if items and rng.random() < 0.3:
+            cell = f"**{cell}**"
+        partition = f"**P{index}**" if rng.random() < 0.3 else f"P{index}"
+        lines.append(f"| {index} | {partition} | {cell} | \u2014 |")
+    return "\n".join(lines) + "\n"
+
+
+def _expected_partitions(rows: list[list[Item]]) -> dict[str, str | None]:
+    """Reference model: the first row listing a task wins; a range a..b lists a to b, nothing if a > b."""
+    expected: dict[str, str | None] = {f"T{number}": None for number in range(1, TASK_COUNT + 1)}
+    for index, items in enumerate(rows, start=1):
+        for first, last, is_single in items:
+            listed = [first] if is_single else range(first, last + 1)
+            for number in listed:
+                if expected[f"T{number}"] is None:
+                    expected[f"T{number}"] = f"P{index}"
+    return expected
 
 
 class ReadTasksTest(unittest.TestCase):
@@ -135,6 +185,20 @@ class ReadTasksTest(unittest.TestCase):
                 "T9": None,
             },
         )
+
+    def test_partitions_follow_the_first_row_and_ranges_cover_their_bounds(self) -> None:
+        # R3.1, R3.8: over 300 seeded tables, the first row that lists a task wins, and a range
+        # Ta<sep>Tb covers exactly a to b (nothing when a > b), whatever the separator or bolding.
+        rng = random.Random(11)  # noqa: S311 - seeded for reproducible test data, not cryptography
+        task_lines = "".join(f"- [ ] **T{number}** Task {number}\n" for number in range(1, TASK_COUNT + 1))
+        for case in range(300):
+            rows = _generate_rows(rng)
+            table = _render_partitions(rng, rows)
+            with self.subTest(case=case, table=table):
+                _, tasks = self.read(
+                    f"- **Status:** Approved\n\n## Slice S1: apply\n\n{task_lines}\n### Partitions\n\n{table}"
+                )
+                self.assertEqual({task.id: task.partition for task in tasks}, _expected_partitions(rows))
 
 
 if __name__ == "__main__":

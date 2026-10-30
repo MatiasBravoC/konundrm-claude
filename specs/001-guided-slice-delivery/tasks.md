@@ -109,7 +109,8 @@ de cada archivo (algunos son CRLF). -->
   - Verify: `... -k test_expands_task_ranges_and_reads_bold_cells`
   - Depends on: T11
 
-- [ ] **T13** Cada tarea toma la primera fila que la lista, y un rango cubre exactamente sus límites · `property` · Risk: medium · Covers: R3.1, R3.8
+- [x] **T13** Cada tarea toma la primera fila que la lista, y un rango cubre exactamente sus límites · `property` · Risk: medium · Covers: R3.1, R3.8
+  - Rounds: spec 1 · code 1 · escalations 0
   - Test: `P/hooks/tests/test_tasks_document.py::test_partitions_follow_the_first_row_and_ranges_cover_their_bounds`
   - Generator domain: 300 tablas con `random.Random(11)`: hasta 5 filas, IDs T1–T60 en listas y rangos con separadores `–`, `—`, `-`, `..` y `to`, con y sin negrita
   - Invariants: la asignación coincide con un cálculo directo de "primera fila que lista la tarea"; un rango con a > b no asigna nada
