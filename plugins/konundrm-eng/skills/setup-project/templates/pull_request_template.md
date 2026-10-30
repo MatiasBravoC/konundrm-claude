@@ -17,6 +17,11 @@ read first, and what they guard. -->
 
 <!-- The check command's result and anything verified by hand: commands, output, screenshots. -->
 
+## Commits, one per task
+
+<!-- Every commit in order, oldest first (git log --reverse), each as its task ID (T<n>, from
+the Task: line in its body), short SHA and subject. -->
+
 ## Not in this pull request
 
 <!-- Later slices, known follow-ups. -->

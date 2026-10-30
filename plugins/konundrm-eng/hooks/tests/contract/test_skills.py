@@ -13,7 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .plugin_files import PLUGIN_ROOT, SKILLS_DIR, read_frontmatter
+from .plugin_files import PLUGIN_ROOT, SKILLS_DIR, read_frontmatter, read_section
 from .test_flows import _NEGATION, _blocks, _in_one_sentence, _section_blocks, _sentences, _split_blocks
 
 _WRITING_PLANS = SKILLS_DIR / "writing-plans" / "SKILL.md"
@@ -801,6 +801,147 @@ class SingleDeliveryRiskWarningTest(unittest.TestCase):
         gaps = _delivery_single_risk_gaps(
             _blocks(_DELIVERY_OPENING_PULL_REQUESTS), _section_blocks(_DELIVERY_DEVELOP_FEATURE, "Phase 4: Finish")
         )
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
+# R2.5: every pull request description lists its commits in order, each with the task ID from its `Task:` line.
+_DELIVERY_PULL_REQUEST_TEMPLATE = SKILLS_DIR / "setup-project" / "templates" / "pull_request_template.md"
+_DELIVERY_COMMITS_HEADING = "Commits, one per task"
+_DELIVERY_FENCE = re.compile(r"\s*(?:```|~~~)")
+_DELIVERY_COMMIT = re.compile(r"\bcommits?\b")
+_DELIVERY_IN_ORDER = re.compile(
+    r"\boldest first\b|--reverse\b|\bchronologic\w*\b|\bin (?:commit |their |the same |the )?order\b"
+    r"|\bin the order (?:they were|of) \w+"
+)
+_DELIVERY_INVERTED_ORDER = re.compile(
+    r"\b(?:newest|latest|most recent|last) (?:commit )?first\b|\breverse(?:d)? (?:chronological )?order\b"
+    r"|\bany order\b|\bunordered\b"
+)
+_DELIVERY_TASK_ID = re.compile(r"\btask ids?\b|\bt<n>|\bt\d+\b")
+_DELIVERY_PARTIAL = re.compile(r"\b(?:only|solely|some|high[- ]risk)\b")
+_DELIVERY_TASK_LINE = re.compile(r"\btask:(?: \S+){0,6}? (?:lines?|trailers?)\b")
+_DELIVERY_READ_FROM = re.compile(r"\b(?:from|reads?|reading|tak\w*|comes?|pull\w*|extract\w*|parse\w*)\b")
+# A sentence about the commit listing: its heading, "commits section", "commit list", "list of commits", or a listing
+# verb a few words before "commit(s)" ("do not list the commits", "include every commit").
+_DELIVERY_COMMIT_LISTING = re.compile(
+    rf"\b{re.escape(_DELIVERY_COMMITS_HEADING.lower())}\b"
+    r"|\bcommits?(?:['\u2019]s?)? (?:section|list|listing|table|entries)\b"
+    r"|\blists? of(?: \S+){0,2}? commits?\b"
+    r"|\b(?:list|show|includ|enumerat|add|print|writ|giv|mention|keep)\w*\b(?: \S+){0,3}? commits?\b"
+)
+# Ways to leave the listing out that _DELIVERY_NEGATION does not read as negations.
+_DELIVERY_SKIPS_SECTION = re.compile(
+    r"\b(?:skip\w*|omit\w*|drop\w*|remov\w*|delet\w*|exclud\w*|strip\w*|forgo\w*|hid(?:e|es|ing|den)|cut)\b"
+    r"|\b(?:leav\w*|left)\b(?: \S+){0,6}? out\b"
+)
+_DELIVERY_GIT_LOG = re.compile(r"\bgit log\b")
+# git log's only oldest-first option.
+_DELIVERY_OLDEST_FIRST_OPTION = re.compile(r"(?<!\S)--reverse\b")
+
+
+def _delivery_commits_section(path: Path) -> list[str]:
+    """Return the blocks of the `## Commits, one per task` section of a file, stopping at a code fence (R2.5)."""
+    lines = read_section(path, _DELIVERY_COMMITS_HEADING).splitlines()
+    end = next((index for index, line in enumerate(lines) if _DELIVERY_FENCE.match(line)), len(lines))
+    return _split_blocks(lines[:end])
+
+
+def _delivery_commit_list_gaps(name: str, path: Path) -> list[str]:
+    """Return what one description template's commits section lacks to list its commits in order with task IDs."""
+    blocks = _delivery_commits_section(path)
+    if not blocks:
+        return [f"{name}: has no `## {_DELIVERY_COMMITS_HEADING}` section"]
+    sentences = [sentence for block in blocks for sentence in _sentences(block)]
+    gaps = []
+    if not any(
+        _DELIVERY_IN_ORDER.search(s) and not _DELIVERY_NEGATION.search(s) and not _DELIVERY_INVERTED_ORDER.search(s)
+        for s in sentences
+    ):
+        gaps.append(f"{name}: the commits section never says the commits are listed in order, oldest first")
+    gaps.extend(
+        f"{name}: the commits section orders them otherwise: {s.strip()!r}"
+        for s in sentences
+        if _DELIVERY_INVERTED_ORDER.search(s)
+    )
+    if not any(
+        _DELIVERY_COMMIT.search(s)
+        and _DELIVERY_TASK_ID.search(s)
+        and not _DELIVERY_NEGATION.search(s)
+        and not _DELIVERY_PARTIAL.search(s)
+        for s in sentences
+    ):
+        gaps.append(f"{name}: the commits section never lists every commit with its task ID")
+    return gaps
+
+
+def _delivery_task_line_gaps(blocks: list[str]) -> list[str]:
+    """Return what opening-pull-requests lacks to take each commit's task ID from its `Task:` line (R2.5).
+
+    Also returns every sentence that refers to the commit listing (`_DELIVERY_COMMIT_LISTING`) and negates it
+    (`_DELIVERY_NEGATION`) or leaves it out (`_DELIVERY_SKIPS_SECTION`), whatever delivery it names, and the gaps of
+    `_delivery_git_log_gaps`.
+    """
+    sentences = [sentence for block in blocks for sentence in _sentences(block)]
+    gaps = []
+    if not any(
+        _DELIVERY_TASK_LINE.search(s)
+        and _DELIVERY_COMMIT.search(s)
+        and _DELIVERY_TASK_ID.search(s)
+        and _DELIVERY_READ_FROM.search(s)
+        and not _DELIVERY_NEGATION.search(s)
+        for s in sentences
+    ):
+        gaps.append(
+            "opening-pull-requests/SKILL.md: no sentence says each commit's task ID comes from its `Task:` line"
+        )
+    gaps.extend(
+        f"opening-pull-requests/SKILL.md: drops or negates the commits section: {s.strip()!r}"
+        for s in sentences
+        if _DELIVERY_COMMIT_LISTING.search(s) and (_DELIVERY_NEGATION.search(s) or _DELIVERY_SKIPS_SECTION.search(s))
+    )
+    return gaps + _delivery_git_log_gaps(sentences)
+
+
+def _delivery_git_log_gaps(sentences: list[str]) -> list[str]:
+    """Return what the skill's `git log` command for the commit listing lacks to list them oldest first (R2.5).
+
+    The command is a sentence naming both `git log` and the commit listing (`_DELIVERY_COMMIT_LISTING`); at least one
+    must exist, and every one must pass `--reverse`, since git log lists newest first by default.
+    """
+    commands = [s for s in sentences if _DELIVERY_GIT_LOG.search(s) and _DELIVERY_COMMIT_LISTING.search(s)]
+    if not commands:
+        return ["opening-pull-requests/SKILL.md: no sentence gives the `git log` command that lists the commits"]
+    return [
+        f"opening-pull-requests/SKILL.md: lists the commits with `git log` without `--reverse`: {s.strip()!r}"
+        for s in commands
+        if not _DELIVERY_OLDEST_FIRST_OPTION.search(s)
+    ]
+
+
+class PullRequestTaskCommitsTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_pull_requests_list_their_task_commits(self) -> None:
+        """R2.5: each pull request description lists its commits in order, each with its task ID.
+
+        Both opening-pull-requests/SKILL.md (the description sections in its step 4 fenced block) and setup-project's
+        pull_request_template.md have a `## Commits, one per task` section. In each, one sentence, not negated and not
+        inverted ("newest first", "reverse order", "any order"), lists the commits in order (oldest first, `git log
+        --reverse`, chronological, "in order"); one sentence, not negated and not narrowed ("only", "some",
+        "high-risk"), lists the commits with their task ID (`T<n>` or "task ID"). The skill also says, in one
+        unnegated sentence, that each commit's task ID is read from its `Task:` line; gives the `git log` command for
+        the listing with `--reverse`, so it comes out oldest first; and has no sentence that refers to the listing (its
+        heading, "commits section", "commit list", "list of commits", "list the commits") while negating it or leaving
+        it out ("skip", "omit", "drop", "leave … out", "not", "without"), for either delivery (stacked or single).
+        """
+        gaps = [
+            *_delivery_commit_list_gaps("opening-pull-requests/SKILL.md", _DELIVERY_OPENING_PULL_REQUESTS),
+            *_delivery_commit_list_gaps(
+                "setup-project/templates/pull_request_template.md", _DELIVERY_PULL_REQUEST_TEMPLATE
+            ),
+            *_delivery_task_line_gaps(_blocks(_DELIVERY_OPENING_PULL_REQUESTS)),
+        ]
 
         self.assertEqual(gaps, [], "\n".join(gaps))
 

@@ -95,6 +95,10 @@ they guard>
 ## Verification
 <check command result, mutation score for high-risk code, end-to-end evidence>
 
+## Commits, one per task
+<every commit of this pull request in order, oldest first, each as its task ID (T<n>), short SHA
+and subject>
+
 ## Not in this pull request
 <later slices, Suggestions not applied, known follow-ups>
 
@@ -107,6 +111,12 @@ For a stacked slice, start the description with `Stacked on #<number>: merge tha
 For a fix-bug branch, the table has the `B1` criterion and the regression test, and "What and
 why" states the root cause and the escaped gate. Keep the attribution lines configured for the
 session.
+
+List Commits, one per task with `git log --reverse --format='%h %s' <range>`, where the range
+of a stacked slice is `<previous slice branch>..<slice branch>` (S1 starts at `<base>`) and the
+range of the single pull request is `<base>..HEAD`. Take each commit's task ID from the
+`Task: T<n> · Covers: R…` line in its body; a commit without that line (spec and plan, summary,
+`Status: Done`) shows `—` in its place.
 
 When `specs/<NNN-slug>/summaries/S<k>.md` exists, build that slice's description from it: its
 "What changed and why" feeds What and why, "Requirements covered" the table, "Risks and high-risk

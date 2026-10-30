@@ -318,11 +318,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T34
   - Rounds: spec 3 · code 3 · escalations 0
 
-- [ ] **T37** Cada descripción de PR lista sus commits en orden con el ID de tarea · `behavior` · Risk: low · Covers: R2.5
+- [x] **T37** Cada descripción de PR lista sus commits en orden con el ID de tarea · `behavior` · Risk: low · Covers: R2.5
   - Test: `P/hooks/tests/contract/test_skills.py::test_pull_requests_list_their_task_commits` (sección "Commits, one per task" en la skill y en la plantilla de PR; el ID sale de la línea `Task:` de cada commit)
   - Files: `P/skills/opening-pull-requests/SKILL.md`, `P/skills/setup-project/templates/pull_request_template.md` (modify)
   - Verify: `... -k test_pull_requests_list_their_task_commits`
   - Depends on: T34
+  - Rounds: spec 2 · code 2 · escalations 0
 
 - [ ] **T38** La plantilla de resumen final tiene todas las secciones que pide la spec · `behavior` · Risk: low · Covers: R6.3
   - Test: `P/hooks/tests/contract/test_templates.py::test_feature_summary_template_has_every_section`
