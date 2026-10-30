@@ -118,9 +118,10 @@ place of the task. There, `<NNN-slug> T<n>` becomes `<YYYY-MM-DD>-<slug> B1`, th
 steps 1, 2 and 3 become steps 3, 5 and 6 here, and the RETHINK report goes in
 `specs/bugs/<YYYY-MM-DD>-<slug>-rethink.md`, which lands in the fix commit. A set-aside attempt is
 stashed with the message `<YYYY-MM-DD>-<slug> B1 attempt set aside by rethink`. To recover it, the
-user runs `git stash list --grep="<YYYY-MM-DD>-<slug> B1 attempt set aside by rethink" --format=%gd`,
-which prints its entry (`stash@{<n>}`), and right after it `git stash apply <entry>` with that
-entry. If two more reviews fail after the rethink, escalate.
+user runs `git stash list --grep="<YYYY-MM-DD>-<slug> B1 attempt set aside by rethink" --format=%H`,
+which prints its commit SHA, and then `git stash apply <sha>` with that SHA (a SHA does not shift
+when another session stashes, and works in PowerShell). If two more reviews fail after the
+rethink, escalate.
 
 ### 7. Verify by risk
 

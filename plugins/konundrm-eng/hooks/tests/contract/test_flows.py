@@ -389,8 +389,13 @@ def _fix_bug_escalation_gaps(skill: Path) -> list[str]:
 _STASH_PUSH_MESSAGE = re.compile(r'\bgit stash push\b[^"]*?(?<!\S)-m "([^"]+)"')
 _STASH_GREP_VALUE = re.compile(r"""--grep(?:=|\s+)(?:"([^"]*)"|'([^']*)'|(\S+))""")
 _STASH_APPLY = re.compile(r"\bgit stash apply\b(?:\s+(?:--index|-q|--quiet))*\s*")
-# What may follow `git stash apply` and its options: a placeholder, a command substitution or stash@{<...>}.
-_STASH_NAMED_ENTRY = re.compile(r"""["']?(?:<[^>]+>|\$\(|stash@\{<[^>]+>\})""")
+# What may follow `git stash apply` and its options in PowerShell too: a quoted placeholder naming the entry, a quoted
+# stash@{<...>} or a quoted command substitution. Unquoted, PowerShell reads the braces of stash@{3} as a script block.
+_STASH_NAMED_ENTRY = re.compile(r"""(["'])(?:<[^<>"']*entry[^<>"']*>|stash@\{<[^<>"']+>\})\1|"\$\(""")
+# A SHA has no braces, so it may go unquoted, but only after a lookup that prints SHAs (--format=%H, lowercased).
+_STASH_SHA_ENTRY = re.compile(r"""(["']?)<sha>\1""")
+_STASH_SHA_LOOKUP = re.compile(r"""--format[= ]["']?%h\b""")
+_STASH_UNQUOTED_BRACES = re.compile(r"<[^<>]*entry[^<>]*>|stash@\{<[^<>]+>\}")
 _STASH_TASK = "<nnn-slug> t<n>"  # develop-feature's part of the message that fix-bug replaces
 _STASH_BUG = "<yyyy-mm-dd>-<slug> b1"
 
@@ -412,15 +417,31 @@ def _stash_finds_and_applies(block: str, message: str) -> bool:
     return any(message in "".join(value) for value in _STASH_GREP_VALUE.findall(block))
 
 
+def _stash_apply_problem(block: str, rest: str) -> str | None:
+    """Return why the argument at the start of rest, which follows a `git stash apply` in block, does not name its
+    stash entry in a form PowerShell also runs, or None when it does."""
+    if _STASH_NAMED_ENTRY.match(rest):
+        return None
+    if _STASH_SHA_ENTRY.match(rest):
+        if _STASH_SHA_LOOKUP.search(block):
+            return None
+        return "applies <sha> but no git stash list in its block prints SHAs with --format=%H"
+    if _STASH_UNQUOTED_BRACES.match(rest):
+        return "leaves its entry unquoted, and PowerShell reads the braces of stash@{n} as a script block"
+    return "does not name its stash entry; a position such as stash@{0} or <n> shifts with every push"
+
+
 def _stash_unnamed_applies(skill: str, path: Path) -> list[str]:
-    """Return one message per `git stash apply` in a SKILL.md that does not name its entry, quoting it."""
+    """Return one message per `git stash apply` in a SKILL.md that does not name its entry in a form PowerShell also
+    runs, quoting the command and saying why."""
     gaps = []
     for block in _blocks(path):
         for match in _STASH_APPLY.finditer(block):
             rest = block[match.end() :]
-            if _STASH_NAMED_ENTRY.match(rest) is None:
-                quoted = match.group() + re.match(r"\S*", rest).group()
-                gaps.append(f"{skill}: {quoted.strip()!r} does not name its stash entry; a position shifts (R8.2)")
+            problem = _stash_apply_problem(block, rest)
+            if problem is not None:
+                quoted = match.group() + rest.split(" ", 1)[0]
+                gaps.append(f"{skill}: {quoted.strip()!r} {problem} (R8.2)")
     return gaps
 
 
@@ -1920,7 +1941,9 @@ class OtherFlowsTest(unittest.TestCase):
         by the message it was stashed with (`git stash list --grep=<message>`) right before `git stash apply`, and no
         `git stash apply` in either SKILL.md goes without its entry. Git worktrees share one stash list that other
         sessions push to, so a bare apply restores the newest entry, maybe another session's work, and a position
-        such as `stash@{0}` shifts with every push."""
+        such as `stash@{0}` or a number such as `<n>` shifts with every push. The entry is quoted (`"<entry>"`,
+        `"stash@{<n>}"`, `"$(...)"`) or is a `<sha>` from a lookup with `--format=%H`, because the user may run these
+        commands in PowerShell, which reads the braces of an unquoted `stash@{3}` as a script block and git fails."""
         gaps = _stash_recovery_gaps()
 
         self.assertEqual(gaps, [])

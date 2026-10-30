@@ -269,11 +269,12 @@ review, or when the same review fails a third time, stop the fix rounds and:
 3. Save the RETHINK report as `specs/<NNN-slug>/evidence/T<n>-rethink.md`, after any stash so the
    stash does not take it, adding the stash message when you set the attempt aside. To recover the
    attempt, the user runs
-   `git stash list --grep="<NNN-slug> T<n> attempt set aside by rethink" --format=%gd`, which
-   prints its entry (`stash@{<n>}`), and right after it `git stash apply <entry>` with that entry.
-   Look the entry up by its message each time, never reuse a position such as `stash@{0}`:
-   positions shift with every new stash, and Git worktrees share one stash list. The file lands in
-   the task's commit.
+   `git stash list --grep="<NNN-slug> T<n> attempt set aside by rethink" --format=%H`, which
+   prints its commit SHA, and then `git stash apply <sha>` with that SHA. Look the attempt up by its
+   message each time, never reuse a position such as `stash@{0}`: positions shift with every new
+   stash, and Git worktrees share one stash list. A SHA does not shift if another session stashes
+   between the two commands, and it has no braces, which PowerShell would read as a script block in
+   an unquoted `stash@{<n>}`. The file lands in the task's commit.
 4. One rethink per task. If the task still fails two more reviews, stop and ask the user (an
    escalation), with the RETHINK report and, when you set the attempt aside, its stash message.
 

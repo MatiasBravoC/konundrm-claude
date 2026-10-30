@@ -522,7 +522,7 @@ pedido de ser maximalista: las sugerencias de las revisiones de código que vale
   - Rounds: spec 1 · code 1 · escalations 0
 
 - [x] **T66** Un intento apartado se recupera nombrando su entrada del stash por el mensaje, nunca por posición · `behavior` · Risk: low · Covers: R8.2
-  - Test: `P/hooks/tests/contract/test_flows.py::test_a_set_aside_attempt_is_recovered_by_its_stash_message` (develop-feature y fix-bug: `git stash list --grep=<mensaje> --format=%gd` o equivalente; ningún `git stash apply` sin la entrada)
+  - Test: `P/hooks/tests/contract/test_flows.py::test_a_set_aside_attempt_is_recovered_by_its_stash_message` (develop-feature y fix-bug: la entrada sale de `git stash list --grep=<mensaje>`; desde T75 se aplica por su SHA (`--format=%H`), que también funciona en PowerShell; ningún `git stash apply` sin la entrada)
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/fix-bug/SKILL.md` (modify)
   - Verify: `... -k test_a_set_aside_attempt_is_recovered_by_its_stash_message`
   - Depends on: T10
@@ -581,11 +581,12 @@ S3 y de agentes (T61, T63, T66 y T68). -->
   - Depends on: T63
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T75** Los comandos que recuperan un intento apartado citan la entrada del stash, para que funcionen en PowerShell · `behavior` · Risk: low · Covers: R8.2
+- [x] **T75** Los comandos que recuperan un intento apartado citan la entrada del stash, para que funcionen en PowerShell · `behavior` · Risk: low · Covers: R8.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_a_set_aside_attempt_is_recovered_by_its_stash_message` (se endurece: `git stash apply "<entry>"` con comillas, o por SHA; una entrada `stash@{…}` sin comillas o un `<n>` suelto fallan)
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/fix-bug/SKILL.md` (modify)
   - Verify: `... -k test_a_set_aside_attempt_is_recovered_by_its_stash_message`
   - Depends on: T66
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T76** La sección Model and effort no contradice su tabla sobre los primeros intentos · `chore` · Risk: low · Covers: —
   - Files: `P/skills/develop-feature/SKILL.md` (modify: "First attempts on low- and medium-risk tasks run at `medium`…")
