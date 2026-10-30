@@ -464,11 +464,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
 
 ## Slice S8: suite, evaluaciones y versión
 
-- [ ] **T51** Toda prueba de contrato nombra en su docstring los requisitos que protege · `behavior` · Risk: low · Covers: R10.2
+- [x] **T51** Toda prueba de contrato nombra en su docstring los requisitos que protege · `behavior` · Risk: low · Covers: R10.2
   - Test: `P/hooks/tests/contract/test_meta.py::test_every_contract_test_names_its_requirements`
   - Files: — (puede pasar al llegar: devolver CHARACTERIZATION)
   - Verify: `... -k test_every_contract_test_names_its_requirements`
   - Depends on: T50
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T52** Hay una evaluación de comportamiento por cada mecanismo nuevo con usuario · `behavior` · Risk: low · Covers: R10.3
   - Test: `P/hooks/tests/contract/test_release.py::test_each_new_mechanism_has_a_behavior_eval` (`behavior-slice-checkpoint`, `behavior-design-decision`, `behavior-slice-summary`, `behavior-feature-summary`, `behavior-improvement-notes`, cada una con `prompt.md` con frontmatter y al menos un grader con `type:`)
