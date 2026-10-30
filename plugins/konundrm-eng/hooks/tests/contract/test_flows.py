@@ -2529,6 +2529,47 @@ def _delivery_link_gaps(blocks: list[str]) -> list[str]:
     ]
 
 
+def _delivery_normalized(text: str) -> str:
+    """Return text normalized as `_split_blocks` normalizes a block: lowercased, no backticks, single-spaced."""
+    return " ".join(_split_blocks(text.splitlines()))
+
+
+def _delivery_pull_requests_row(blocks: list[str]) -> str | None:
+    """Return the table row whose first cell is `Pull requests` (develop-feature's Roles row), or None without one.
+
+    Args:
+        blocks: develop-feature's blocks, from `_blocks`.
+    """
+    rows = (block for block in blocks if block.startswith("|"))
+    return next((row for row in rows if row.strip("|").split("|")[0].strip() == "pull requests"), None)
+
+
+def _delivery_naming_gaps(develop_feature: Path, opening_pull_requests: Path) -> list[str]:
+    """Return one message per place that does not name both deliveries (R2.2).
+
+    The places are develop-feature's description, its Roles row for pull requests and opening-pull-requests'
+    description. Each one must name the stacked pull requests, one per slice, and a single pull request with every
+    slice (`_delivery_offers_both` on the place's whole text); this checks only that both are named, not what the
+    text says about them. A missing Roles row is a gap.
+
+    Args:
+        develop_feature: develop-feature's SKILL.md.
+        opening_pull_requests: opening-pull-requests' SKILL.md.
+    """
+    both = "both deliveries (stacked pull requests, one per slice, and a single pull request)"
+    gaps = []
+    if not _delivery_offers_both(_delivery_normalized(read_frontmatter(develop_feature).get("description", ""))):
+        gaps.append(f"develop-feature description does not name {both}")
+    row = _delivery_pull_requests_row(_blocks(develop_feature))
+    if row is None:
+        gaps.append("develop-feature has no Roles row for Pull requests")
+    elif not _delivery_offers_both(row):
+        gaps.append(f"develop-feature Roles row for Pull requests does not name {both}")
+    if not _delivery_offers_both(_delivery_normalized(read_frontmatter(opening_pull_requests).get("description", ""))):
+        gaps.append(f"opening-pull-requests description does not name {both}")
+    return gaps
+
+
 class FeatureDeliveryFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -2557,6 +2598,17 @@ class FeatureDeliveryFlowTest(unittest.TestCase):
         opening_pull_requests = _blocks(SKILLS_DIR / "opening-pull-requests" / "SKILL.md")
 
         gaps = _delivery_summary_order_gaps(develop_feature) + _delivery_link_gaps(opening_pull_requests)
+
+        self.assertEqual(gaps, [])
+
+    def test_skill_descriptions_name_both_deliveries(self) -> None:
+        """R2.2: develop-feature's description and its Roles row for pull requests, and opening-pull-requests'
+        description, each name both deliveries: the stacked pull requests, one per slice, and a single pull request
+        with every slice. It checks only that each place names both, not what its sentences say about them."""
+        develop_feature = DEVELOP_FEATURE_DIR / "SKILL.md"
+        opening_pull_requests = SKILLS_DIR / "opening-pull-requests" / "SKILL.md"
+
+        gaps = _delivery_naming_gaps(develop_feature, opening_pull_requests)
 
         self.assertEqual(gaps, [])
 

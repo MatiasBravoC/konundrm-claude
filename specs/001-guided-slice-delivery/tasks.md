@@ -632,11 +632,12 @@ huecos que encontró la revisión de spec de toda la feature (Phase 4, paso 2). 
 <!-- Agregada el 2026-10-30 por la sesión principal (permiso del usuario para decidir): la nota de
 traspaso de T53 y T54 encontró que la descripción y la fila Roles de develop-feature y la
 descripción de opening-pull-requests todavía nombran solo una pull request por slice. -->
-- [ ] **T79** Las descripciones y la fila Roles nombran las dos entregas: apiladas o una sola · `behavior` · Risk: low · Covers: R2.2
+- [x] **T79** Las descripciones y la fila Roles nombran las dos entregas: apiladas o una sola · `behavior` · Risk: low · Covers: R2.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_skill_descriptions_name_both_deliveries` (la descripción de develop-feature y su fila Roles de pull requests nombran las pull requests apiladas, una por slice, y la opción de una sola pull request; la descripción de opening-pull-requests nombra las dos entregas; el test solo comprueba que cada lugar nombre las dos, sin juzgar el sentido de las frases ni sus negaciones)
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/opening-pull-requests/SKILL.md` (modify)
   - Verify: `... -k test_skill_descriptions_name_both_deliveries`
   - Depends on: T34
+  - Rounds: spec 1 · code 1 · escalations 0
 
 <!-- Example of a finished task, as develop-feature leaves it:
 - [x] **T1** … · `behavior` · Risk: low · Covers: R1.1

@@ -1,6 +1,6 @@
 ---
 name: develop-feature
-description: Runs a feature from idea to reviewed pull requests with a fixed, gated workflow. Writes and approves the spec, writes and approves the plan (tasks grouped into pull-request-sized slices), then for each task dispatches fresh subagents (test-writer for red, implementer for green and refactor, spec-reviewer, code-reviewer, a security-reviewer on high-risk tasks, and a finding-verifier that tries to refute Critical findings), rejects flaky tests, sends a task stuck in review to a rethinker that finds what to do differently, scales verification to each task's risk (property tests, mutation testing, end-to-end evidence), verifies every claim by running commands, lands one atomic commit per task and, with the user's yes, opens one pull request per slice. Invoke explicitly with /konundrm-eng:develop-feature <idea>, or pass an existing specs/<NNN-slug> folder to resume.
+description: Runs a feature from idea to reviewed pull requests with a fixed, gated workflow. Writes and approves the spec, writes and approves the plan (tasks grouped into pull-request-sized slices), then for each task dispatches fresh subagents (test-writer for red, implementer for green and refactor, spec-reviewer, code-reviewer, a security-reviewer on high-risk tasks, and a finding-verifier that tries to refute Critical findings), rejects flaky tests, sends a task stuck in review to a rethinker that finds what to do differently, scales verification to each task's risk (property tests, mutation testing, end-to-end evidence), verifies every claim by running commands, lands one atomic commit per task and, with the user's yes, opens stacked pull requests, one per slice (the default), or a single pull request with every slice. Invoke explicitly with /konundrm-eng:develop-feature <idea>, or pass an existing specs/<NNN-slug> folder to resume.
 disable-model-invocation: true
 argument-hint: "<feature idea | specs/NNN-slug [--partition P<n>]>"
 ---
@@ -30,7 +30,7 @@ Request: $ARGUMENTS
 | Process review (each slice, then the feature) | `konundrm-eng:process-reviewer` subagent | its improvement notes saved with `improvement_notes.py` |
 | Risk verification | you | properties, mutation and evidence as the task's risk requires |
 | Gate and commit | you, with the `committing-changes` skill | the check command passes; one atomic commit |
-| Pull requests | you, with the `opening-pull-requests` skill | the user approves the push; one pull request per slice |
+| Pull requests | you, with the `opening-pull-requests` skill | the user approves the push; stacked pull requests, one per slice (the default), or a single pull request with every slice |
 
 Dispatch prompts for every subagent: [reference/dispatch-prompts.md](reference/dispatch-prompts.md).
 Model and effort for each dispatch: [Model and effort](#model-and-effort).
