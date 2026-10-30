@@ -2,7 +2,8 @@
 
 writing-plans creates the file from its template and develop-feature checks the boxes and adds a
 ``Rounds:`` line per task. Each slice ends with a ``### Partitions`` table
-(``| Wave | Partition | Tasks | Depends on |``) that assigns its tasks to partitions. The impact
+(``| Wave | Partition | Tasks | Depends on |``) that assigns its tasks to partitions; a Tasks cell
+lists IDs and ranges (``T1-T3``, ``T4..T6``, ``T7 to T9``; en and em dashes too), bold or not. The impact
 report and the session doctor both read it, so the format has this one parser. HTML comments are
 ignored: the template carries a commented example.
 
@@ -28,6 +29,8 @@ PARTITION_TABLE = re.compile(
     r"(?P<rows>(?:\|[^\n]*(?:\n|$))*)"
 )
 SEPARATOR_CELL = re.compile(r"^:?-+:?$")
+TASK_RANGE = re.compile(r"\bT(?P<first>\d+)\s*(?:\u2013|\u2014|-|\.\.|to)\s*T(?P<last>\d+)\b")
+TASK_ID = re.compile(r"\bT\d+\b")
 
 
 @dataclass(frozen=True)
@@ -98,10 +101,29 @@ def _partitions(text: str) -> dict[str, str]:
             cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
             if len(cells) < 3 or SEPARATOR_CELL.match(cells[0]):
                 continue
-            partition, task_ids = cells[1], cells[2]
-            for task_id in task_ids.split(","):
-                partitions.setdefault(task_id.strip(), partition)
+            partition = _unbold(cells[1])
+            for task_id in _task_ids(_unbold(cells[2])):
+                partitions.setdefault(task_id, partition)
     return partitions
+
+
+def _unbold(cell: str) -> str:
+    """A table cell without its Markdown bold markers."""
+    return cell.replace("**", "").strip()
+
+
+def _task_ids(cell: str) -> list[str]:
+    """The task IDs in a Tasks cell, with ranges such as ``T1-T3`` expanded.
+
+    A range whose end comes before its start (``T5-T3``) lists no task. Anything that is not a
+    task ID, such as an empty cell or ``—``, is ignored.
+    """
+    ranged = [
+        f"T{number}"
+        for found in TASK_RANGE.finditer(cell)
+        for number in range(int(found.group("first")), int(found.group("last")) + 1)
+    ]
+    return ranged + TASK_ID.findall(TASK_RANGE.sub(" ", cell))
 
 
 def _slice_at(position: int, headings: list[re.Match[str]]) -> str | None:

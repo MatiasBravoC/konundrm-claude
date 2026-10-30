@@ -101,7 +101,8 @@ de cada archivo (algunos son CRLF). -->
   - Verify: `... -k test_reads_the_partition_of_each_task`
   - Depends on: —
 
-- [ ] **T12** El lector expande rangos de tareas y lee celdas en negrita · `behavior` · Risk: medium · Covers: R3.8
+- [x] **T12** El lector expande rangos de tareas y lee celdas en negrita · `behavior` · Risk: medium · Covers: R3.8
+  - Rounds: spec 1 · code 1 · escalations 0
   - Test: `P/hooks/tests/test_tasks_document.py::test_expands_task_ranges_and_reads_bold_cells`
   - Files: `P/hooks/scripts/tasks_document.py` (modify)
   - Invariants: un rango `Ta–Tb` cubre exactamente de a a b (propiedad en T13)

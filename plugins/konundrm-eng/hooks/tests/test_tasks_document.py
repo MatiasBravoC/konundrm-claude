@@ -107,6 +107,35 @@ class ReadTasksTest(unittest.TestCase):
             {"T1": "P1", "T2": "P1", "T3": "P2", "T4": "P3", "T5": None},
         )
 
+    def test_expands_task_ranges_and_reads_bold_cells(self) -> None:
+        # R3.8: an en-dash range Ta-Tb assigns every task from a to b; bold cells read like plain ones.
+        task_lines = "".join(f"- [ ] **T{number}** Task {number}\n" for number in range(1, 10))
+        _, tasks = self.read(
+            "- **Status:** Approved\n\n"
+            "## Slice S1: apply\n\n"
+            f"{task_lines}\n"
+            "### Partitions\n\n"
+            "| Wave | Partition | Tasks | Depends on |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | P1 | T1\u2013T3, T6 | — |\n"
+            "| 2 | **P2** | **T4\u2013T5** | P1 |\n"
+            "| 3 | P3 | T7..T8 | P1 |\n"
+        )
+        self.assertEqual(
+            {task.id: task.partition for task in tasks},
+            {
+                "T1": "P1",
+                "T2": "P1",
+                "T3": "P1",
+                "T4": "P2",
+                "T5": "P2",
+                "T6": "P1",
+                "T7": "P3",
+                "T8": "P3",
+                "T9": None,
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
