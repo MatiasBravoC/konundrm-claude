@@ -145,7 +145,23 @@ de cada archivo (algunos son CRLF). -->
   - Verify: `... -k test_task_commits_are_found_by_exact_id`
   - Depends on: T1
 
+<!-- T55–T59: agregadas el 2026-10-30 con el visto bueno del usuario, a partir de hallazgos de las
+revisiones de código y de las sesiones paralelas. -->
+- [ ] **T55** Un rango enorme de tareas no cuelga al lector: solo cuenta las tareas del documento que caen en él · `behavior` · Risk: medium · Covers: R3.8
+  - Test: `P/hooks/tests/test_tasks_document.py::test_a_huge_task_range_does_not_hang_the_reader` (una fila de particiones con `T1–T10000000000` se lee en menos de 2 segundos y asigna solo las tareas del documento entre esos límites; la prueba va junto a `test_expands_task_ranges_and_reads_bold_cells`, no al final del archivo)
+  - Files: `P/hooks/scripts/tasks_document.py` (modify)
+  - Invariants: un rango cubre exactamente sus límites (la propiedad de T13 sigue pasando)
+  - Verify: `... -k test_a_huge_task_range_does_not_hang_the_reader`
+  - Depends on: T12, T13
+
 ## Slice S4: construcción en paralelo dentro de un slice
+
+- [ ] **T56** Los gates de una sesión que trabaja en un worktree revisan ese worktree, no la copia principal · `behavior` · Risk: medium · Covers: R3.3
+  - Test: `P/hooks/tests/test_project_paths.py::test_project_root_is_the_worktree_the_session_works_in` (con un repositorio y un worktree enlazado reales en carpetas temporales: con `CLAUDE_PROJECT_DIR` en la copia principal y el `cwd` del evento dentro del worktree, la raíz es el worktree; con el `cwd` dentro de la copia principal o fuera del repositorio, la raíz sigue siendo `CLAUDE_PROJECT_DIR`)
+  - Files: `P/hooks/scripts/project_paths.py` (modify)
+  - Invariants: la raíz es el worktree enlazado del mismo repositorio que contiene el `cwd`, y si no hay ninguno, `CLAUDE_PROJECT_DIR` (propiedad en el mismo test: 40 subcarpetas generadas con `random.Random(17)` entre las tres zonas)
+  - Verify: `... -k test_project_root_is_the_worktree_the_session_works_in`
+  - Depends on: —
 
 - [ ] **T19** Al aprobar el plan, develop-feature pregunta aparte por el paralelo y guarda la respuesta · `behavior` · Risk: low · Covers: R3.2, R3.6
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_asks_about_parallel_partitions_once`
@@ -351,6 +367,33 @@ de cada archivo (algunos son CRLF). -->
   - Files: `P/hooks/scripts/improvement_notes.py` (modify)
   - Verify: `... -k test_cli_reads_notes_from_stdin_and_prints_where_they_went`
   - Depends on: T48, T46
+
+- [ ] **T57** La limpieza trata como código los bloques `~~~` y los que se abren dentro de una viñeta o una cita · `behavior` · Risk: high · Covers: R7.3
+  - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_drops_tilde_and_nested_code_blocks` (bloques con `~~~`, bloques abiertos tras `- `, `1. ` o `> `, y una línea de cierre indentada 4 espacios o más, que no cierra el bloque)
+  - Files: `P/hooks/scripts/improvement_notes.py` (modify)
+  - Invariants: el texto limpio no conserva ningún bloque de código (extender el generador de la propiedad de T47 con estas formas)
+  - Mutation: `uvx --from mutmut mutmut run --paths-to-mutate plugins/konundrm-eng/hooks/scripts/improvement_notes.py` (mutmut no corre en Windows nativo: dejarlo registrado en la evidencia)
+  - Security: contenido del proyecto que pasa al archivo central de notas, compartido entre proyectos (Threats, fila 1)
+  - Evidence: agregar a `specs/001-guided-slice-delivery/evidence/T46.md` una corrida de la CLI con un bloque `~~~` y uno dentro de una viñeta, y el archivo central resultante sin ninguno de los dos
+  - Verify: `... -k test_scrub_drops_tilde_and_nested_code_blocks`
+  - Depends on: T47
+
+- [ ] **T58** La limpieza tapa cualquier clave privada PEM, también las DH · `behavior` · Risk: high · Covers: R7.3
+  - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_removes_every_pem_private_key_block` (`-----BEGIN DH PRIVATE KEY-----` y otras cabeceras `-----BEGIN <tipo> PRIVATE KEY-----` se quitan con todo su cuerpo)
+  - Files: `P/hooks/scripts/secret_patterns.py` (modify: la cabecera de clave privada acepta cualquier tipo), `P/hooks/scripts/improvement_notes.py` (si hace falta)
+  - Invariants: el texto limpio no conserva ninguna clave privada PEM (extender el generador de la propiedad de T47); el hook que bloquea escrituras con secretos detecta las mismas cabeceras (sus pruebas siguen pasando)
+  - Mutation: `uvx --from mutmut mutmut run --paths-to-mutate plugins/konundrm-eng/hooks/scripts/secret_patterns.py` (mutmut no corre en Windows nativo: dejarlo registrado en la evidencia)
+  - Security: contenido del proyecto que pasa al archivo central de notas (Threats, fila 1); el mismo detector decide qué escrituras se bloquean por secretos
+  - Evidence: agregar a `specs/001-guided-slice-delivery/evidence/T46.md` una corrida de la CLI con una clave DH de prueba y el archivo central resultante sin ella
+  - Verify: `... -k test_scrub_removes_every_pem_private_key_block`
+  - Depends on: T47
+
+- [ ] **T59** La búsqueda de correos de la limpieza corre en tiempo lineal · `behavior` · Risk: medium · Covers: R7.3
+  - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_handles_long_word_runs_quickly` (`"A" * 40000`, `"a." * 20000` y textos parecidos se limpian en menos de 2 segundos; hoy tardan unos 8)
+  - Files: `P/hooks/scripts/improvement_notes.py` (modify)
+  - Invariants: los correos siguen tapados (la propiedad de T47 sigue pasando)
+  - Verify: `... -k test_scrub_handles_long_word_runs_quickly`
+  - Depends on: T47
 
 - [ ] **T50** develop-feature pide notas al process-reviewer en cada pausa de slice y al final, y las guarda con el script sin tocar el plugin · `behavior` · Risk: low · Covers: R7.1, R7.5
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_records_improvement_notes`

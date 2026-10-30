@@ -40,6 +40,8 @@ revisión; las partes de slices se rehacen.
 | Una rama por PR en migraciones y limpiezas | `migrate-code`, `tidy-codebase` | Extended | | R9.3 |
 | Revisión del flujo para mejorar el plugin | `agents/process-reviewer.md` | New | revisor de solo lectura del registro | R7.1 |
 | Guardar notas limpias en el archivo central | `hooks/scripts/improvement_notes.py` | New | determinista y testeable; reusa `secret_patterns` | R7.2–R7.4 |
+| Detección de claves privadas PEM de cualquier tipo | `hooks/scripts/secret_patterns.py` | Extended | detector único de secretos; también lo usa el hook que bloquea escrituras | R7.3 |
+| Raíz del proyecto para los gates de una sesión en worktree | `hooks/scripts/project_paths.py` | Extended | todos los hooks la usan para saber qué árbol revisar | R3.3 |
 | Pedir y guardar notas en el flujo | `develop-feature` (Slice checkpoint, Phase 4) | Extended | | R7.1, R7.5 |
 | Suite de acuerdos | `hooks/tests/contract/` | New | entra en el `unittest discover` actual y en el CI | R10.1, R10.2 |
 | Evaluaciones de comportamiento | `evals/behavior-*` (cinco nuevas) | New | formato de evals del plugin | R10.3 |
@@ -60,6 +62,9 @@ def read_tasks(path: Path) -> TasksDocument
 
 # hooks/scripts/session_doctor.py (extended)
 def next_step(document: TasksDocument) -> str   # "next per partition: P1 T3, P2 T2" en paralelo
+
+# hooks/scripts/project_paths.py (extended)
+def project_root(event: dict[str, Any]) -> Path  # el worktree enlazado que contiene el cwd; si no, CLAUDE_PROJECT_DIR
 
 # hooks/scripts/improvement_notes.py (new; CLI: --project --feature --scope, notas por stdin)
 NOTES_FILE = Path("konundrm-eng") / "improvements.md"            # dentro de la config de Claude
@@ -120,7 +125,9 @@ Los scripts de hooks se importan entre sí como módulos de primer nivel (`mypy_
 
 | Boundary | What could go wrong (spoofing, tampering, disclosure, denial of service, elevation) | Control | Covers |
 | --- | --- | --- | --- |
-| Proyecto → archivo central de notas (compartido entre proyectos) | Disclosure: secretos, código fuente o datos personales de un proyecto copiados a un archivo común | `improvement_notes.scrub` quita bloques de código y tapa secretos (`find_secrets`) y correos; el `process-reviewer` tiene prohibido citarlos; tests T46 y T47 | R7.3 |
+| Proyecto → archivo central de notas (compartido entre proyectos) | Disclosure: secretos, código fuente o datos personales de un proyecto copiados a un archivo común | `improvement_notes.scrub` quita bloques de código (```` ``` ````, `~~~` y los abiertos en viñetas o citas) y tapa secretos (`find_secrets`, con claves privadas PEM de cualquier tipo) y correos, en tiempo lineal; el `process-reviewer` tiene prohibido citarlos; tests T46, T47, T57, T58 y T59 | R7.3 |
+| `tasks.md` → hook de inicio de sesión | Denial of service: un rango de tareas enorme cuelga el lector al abrir la sesión | el rango solo cuenta las tareas que el documento tiene; test T55 | R3.8 |
+| Sesión en un worktree → gates del plugin | Tampering: los gates revisan la copia principal, dejan pasar un commit en rojo del worktree o lo frenan por el rojo de otra sesión | `project_paths.project_root` usa el worktree enlazado que contiene el `cwd` del evento; test T56 | R3.3 |
 | Ruta del archivo de notas | Tampering: un nombre de proyecto o de feature que escriba fuera de la carpeta de configuración | Ruta fija; proyecto y feature solo van al contenido, en una línea; test T44 | R7.2 |
 | Subagente → repositorio | Elevation: el rethinker o el process-reviewer cambian archivos | `READ_ONLY_ROLES` y la auditoría de subagentes; tests T6, T7 y T42 | R8.5, R7.1 |
 
