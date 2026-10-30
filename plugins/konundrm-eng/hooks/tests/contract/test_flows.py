@@ -1153,6 +1153,83 @@ def _checkpoint_reach_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# The comprehension questions at the slice pause (R4.2, R4.3). These run on the blocks of develop-feature's
+# `## Slice checkpoint` section, each rule within one sentence (_in_one_sentence) so an unrelated sentence cannot
+# satisfy it.
+_QUESTIONS_TWO_OR_THREE = re.compile(r"\b(?:two or three|two to three|2 (?:or|to) 3|2-3)\b(?: \S+){0,2} questions\b")
+_QUESTIONS_QUESTIONS = re.compile(r"\bquestions?\b")
+_QUESTIONS_SHORT = re.compile(r"\bshort\b")
+_QUESTIONS_ABOUT_THE_CODE = re.compile(r"\b(?:about|on|over)\b(?: \S+){0,3} code\b")
+_QUESTIONS_SLICE = re.compile(r"\bslice")
+_QUESTIONS_EACH = re.compile(r"\b(?:each|every)\b")
+_QUESTIONS_ANSWERABLE = re.compile(r"\banswerable\b|\b(?:can|could) be answered\b|\banswer\w* (?:it|them|each) from\b")
+_QUESTIONS_WRONG_ANSWER = re.compile(r"\b(?:wrong\w*|incorrect\w*|mistaken)\b")
+_QUESTIONS_DONT_KNOW = re.compile(r"\b(?:don(?:'|\u2019)t|do not|does not|doesn(?:'|\u2019)t) know\b")
+_QUESTIONS_EXPLAINS = re.compile(r"\bexplain\w*")
+_QUESTIONS_RIGHT_ANSWER = re.compile(r"\b(?:right|correct) answers?\b")
+_QUESTIONS_LINES = re.compile(r"\blines?\b|\bline ranges?\b")
+_QUESTIONS_ANSWERS = re.compile(r"\banswers?\b")
+_QUESTIONS_DEPENDS = re.compile(r"\b(?:depend|condition|requir|gat|wait|block|hing)\w*")
+
+# What develop-feature's `## Slice checkpoint` section must say about its questions, each in one sentence.
+_QUESTIONS_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R4.2 it asks two or three questions": (_ASKS, _QUESTIONS_TWO_OR_THREE),
+    "R4.2 the questions are short": (_QUESTIONS_SHORT, _QUESTIONS_QUESTIONS),
+    "R4.2 the questions are about the slice's code": (
+        _QUESTIONS_QUESTIONS,
+        _QUESTIONS_ABOUT_THE_CODE,
+        _QUESTIONS_SLICE,
+    ),
+    "R4.2 each question is answerable from the summary and the files it points to": (
+        _QUESTIONS_EACH,
+        _QUESTIONS_ANSWERABLE,
+        _SUMMARIES,
+        _FILES,
+    ),
+    "R4.3 on a wrong answer it explains the right answer": (
+        _QUESTIONS_WRONG_ANSWER,
+        _QUESTIONS_EXPLAINS,
+        _QUESTIONS_RIGHT_ANSWER,
+    ),
+    "R4.3 on an 'I don't know' it explains the right answer": (
+        _QUESTIONS_DONT_KNOW,
+        _QUESTIONS_EXPLAINS,
+        _QUESTIONS_RIGHT_ANSWER,
+    ),
+    "R4.3 the explanation cites the file and the lines that show it": (_QUESTIONS_EXPLAINS, _FILES, _QUESTIONS_LINES),
+}
+_QUESTIONS_FREE_GO_AHEAD_RULE = "R4.3 the go-ahead never depends on the answers"
+_QUESTIONS_FREE_GO_AHEAD = (_NEGATION, _CHECKPOINT_GO_AHEAD, _QUESTIONS_DEPENDS, _QUESTIONS_ANSWERS)
+# A sentence that holds the go-ahead back on a condition ("do not give the go-ahead until the answers are right") makes
+# it depend on the answers, whatever negation it holds.
+_QUESTIONS_HOLDS_BACK = re.compile(r"\b(?:until|unless)\b|\bonly (?:if|when)\b|\bonce\b.*\b(?:right|correct)\b")
+
+
+def _questions_frees_the_go_ahead(block: str) -> bool:
+    """Return whether one sentence of a block says the go-ahead never depends on the answers, without holding the
+    go-ahead back on a condition."""
+    return any(
+        all(pattern.search(sentence) for pattern in _QUESTIONS_FREE_GO_AHEAD)
+        and _QUESTIONS_HOLDS_BACK.search(sentence) is None
+        for sentence in _sentences(block)
+    )
+
+
+def _questions_gaps(skill: Path) -> list[str]:
+    """Return one message per part of R4.2 and R4.3 that develop-feature's `## Slice checkpoint` section lacks."""
+    blocks = _section_blocks(skill, "Slice checkpoint")
+    if not blocks:
+        return ["develop-feature: SKILL.md has no '## Slice checkpoint' section"]
+    gaps = [
+        f"develop-feature Slice checkpoint: no sentence says {label}"
+        for label, patterns in _QUESTIONS_RULES.items()
+        if not any(_in_one_sentence(block, *patterns) for block in blocks)
+    ]
+    if not any(_questions_frees_the_go_ahead(block) for block in blocks):
+        gaps.append(f"develop-feature Slice checkpoint: no sentence says {_QUESTIONS_FREE_GO_AHEAD_RULE}")
+    return gaps
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -1296,6 +1373,15 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         SKILL.md links to the section, so the task loop reaches it; every Phase 3 sentence that links to it limits it
         to a slice built without a parallel wave, and a sentence says a partition session never runs it."""
         gaps = _checkpoint_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_slice_checkpoint_asks_comprehension_questions(self) -> None:
+        """R4.2, R4.3: when develop-feature pauses after a slice, its `## Slice checkpoint` section asks two or three
+        short questions about the slice's code, each answerable from the summary and the files it points to; when the
+        user answers wrong or says they don't know, it explains the right answer citing the file and the lines that
+        show it; and the go-ahead never depends on the answers."""
+        gaps = _questions_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 

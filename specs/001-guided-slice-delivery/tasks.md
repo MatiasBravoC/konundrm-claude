@@ -267,11 +267,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T28, T21
   - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T30** En la pausa hace dos o tres preguntas y explica las mal respondidas sin bloquear · `behavior` · Risk: low · Covers: R4.2, R4.3
+- [x] **T30** En la pausa hace dos o tres preguntas y explica las mal respondidas sin bloquear · `behavior` · Risk: low · Covers: R4.2, R4.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_slice_checkpoint_asks_comprehension_questions`
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_slice_checkpoint_asks_comprehension_questions`
   - Depends on: T29
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T31** Los cambios pedidos en la pausa se vuelven tareas o un cambio de plan antes del slice siguiente · `behavior` · Risk: low · Covers: R4.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_changes_asked_at_a_checkpoint_become_tasks`

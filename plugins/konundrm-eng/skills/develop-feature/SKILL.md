@@ -346,7 +346,12 @@ wave is integrated:
    `docs(<scope>): summarize slice S<k>` carrying the `Task:` line of the slice's last task, so the
    summary stays inside that slice's pull request.
 3. Stop and show the user the summary, with its reading order first: the files and line ranges to
-   read, in order. Wait for the user's go-ahead before starting the next slice.
+   read, in order.
+4. Ask two or three short questions about the slice's code, each answerable from the summary and
+   the files it points to. When the user answers wrong or says they don't know, explain the right
+   answer, citing the file and the lines that show it.
+5. Wait for the user's go-ahead before starting the next slice. Never make the go-ahead depend on
+   the answers.
 
 ## Phase 4: Finish
 
