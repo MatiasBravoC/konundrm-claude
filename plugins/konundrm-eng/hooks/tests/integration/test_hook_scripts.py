@@ -348,6 +348,84 @@ class HookScriptsTest(unittest.TestCase):
             started[case] = marker.exists()
         self.assertEqual(started, dict.fromkeys(events, True), "run.sh skipped Python without reading the command")
 
+    @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
+    def test_run_sh_passes_the_event_intact_to_the_gate_and_the_guard(self) -> None:
+        # R5.4: only the check recorder takes the fast path, so the commit gate and the dependency
+        # guard read every byte of the event, past the 8 KB the recorder's fast path reads, even
+        # for a command the recorder would skip; and without Python the gate still denies commits.
+        data = Path(self._data.name)
+        marker, stdin_copy = install_fake_python(data)
+        sh = shutil.which("sh") or "sh"
+
+        def pre_tool_use(command: str, description: str) -> bytes:
+            event = {
+                "session_id": "it-session",
+                "cwd": str(self.root),
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": command, "description": description},
+            }
+            return (json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8")
+
+        def launch(script: str, sent: bytes, env: dict[str, str]) -> subprocess.CompletedProcess:
+            return subprocess.run(
+                [sh, str(HOOKS / "run.sh"), script], input=sent, capture_output=True, env=env, timeout=60
+            )
+
+        events = {
+            (command, size): pre_tool_use(command, "lista ñ " * (3_000 if size == "large" else 1))
+            for command in ("ls", "git commit -m x")
+            for size in ("small", "large")
+        }
+        self.assertGreater(len(events["ls", "large"]), 3 * 8192)
+        altered = []
+        for script in ("gate_git_commit.py", "guard_new_dependencies.py"):
+            for case, sent in events.items():
+                marker.unlink(missing_ok=True)
+                stdin_copy.unlink(missing_ok=True)
+
+                result = launch(script, sent, self.env)
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                received = stdin_copy.read_bytes() if marker.exists() else None
+                if received != sent:
+                    altered.append((script, *case, len(sent), None if received is None else len(received)))
+        self.assertEqual(altered, [], "Python got other bytes for (script, command, size, sent, got)")
+
+        (data / "python-path").unlink()
+        no_python = {**self.env, "PATH": str(data / "empty-bin")}  # no Python here
+        denied = launch("gate_git_commit.py", events["git commit -m x", "large"], no_python)
+        self.assertEqual(denied.returncode, 0, denied.stderr)
+        self.assertEqual(json.loads(denied.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
+    def test_without_python_the_gate_denies_a_commit_past_the_first_8_kb(self) -> None:
+        # R5.4: without Python the commit gate fails closed on the whole event, not on the 8 KB
+        # the check recorder's fast path reads, so a commit hidden behind a long prefix is denied.
+        event = {
+            "session_id": "it-session",
+            "cwd": str(self.root),
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": f"echo {'a' * 9_000} && git commit -m x"},
+        }
+        sent = (json.dumps(event) + "\n").encode("utf-8")
+        self.assertGreater(sent.index(b"git commit"), 8192)
+        self.assertNotIn(b"commit", sent[:8192])
+        no_python = {**self.env, "PATH": str(Path(self._data.name) / "empty-bin")}  # no cached or PATH Python
+
+        result = subprocess.run(
+            [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), "gate_git_commit.py"],
+            input=sent,
+            capture_output=True,
+            env=no_python,
+            timeout=60,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotEqual(result.stdout.strip(), b"", "without Python run.sh allowed a commit past the first 8 KB")
+        self.assertEqual(json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+
 
 # Whitespace Python's str.split() and str.strip() remove, including some a C-locale shell does not.
 PYTHON_WHITESPACE = (" ", "  ", "\t", "\n", "\u00a0", "\u2003", "\u3000")
@@ -473,6 +551,49 @@ def _non_ascii_override_case(rng: random.Random) -> tuple[bytes, str | None]:
 
 
 UNREADABLE_CASES = (_escaped_case, _far_case, _missing_case, _separator_case, _non_ascii_override_case)
+
+# Generators for the scripts run.sh must hand their event untouched (R5.4).
+SKILL_SCRIPTS = ("quality_check.py", "metrics_report.py", "improvement_notes.py")  # skills call these via run.sh
+RECORDER_NEAR_MISSES = (
+    "Record_check_result.py",
+    "RECORD_CHECK_RESULT.PY",
+    "_record_check_result.py",
+    "record_check_result.pyc",
+    "record_check_result",
+    "./record_check_result.py",
+    "scripts/record_check_result.py",
+    "record_check_result.py ",
+)
+SKIPPED_COMMANDS = ("ls -la", "git status", "git commit -m x")  # the recorder's fast path skips these
+CHECK_COMMANDS = ("npm run check",)  # and sends these to Python
+
+
+def _hooks_json_scripts() -> list[str]:
+    """Every script hooks.json runs through run.sh, so a new hook is covered without editing the test."""
+    config = json.loads((HOOKS / "hooks.json").read_text(encoding="utf-8"))
+    commands = [hook["command"] for groups in config["hooks"].values() for group in groups for hook in group["hooks"]]
+    return sorted({command.split('run.sh" ', 1)[1].split()[0] for command in commands if "run.sh" in command})
+
+
+def _launcher_event(rng: random.Random) -> bytes:
+    """A PreToolUse or PostToolUse Bash event of a few hundred bytes to a few blocks, as bytes."""
+    command = rng.choice(SKIPPED_COMMANDS * 2 + CHECK_COMMANDS)
+    if rng.random() < 0.5:
+        event = _bash_event({"command": command, "description": "@FILL@"}, hook_event_name="PreToolUse")
+        del event["tool_response"]
+    else:
+        event = _bash_event(
+            {"command": command}, tool_response={"stdout": "@FILL@", "stderr": "", "interrupted": False}
+        )
+    head, tail = json.dumps(event, ensure_ascii=False).encode("utf-8").split(b"@FILL@")
+    newline = rng.choice((b"", b"\n"))
+    size = rng.choice((rng.randint(300, 1_500), BLOCK + rng.randint(-3, 3), rng.randint(2 * BLOCK, 3 * BLOCK + 100)))
+    room = size - len(head) - len(tail) - len(newline)
+    fill = b""
+    while len(fill) < room:
+        piece = rng.choice((*FILL_ALPHABET, *NON_ASCII_CHARS)).encode("utf-8")
+        fill += piece if len(fill) + len(piece) <= room else b"x"
+    return head + fill + tail + newline
 
 
 @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
@@ -627,6 +748,41 @@ class RunShFastPathPropertyTest(unittest.TestCase):
                 if not marker.exists():
                     skipped.append((index, build.__name__, override, sent[:200], len(sent)))
             self.assertEqual(skipped, [], "run.sh skipped Python for events it could not read")
+
+    def test_run_sh_hands_every_other_script_its_event_untouched(self) -> None:
+        # R5.4 invariant: only record_check_result.py takes the fast path, so every other script,
+        # including near-misses of the recorder's name, starts Python and reads the event byte for
+        # byte, even one whose command the recorder would skip. The fake Python only saves its stdin.
+        hook_scripts = _hooks_json_scripts()
+        self.assertIn("gate_git_commit.py", hook_scripts)
+        self.assertIn("record_check_result.py", hook_scripts)
+        scripts = [name for name in hook_scripts if name != "record_check_result.py"]
+        scripts += [*SKILL_SCRIPTS, *RECORDER_NEAR_MISSES]
+        with tempfile.TemporaryDirectory() as data_name:
+            marker, stdin_copy = install_fake_python(Path(data_name))
+            env = {**os.environ, "CLAUDE_PLUGIN_DATA": data_name, "CLAUDE_PROJECT_DIR": data_name}
+            env.pop("KONUNDRM_CHECK_CMD", None)
+            altered = []
+            for index, script in enumerate(scripts):
+                # One generator per case, so each case's draws never depend on another case or the machine.
+                rng = random.Random(67 + index)  # noqa: S311 - seeded for reproducible test data, not cryptography
+                sent = _launcher_event(rng)
+                marker.unlink(missing_ok=True)
+                stdin_copy.unlink(missing_ok=True)
+
+                result = subprocess.run(
+                    [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), script],
+                    input=sent,
+                    capture_output=True,
+                    env=env,
+                    timeout=60,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                received = stdin_copy.read_bytes() if marker.exists() else None
+                if received != sent:
+                    altered.append((index, script, sent[:160], len(sent), None if received is None else len(received)))
+            self.assertEqual(altered, [], "Python got other bytes for (case, script, event start, sent, got)")
 
 
 def git(root: Path, *args: str) -> None:

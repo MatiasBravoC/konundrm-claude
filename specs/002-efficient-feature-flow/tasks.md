@@ -50,7 +50,7 @@ actualiza en el paso rojo de esa tarea. -->
   - Depends on: T2
   - Rounds: spec 1 · code 2 · escalations 0
 
-- [ ] **T4** El gate de commit y el guard reciben el evento intacto y el gate sigue fallando cerrado · `behavior` · Risk: high · Covers: R5.4
+- [x] **T4** El gate de commit y el guard reciben el evento intacto y el gate sigue fallando cerrado · `behavior` · Risk: high · Covers: R5.4
   - Test: `P/hooks/tests/integration/test_hook_scripts.py::test_run_sh_passes_the_event_intact_to_the_gate_and_the_guard` (para `gate_git_commit.py` y `guard_new_dependencies.py` el Python falso recibe el mismo evento, también con `ls`; sin Python, un evento con `git commit` sigue denegado)
   - Files: `P/hooks/run.sh` (modify only if the test fails)
   - Invariants: ningún script distinto de `record_check_result.py` toma el camino rápido.
@@ -59,6 +59,7 @@ actualiza en el paso rojo de esa tarea. -->
   - Evidence: en un repo de prueba con el check en rojo, el gate real deniega `git commit` pasando por `run.sh`; comandos y salida en `evidence/T4.md`.
   - Verify: `... -k test_run_sh_passes_the_event_intact_to_the_gate_and_the_guard`
   - Depends on: T3
+  - Rounds: spec 1 · code 3 · escalations 0
 
 ### Partitions
 
