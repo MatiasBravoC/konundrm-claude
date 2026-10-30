@@ -260,11 +260,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T1
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T29** Al terminar un slice, develop-feature escribe su resumen en un commit del slice y espera el visto bueno · `behavior` · Risk: low · Covers: R4.1, R6.1
+- [x] **T29** Al terminar un slice, develop-feature escribe su resumen en un commit del slice y espera el visto bueno · `behavior` · Risk: low · Covers: R4.1, R6.1
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_pauses_after_each_slice` (sección `## Slice checkpoint`: `specs/<slug>/summaries/S<k>.md`; commit `docs(...)` con la línea `Task:` de la última tarea del slice; muestra el orden de lectura; espera el visto bueno)
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_develop_feature_pauses_after_each_slice`
   - Depends on: T28, T21
+  - Rounds: spec 2 · code 2 · escalations 0
 
 - [ ] **T30** En la pausa hace dos o tres preguntas y explica las mal respondidas sin bloquear · `behavior` · Risk: low · Covers: R4.2, R4.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_slice_checkpoint_asks_comprehension_questions`

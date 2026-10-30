@@ -1072,6 +1072,87 @@ def _open_decision_gaps(blocks: list[str]) -> list[str]:
     ]
 
 
+# The pause at the end of a slice (R4.1, R6.1). These run on the blocks of develop-feature's `## Slice checkpoint`
+# section, each rule within one sentence (_in_one_sentence) so an unrelated sentence cannot satisfy it.
+_CHECKPOINT_WHEN = re.compile(r"\b(?:when|once|after)\b")
+_CHECKPOINT_LAST_TASK = re.compile(r"\blast task\b")
+_CHECKPOINT_LANDED = re.compile(r"\b(?:committed|integrated|lands|landed)\b")
+_CHECKPOINT_WRITES = re.compile(r"\b(?:writ|fill|sav)\w*")
+_CHECKPOINT_TEMPLATE = re.compile(r"\btemplates/slice-summary\.md\b")
+_CHECKPOINT_SUMMARY_FILE = re.compile(r"\bspecs/<[^>\s]+>/summaries/s<k>\.md\b")
+_CHECKPOINT_SUMMARY_COMMIT = re.compile(r"\bdocs\([^)\s]+\): summarize slice s<k>")
+_CHECKPOINT_STOPS = re.compile(r"\b(?:stop|paus|halt)\w*")
+_CHECKPOINT_READING_ORDER = re.compile(r"\breading order\b|\bwhat to read first\b")
+_CHECKPOINT_GO_AHEAD = re.compile(r"\bgo[- ]ahead\b|\bapprov\w*")
+_CHECKPOINT_NEXT_SLICE = re.compile(r"\bnext slice\b")
+_CHECKPOINT_BEFORE = re.compile(r"\b(?:before|until)\b")
+_CHECKPOINT_LINK = "(#slice-checkpoint)"
+# A partition session also runs Phase 3, and a parallel slice reaches the checkpoint from the last step of Parallel
+# partitions, so the Phase 3 sentence that sends a slice there names a slice built without a parallel wave.
+_CHECKPOINT_NO_PARALLEL_WAVE = re.compile(r"\b(?:without|not|no)\b(?: \S+){0,3} parallel\b|\bparallel:(?:\*\*)? ?no\b")
+_CHECKPOINT_NAME = re.compile(r"\bcheckpoint\b")
+
+# What develop-feature's `## Slice checkpoint` section must say, each in one sentence of one of its blocks.
+_CHECKPOINT_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R4.1 it runs when the slice's last task is committed (and integrated)": (
+        _CHECKPOINT_WHEN,
+        _CHECKPOINT_LAST_TASK,
+        _CHECKPOINT_LANDED,
+    ),
+    "R6.1 it writes the summary from templates/slice-summary.md": (_CHECKPOINT_WRITES, _CHECKPOINT_TEMPLATE),
+    "R6.1 it writes the summary to specs/<slug>/summaries/S<k>.md": (_CHECKPOINT_WRITES, _CHECKPOINT_SUMMARY_FILE),
+    "R6.1 it commits the summary as docs(<scope>): summarize slice S<k>": (_CHECKPOINT_SUMMARY_COMMIT,),
+    "R6.1 the summary commit carries the Task: line of the slice's last task": (_TASK_LINE, _CHECKPOINT_LAST_TASK),
+    "R4.1 it stops and shows the user the summary": (_CHECKPOINT_STOPS, _SHOWS, _USER, _SUMMARIES),
+    "R4.1 it shows the summary's reading order (what to read first)": (_SHOWS, _CHECKPOINT_READING_ORDER),
+    "R4.1 it waits for the user's go-ahead": (_WAITS, _CHECKPOINT_GO_AHEAD),
+    "R4.1 it starts the next slice only after that go-ahead": (
+        _CHECKPOINT_GO_AHEAD,
+        _CHECKPOINT_BEFORE,
+        _CHECKPOINT_NEXT_SLICE,
+    ),
+}
+
+
+def _checkpoint_gaps(skill: Path) -> list[str]:
+    """Return one message per part of R4.1 and R6.1 that develop-feature's `## Slice checkpoint` section lacks, and
+    one when no block outside that section links to it, so the task loop never reaches it."""
+    blocks = _section_blocks(skill, "Slice checkpoint")
+    if not blocks:
+        return ["develop-feature: SKILL.md has no '## Slice checkpoint' section"]
+    gaps = [
+        f"develop-feature Slice checkpoint: no sentence says {label}"
+        for label, patterns in _CHECKPOINT_RULES.items()
+        if not any(_in_one_sentence(block, *patterns) for block in blocks)
+    ]
+    outside = [block for block in _blocks(skill) if block not in blocks]
+    if not any(_CHECKPOINT_LINK in block for block in outside):
+        gaps.append(f"develop-feature: no block outside the section links to [Slice checkpoint]{_CHECKPOINT_LINK}")
+    return gaps + _checkpoint_reach_gaps(skill)
+
+
+def _checkpoint_reach_gaps(skill: Path) -> list[str]:
+    """Return one message when the Phase 3 task loop never links to the `## Slice checkpoint` section, one per Phase 3
+    sentence that links to it without limiting it to a slice built without a parallel wave, and one when no sentence
+    of develop-feature's SKILL.md says a partition session never runs the checkpoint."""
+    linking = [
+        sentence
+        for block in _section_blocks(skill, "Phase 3: Task loop")
+        for sentence in _sentences(block)
+        if _CHECKPOINT_LINK in sentence
+    ]
+    gaps = [] if linking else [f"develop-feature Phase 3: no sentence links to [Slice checkpoint]{_CHECKPOINT_LINK}"]
+    gaps += [
+        f"develop-feature Phase 3: this link to the Slice checkpoint is not limited to a slice built without a "
+        f"parallel wave: {sentence!r}"
+        for sentence in linking
+        if not _CHECKPOINT_NO_PARALLEL_WAVE.search(sentence)
+    ]
+    if not any(_in_one_sentence(block, _NEGATION, _PARTITION_SESSIONS, _CHECKPOINT_NAME) for block in _blocks(skill)):
+        gaps.append("develop-feature: no sentence says a partition session never runs the Slice checkpoint")
+    return gaps
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -1203,6 +1284,18 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         and that record lands in the task's commit; then it sends the task back to a new subagent of the same role
         carrying the choice. A `Status: DECISION` is not an escalation or a BLOCKED: the design is not wrong."""
         gaps = _open_decision_gaps(_blocks(DEVELOP_FEATURE_DIR / "SKILL.md"))
+
+        self.assertEqual(gaps, [])
+
+    def test_develop_feature_pauses_after_each_slice(self) -> None:
+        """R4.1, R6.1: develop-feature's `## Slice checkpoint` section runs once a slice's last task is committed (and,
+        with partitions, integrated): it writes the slice's summary from `templates/slice-summary.md` to
+        `specs/<slug>/summaries/S<k>.md` and commits it as `docs(<scope>): summarize slice S<k>` with the `Task:` line
+        of the slice's last task, so it stays in that slice's pull request; then it stops, shows the user the summary
+        with its reading order, and waits for the user's go-ahead before starting the next slice. Another part of
+        SKILL.md links to the section, so the task loop reaches it; every Phase 3 sentence that links to it limits it
+        to a slice built without a parallel wave, and a sentence says a partition session never runs it."""
+        gaps = _checkpoint_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 

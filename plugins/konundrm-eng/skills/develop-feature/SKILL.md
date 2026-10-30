@@ -102,9 +102,10 @@ lines. After the last task's commit, write a short report as `specs/<NNN-slug>/e
 with what the main session needs to integrate you: your branch, each task's commit SHA and subject,
 each task's Rounds line and the Suggestions not applied. Commit it as
 `docs(<scope>): report partition P<k>` with the last task's `Task:` line, then stop with that
-report. Never push nor open pull requests: the main session integrates your branch. A PLAN CHANGE
-from a rethink is not yours to propose or write: stop with a `BLOCKED:` line for the main session
-that quotes its `Plan change:`. A fresh worktree may lack installed dependencies or local
+report. Never push nor open pull requests: the main session integrates your branch. A partition
+session never runs the [Slice checkpoint](#slice-checkpoint): the main session runs it once the
+slice's last wave is integrated. A PLAN CHANGE from a rethink is not yours to propose or write:
+stop with a `BLOCKED:` line for the main session that quotes its `Plan change:`. A fresh worktree may lack installed dependencies or local
 configuration the check needs; set them up as the project's `AGENTS.md` or README says before the
 baseline in step 3, and if the check still cannot run, stop with `BLOCKED:`.
 
@@ -201,6 +202,10 @@ or a code or security review with a Critical finding no `finding-verifier` refut
 7. **Commit.** Run the `committing-changes` skill in its develop-feature mode: the task's code,
    tests, evidence and `tasks.md` update land as **one** commit with `Task: T<n> · Covers: R…` in
    the body, without rerunning the check and without asking about pushing yet.
+
+When the task was the slice's last task and the slice is built here without a parallel wave, run
+the [Slice checkpoint](#slice-checkpoint) before the next slice's first task; a parallel slice runs
+it from step 9 of [Parallel partitions](#parallel-partitions).
 
 **Open decisions.** When a `test-writer` or `implementer` returns `Status: DECISION` (the task
 admits two or more reasonable approaches the plan left open), pause that task: dispatch no other
@@ -325,7 +330,23 @@ slice's `### Partitions` table this way:
    that resumes with every partition of the wave integrated never goes back to step 3: it runs
    the check command (step 6 when red) and step 7 again, then picks up here
    ([Phase 0](#phase-0-prepare)).
-9. Go on to the slice's next wave. After its last wave, continue with the end of the slice.
+9. Go on to the slice's next wave. After its last wave, continue with the end of the slice: the
+   [Slice checkpoint](#slice-checkpoint).
+
+## Slice checkpoint
+
+Each slice ends in a pull request a person reads, so pause after each slice to show the user what
+it holds. Run this once the slice's last task is committed, or, with partitions, once its last
+wave is integrated:
+
+1. Write the slice's summary from `templates/slice-summary.md` to
+   `specs/<NNN-slug>/summaries/S<k>.md`, filling each of its sections from `tasks.md`, the
+   evidence and the slice's commits.
+2. Commit it with the `committing-changes` skill in its develop-feature mode, as
+   `docs(<scope>): summarize slice S<k>` carrying the `Task:` line of the slice's last task, so the
+   summary stays inside that slice's pull request.
+3. Stop and show the user the summary, with its reading order first: the files and line ranges to
+   read, in order. Wait for the user's go-ahead before starting the next slice.
 
 ## Phase 4: Finish
 
