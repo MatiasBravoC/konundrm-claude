@@ -462,7 +462,7 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T43, T49, T29
   - Rounds: spec 1 · code 1 · escalations 0
 
-## Slice S8: suite, evaluaciones y versión
+## Slice S8: suite y evaluaciones
 
 - [x] **T51** Toda prueba de contrato nombra en su docstring los requisitos que protege · `behavior` · Risk: low · Covers: R10.2
   - Test: `P/hooks/tests/contract/test_meta.py::test_every_contract_test_names_its_requirements`
@@ -477,17 +477,6 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Verify: `... -k test_each_new_mechanism_has_a_behavior_eval`
   - Depends on: T50
   - Rounds: spec 2 · code 2 · escalations 0
-
-- [ ] **T53** La versión es 0.6.0 y el changelog la describe · `behavior` · Risk: low · Covers: R10.1
-  - Test: `P/hooks/tests/contract/test_release.py::test_version_and_changelog_agree` (la versión de plugin.json es la de la primera entrada del changelog, que nombra modelo y esfuerzo por rol, rethinker, particiones, pausas por slice, resúmenes y notas de mejora)
-  - Files: `P/.claude-plugin/plugin.json`, `P/CHANGELOG.md` (modify)
-  - Verify: `... -k test_version_and_changelog_agree`
-  - Depends on: T52
-
-- [ ] **T54** El README describe el flujo nuevo: agentes, pausas, entregas y notas de mejora · `chore` · Risk: low · Covers: —
-  - Files: `README.md` (modify)
-  - Verify: `npm run check`
-  - Depends on: T53
 
 ## Slice S9: pulido tras las revisiones
 
@@ -588,6 +577,22 @@ S3 y de agentes (T61, T63, T66 y T68). -->
   - Files: `P/skills/develop-feature/SKILL.md` (modify: "First attempts on low- and medium-risk tasks run at `medium`…")
   - Verify: `npm run check`
   - Depends on: T68
+
+## Slice S10: versión 0.6.0 y README
+
+<!-- Movido el 2026-10-30 por la sesión principal (permiso del usuario para decidir y su pedido de
+paralelizar más): T53 y T54 pasan de S8 a este último slice, para integrar S9 mientras se escriben y
+para que el changelog cubra también S9. -->
+- [ ] **T53** La versión es 0.6.0 y el changelog la describe · `behavior` · Risk: low · Covers: R10.1
+  - Test: `P/hooks/tests/contract/test_release.py::test_version_and_changelog_agree` (la versión de plugin.json es la de la primera entrada del changelog, que nombra modelo y esfuerzo por rol, rethinker, particiones, pausas por slice, resúmenes y notas de mejora)
+  - Files: `P/.claude-plugin/plugin.json`, `P/CHANGELOG.md` (modify)
+  - Verify: `... -k test_version_and_changelog_agree`
+  - Depends on: T52
+
+- [ ] **T54** El README describe el flujo nuevo: agentes, pausas, entregas y notas de mejora · `chore` · Risk: low · Covers: —
+  - Files: `README.md` (modify)
+  - Verify: `npm run check`
+  - Depends on: T53
 
 <!-- Example of a finished task, as develop-feature leaves it:
 - [x] **T1** … · `behavior` · Risk: low · Covers: R1.1

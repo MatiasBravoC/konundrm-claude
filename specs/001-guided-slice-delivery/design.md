@@ -135,12 +135,13 @@ Los scripts de hooks se importan entre sí como módulos de primer nivel (`mypy_
 
 ## Delivery
 
-Ocho slices (S1–S8) como PRs apiladas sobre `main`, o una sola si el usuario lo elige. El plugin se
+Diez slices (S1–S10) como PRs apiladas sobre `main`, o una sola si el usuario lo elige. El plugin se
 instala desde este directorio: cada slice integrado queda activo al recargar, así que cada uno deja
 el flujo coherente. S1–S3 no cambian pasos visibles salvo modelo y esfuerzo; S4 solo actúa con
 `Parallel: yes` (por defecto `no`); S5 trae la pausa junto con su plantilla de resumen; S6 la
-entrega; S7 las notas; S8 la versión 0.6.0, el changelog y los evals. Para volver atrás se revierte
-la PR del slice: no hay migraciones de datos.
+entrega; S7 las notas; S8 la suite y los evals; S9 el pulido tras las revisiones; S10 la versión
+0.6.0, el changelog y el README. Para volver atrás se revierte la PR del slice: no hay migraciones
+de datos.
 
 ## Risks
 
