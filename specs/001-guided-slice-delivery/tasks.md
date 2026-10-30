@@ -345,11 +345,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T4
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T41** Reescribir la historia de una PR ya subida pide visto bueno y usa `--force-with-lease` · `behavior` · Risk: low · Covers: R9.4
+- [x] **T41** Reescribir la historia de una PR ya subida pide visto bueno y usa `--force-with-lease` · `behavior` · Risk: low · Covers: R9.4
   - Test: `P/hooks/tests/contract/test_skills.py::test_rewriting_pushed_history_needs_a_yes`
   - Files: `P/skills/opening-pull-requests/SKILL.md` (modify)
   - Verify: `... -k test_rewriting_pushed_history_needs_a_yes`
   - Depends on: T34
+  - Rounds: spec 2 · code 2 · escalations 0
 
 ## Slice S7: notas de mejora del plugin
 

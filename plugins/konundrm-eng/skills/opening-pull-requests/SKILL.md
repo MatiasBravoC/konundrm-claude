@@ -152,5 +152,8 @@ merge; offer to do it then.
 
 - Never push to or open from the default branch; never merge, approve or request changes.
 - Never force-push without an explicit yes for that push.
-- Never edit history that is already on the remote except a stacked rebase the user approved.
+- When a pull request that is already pushed needs its history rewritten (a rebase onto the
+  updated default branch, or the stacked `git rebase --onto` after a squash merge), ask the
+  user's explicit yes for that rewrite, then push it with `--force-with-lease`, never a plain
+  `--force`.
 - Pull request text quotes evidence; it does not claim anything you did not run.

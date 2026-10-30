@@ -1009,5 +1009,256 @@ class PullRequestTaskCommitsTest(unittest.TestCase):
         self.assertEqual(gaps, [], "\n".join(gaps))
 
 
+# R9.4: rewriting the history of a pull request that is already pushed (a rebase onto the updated default branch, the
+# stacked `git rebase --onto` after a squash merge) needs the user's yes for that rewrite and goes up with
+# `--force-with-lease`, never a plain `--force`.
+_DELIVERY_REWRITES_HISTORY = re.compile(r"\brewrit\w*|\brebas\w*")
+_DELIVERY_ALREADY_PUSHED = re.compile(
+    r"\balready (?:pushed|up|open|on (?:the )?(?:remote|origin))\b"
+    r"|\bpushed\b|\bon the remote\b|\bremote (?:branch|history)\b"
+)
+_DELIVERY_LEASE_PUSH = re.compile(r"(?<![\w-])--force-with-lease\b")
+_DELIVERY_PLAIN_FORCE = re.compile(r"(?<![\w-])(?:--force|-f)(?![\w-])|\bplain force\b")
+# A force-push said in words ("force-push it", "force push", "push it by force").
+_DELIVERY_FORCE_PUSH = re.compile(r"\bforce[- ]?push\w*|\bforced push\w*|\bpush\w*(?: \S+){0,2}? by force\b")
+# What makes a force-push in words a lease push when it sits in the same clause.
+_DELIVERY_WITH_LEASE = re.compile(r"--force-with-lease\b|\bwith\b(?: \S+){0,2}? lease\b")
+# A prohibition that keeps a rule ("never --force", "don't force-push", "rather than --force"). Narrower than
+# _DELIVERY_NEGATION: "no" and "without" also sit in conditions ("a rebase with no conflicts is pre-approved").
+_DELIVERY_PROHIBITS = re.compile(r"\b(?:never|not|no longer|cannot|neither|nor|instead of|rather than)\b|n['\u2019]t\b")
+# A condition attached to the lease push ("if you can", "when possible", "unless it fails", "ideally").
+_DELIVERY_HEDGE = re.compile(
+    r"\b(?:if|when|whenever|where|wherever)\b(?: \S+){0,3}? (?:possible|feasible|practical|convenient|available"
+    r"|supported|appropriate|needed|necessary|works?|succeeds?|able|can|could|allowed|prefer\w*|likes?|wants?|wish\w*)\b"
+    r"|\b(?:unless|ideally|preferabl[ey]|optionally|try\w* to|attempt\w* to)\b"
+)
+# Asking for the yes, or making the push wait on it ("with its own yes", "after the user's approval").
+_DELIVERY_ASKS_YES = re.compile(
+    r"\b(?P<trigger>ask\w*|wait\w* for|get\w*|needs?|requir\w*|seek\w*|with|after|once)\b(?: \S+){0,4}? "
+    r"(?:yes|approval|approves?|go-ahead|consent|confirmation)\b"
+)
+# Triggers that bind the yes to the push however the sentence orders them ("push with lease only after the yes").
+_DELIVERY_GATING_TRIGGERS = ("with", "after", "once")
+_DELIVERY_HISTORY_CONTEXT = re.compile(
+    rf"\brewrit\w*|\brebas\w*|--force|\blease\b|\bhistory\b|{_DELIVERY_FORCE_PUSH.pattern}"
+)
+# Waiving the yes in words that carry their own negation: "no need to ask", "don't ask", "skip the yes", "needs no yes".
+_DELIVERY_WAIVES_YES = re.compile(
+    r"\b(?:no need to|needn't|need not|never|don't|do not|doesn't|does not|(?:does|do)(?: not|n't) need to)"
+    r"(?: \w+ly)? (?:ask|wait|seek|get|confirm|request)\b"
+    r"|\b(?:skip|omit|forg[oe]|bypass|drop|ignor|dispens)\w*(?: \S+){0,2} "
+    r"(?:yes|ask\w*|approval|confirmation|consent|go-ahead)\b"
+    r"|\bno (?:yes|approval|confirmation|consent|go-ahead|need|requirement)\b"
+)
+# A need for the yes, negated: "does not need a yes", "doesn't require approval", "the yes is not needed", "this rule
+# does not apply to stacked rebases".
+_DELIVERY_NEGATED_NEED = re.compile(
+    r"(?:\b(?:not|never|no longer)|n['\u2019]t)(?: (?:\w+ly|be|been))? "
+    r"(?:need\w*|requir\w*|necessary|mandatory|compulsory|obligatory|appl(?:y|ies))\b"
+    r"|\b(?:unnecessary|unneeded|needless)\b"
+)
+# Ways to weaken the yes that count only when no prohibition comes before them in their clause, so "never force-push
+# without an explicit yes" and "the yes is never optional" keep the rule.
+_DELIVERY_WEAKENS_YES = (
+    # Made optional, given in advance or by default, exempt or waived.
+    re.compile(
+        r"\b(?:optional\w*|pre-?approv\w*|pre-?authori[sz]\w*|exempt\w*|waiv\w*|implicit\w*|implied|assumed"
+        r"|automatic\w*|unprompted|silently|on (?:your|its|their) own|at (?:your|its|their) discretion)\b"
+    ),
+    # Taken as already given ("treat a stacked rebase as approved", "the user already approved").
+    re.compile(
+        r"\b(?:counts? as|treat\w*|consider\w*|deem\w*|already)(?: \S+){0,4}? (?:approv\w*|confirm\w*|consented)\b"
+    ),
+    # Carried over from another yes ("the push's yes also covers the rebase", "reuse the earlier approval").
+    re.compile(
+        r"\b(?:same|earlier|previous|prior|original|first|initial|existing|one|single|general|push|push's)\b"
+        r"(?: \S+){0,2}? (?:yes|approval|go-ahead|consent)\b(?: \S+){0,3}? "
+        r"(?:covers?|includes?|extends? to|suffices?|is enough|counts? for|carries over)\b"
+        r"|\bre-?us\w*(?: \S+){0,3}? (?:yes|approval|go-ahead|consent)\b"
+    ),
+    # An ask made optional or permissive ("you may ask", "can ask", "consider asking").
+    re.compile(
+        r"\b(?:may|might|can|could|free to|welcome to|choose to|consider)(?: \S+){0,2}? (?:ask|request|seek|confirm)\w*"
+    ),
+    # An ask made conditional ("ask the yes if needed", "confirm when in doubt").
+    re.compile(
+        r"\b(?:ask\w*|yes|approval|confirm\w*|consent|go-ahead)\b(?: \S+){0,6}? (?:if|when|whenever|where|as)\b"
+        r"(?: \S+){0,2}? (?:needed|necessary|in doubt|unsure|uncertain|appropriate|relevant|warranted|risky"
+        r"|you (?:like|want|wish|prefer|think)\w*)\b"
+    ),
+    # Going up without the yes ("without asking", "without approval").
+    re.compile(r"\bwithout\b(?: \S+){0,3}? (?:ask\w*|yes|approval|confirm\w*|consent|go-ahead)\b"),
+)
+# Permission to push or rewrite ("you may force-push it", "can rebase and push"), a waiver in a sentence that asks no
+# yes.
+_DELIVERY_PERMITS_PUSH = re.compile(
+    r"\b(?:may|might|can|could|free to|allowed to|ok(?:ay)? to|fine to)(?: \S+){0,3}? "
+    r"(?:force[- ]?push|push|rewrit|rebas)"
+)
+# Narrowing the rule to one kind of rewrite, or exempting some from it.
+_DELIVERY_NARROWS_REWRITE = re.compile(
+    r"\b(?:unless|except)\b|\b(?:only|solely|just)\b(?: \S+){0,4}? (?:stack|squash)\w*"
+)
+_DELIVERY_YES_AFTER_PUSH = re.compile(
+    r"\b(?:after|once)(?: (?:the|it|its|it's|is|has|have|been|having|you|we|they))* (?:push\w*|force-push\w*)\b"
+    r"|\bafterwards?\b|\bafter the fact\b|\bretroactiv\w*"
+)
+
+
+def _delivery_asks_yes_before_lease_push(sentence: str) -> bool:
+    """Return whether a sentence asks the user's yes for a history rewrite and pushes it with `--force-with-lease`.
+
+    The sentence names the rewrite (`_DELIVERY_REWRITES_HISTORY`); neither the lease push's clause nor the ask's clause
+    is negated; and the yes comes first in the sentence or binds the push ("with its own yes", "only after the yes").
+    """
+    if not _DELIVERY_REWRITES_HISTORY.search(sentence):
+        return False
+    leases = [
+        lease
+        for lease in _DELIVERY_LEASE_PUSH.finditer(sentence)
+        if not _DELIVERY_NEGATION.search(_delivery_clause_before(sentence, lease.start()))
+    ]
+    asks = [
+        ask
+        for ask in _DELIVERY_ASKS_YES.finditer(sentence)
+        if not _DELIVERY_NEGATION.search(_delivery_clause_before(sentence, ask.start()) + ask.group(0))
+    ]
+    return any(
+        ask.start() < lease.start() or ask.group("trigger") in _DELIVERY_GATING_TRIGGERS
+        for lease in leases
+        for ask in asks
+    )
+
+
+def _delivery_unprohibited(sentence: str, match: re.Match[str]) -> bool:
+    """Return whether no prohibition (`_DELIVERY_PROHIBITS`) comes before a match in its clause."""
+    return not _DELIVERY_PROHIBITS.search(_delivery_clause_before(sentence, match.start()))
+
+
+def _delivery_clause_with_neighbours(sentence: str, index: int) -> str:
+    """Return the clause of a sentence holding `index`, together with the clause before it and the clause after it."""
+    bounds = [0, *(match.start() for match in _DELIVERY_CLAUSE_BREAK.finditer(sentence)), len(sentence)]
+    clause = max(position for position in range(len(bounds) - 1) if bounds[position] <= index)
+    return sentence[bounds[max(clause - 1, 0)] : bounds[min(clause + 2, len(bounds) - 1)]]
+
+
+def _delivery_force_pushes_without_lease(sentence: str, force: re.Match[str]) -> bool:
+    """Return whether a force-push in words is neither prohibited nor made a lease push in its clause."""
+    clause = _delivery_clause_before(sentence, force.start()) + _delivery_clause_after(sentence, force.start())
+    return _delivery_unprohibited(sentence, force) and not _DELIVERY_WITH_LEASE.search(clause)
+
+
+def _delivery_force_gaps(sentences: list[str]) -> list[str]:
+    """Return the sentences that push with a plain force or make the lease push conditional.
+
+    A `--force`, `-f` or "plain force" (`_DELIVERY_PLAIN_FORCE`) counts unless a prohibition comes before it in its
+    clause; a force-push in words (`_DELIVERY_FORCE_PUSH`) also unless its clause holds `--force-with-lease` or "with a
+    lease"; a `--force-with-lease` is conditional when a condition (`_DELIVERY_HEDGE`) sits in its clause or in the
+    clause before or after it.
+    """
+    gaps = [
+        f"pushes with a plain --force: {sentence!r}"
+        for sentence in sentences
+        if any(_delivery_unprohibited(sentence, force) for force in _DELIVERY_PLAIN_FORCE.finditer(sentence))
+    ]
+    gaps.extend(
+        f"force-pushes without a lease: {sentence!r}"
+        for sentence in sentences
+        if any(
+            _delivery_force_pushes_without_lease(sentence, force) for force in _DELIVERY_FORCE_PUSH.finditer(sentence)
+        )
+    )
+    gaps.extend(
+        f"makes the lease push conditional: {sentence!r}"
+        for sentence in sentences
+        if any(
+            _DELIVERY_HEDGE.search(_delivery_clause_with_neighbours(sentence, lease.start()))
+            for lease in _DELIVERY_LEASE_PUSH.finditer(sentence)
+        )
+    )
+    return gaps
+
+
+def _delivery_weakens_yes(sentence: str) -> bool:
+    """Return whether a sentence lets a history rewrite or force-push go up without a firm yes from the user.
+
+    It waives the yes in words that carry their own negation (`_DELIVERY_WAIVES_YES`), negates the need for it
+    (`_DELIVERY_NEGATED_NEED`), weakens it in any of `_DELIVERY_WEAKENS_YES` with no prohibition before it in its
+    clause, or permits the push or rewrite (`_DELIVERY_PERMITS_PUSH`, not prohibited) in a sentence that asks no yes.
+    """
+    if _DELIVERY_WAIVES_YES.search(sentence) or _DELIVERY_NEGATED_NEED.search(sentence):
+        return True
+    if any(
+        _delivery_unprohibited(sentence, weakening)
+        for pattern in _DELIVERY_WEAKENS_YES
+        for weakening in pattern.finditer(sentence)
+    ):
+        return True
+    return not _DELIVERY_ASKS_YES.search(sentence) and any(
+        _delivery_unprohibited(sentence, permit) for permit in _DELIVERY_PERMITS_PUSH.finditer(sentence)
+    )
+
+
+def _delivery_history_rewrite_gaps(blocks: list[str]) -> list[str]:
+    """Return what opening-pull-requests' blocks lack to rewrite pushed history only with a yes and a lease (R9.4)."""
+    gaps = []
+    if not any(
+        _DELIVERY_ALREADY_PUSHED.search(block)
+        and any(_delivery_asks_yes_before_lease_push(sentence) for sentence in _sentences(block))
+        for block in blocks
+    ):
+        gaps.append(
+            "no paragraph or list item about an already pushed pull request says, in one sentence, to ask the user's"
+            " yes for rewriting its history and push it with `--force-with-lease`"
+        )
+    sentences = [sentence.strip() for block in blocks for sentence in _sentences(block)]
+    gaps.extend(_delivery_force_gaps(sentences))
+    context = [sentence for sentence in sentences if _DELIVERY_HISTORY_CONTEXT.search(sentence)]
+    gaps.extend(
+        f"rewrites history without a firm yes: {sentence!r}" for sentence in context if _delivery_weakens_yes(sentence)
+    )
+    gaps.extend(
+        f"narrows or exempts the rewrites that need a yes: {sentence!r}"
+        for sentence in context
+        if _DELIVERY_NARROWS_REWRITE.search(sentence)
+    )
+    gaps.extend(
+        f"asks the yes after pushing: {sentence!r}"
+        for sentence in context
+        if _DELIVERY_ASKS_YES.search(sentence) and _DELIVERY_YES_AFTER_PUSH.search(sentence)
+    )
+    return gaps
+
+
+class PushedHistoryRewriteTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_rewriting_pushed_history_needs_a_yes(self) -> None:
+        """R9.4: rewriting an already pushed pull request's history needs the user's yes and `--force-with-lease`.
+
+        opening-pull-requests/SKILL.md has a paragraph or list item about an already pushed pull request (pushed, on
+        the remote) where one sentence names the rewrite (rewrite, rebase), asks the user's yes for it and pushes it
+        with `--force-with-lease`, with neither clause negated and the yes coming first or binding the push ("with its
+        own yes", "only after the yes"). No sentence anywhere pushes with a plain `--force`, `-f` or "plain force"
+        outside a prohibiting clause ("never --force"), force-pushes in words ("force-push it") outside a prohibiting
+        clause and without a lease in that clause, or attaches a condition to the lease push ("if you can", "when
+        possible", "unless", "ideally"). No sentence about rewriting history, force-pushing or the lease weakens the
+        yes: waives it ("no need to ask", "skip the yes", "needs no yes"), negates the need for it ("does not need a
+        yes", "is not required"), makes it optional, pre-approved, exempt, implied or carried over from another yes,
+        makes the ask optional, permissive or conditional ("optionally ask", "you may ask", "ask if needed"), goes up
+        without it ("without asking"), or permits the push in a sentence that asks no yes ("you may force-push it");
+        all but the waivers and negated needs count only outside a prohibiting clause, so "never force-push without
+        an explicit yes" and "the yes is never optional" keep the rule. Nor does any such sentence narrow or exempt
+        the rewrites it covers ("only for stacked rebases", "except a stacked rebase", "unless"), or ask the yes after
+        pushing.
+        """
+        gaps = [
+            f"opening-pull-requests/SKILL.md: {gap}"
+            for gap in _delivery_history_rewrite_gaps(_blocks(_DELIVERY_OPENING_PULL_REQUESTS))
+        ]
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
 if __name__ == "__main__":
     unittest.main()
