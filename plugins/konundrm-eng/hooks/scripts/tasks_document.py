@@ -7,7 +7,9 @@ Each slice ends with a ``### Partitions`` table
 (``| Wave | Partition | Tasks | Depends on |``) that assigns its tasks to partitions; a Tasks cell
 lists IDs and inclusive ranges (``T1-T3``, ``T4..T6``, ``T7 to T9``; en and em dashes too), bold or
 not. IDs match by number, so ``T01`` lists task ``T1``; a range is never expanded, only the
-document's own tasks are checked against its bounds. The impact report and the session doctor
+document's own tasks are checked against its bounds. A number longer than ``MAX_TASK_NUMBER_DIGITS``
+significant digits is not a usable task number: a cell ID, range bound or task with one lists or
+belongs to nothing, so no cell text can make the reader raise. The impact report and the session doctor
 both read it, so the format has this one parser. HTML comments are ignored: the template carries
 a commented example.
 
@@ -36,6 +38,8 @@ PARTITION_TABLE = re.compile(
 SEPARATOR_CELL = re.compile(r"^:?-+:?$")
 TASK_RANGE = re.compile(r"\bT(?P<first>\d+)\s*(?:\u2013|\u2014|-|\.\.|to)\s*T(?P<last>\d+)\b")
 TASK_ID = re.compile(r"\bT\d+\b")
+MAX_TASK_NUMBER_DIGITS = 18
+"""Significant digits a task number may have: far above any real plan, far below CPython's limit."""
 
 
 @dataclass(frozen=True)
@@ -134,7 +138,9 @@ class _TasksCell:
     Both are kept as task numbers, so zero padding never matters: ``T01`` and ``T1`` name the same
     task, in the cell and in the task list alike. Ranges stay as their bounds rather than being
     expanded, so their width costs nothing. A range whose end comes before its start (``T5-T3``)
-    lists no task. Anything that is not a task ID, such as an empty cell or ``—``, is ignored.
+    lists no task. An ID or range bound with more than ``MAX_TASK_NUMBER_DIGITS`` significant digits
+    is not a usable task number, so it lists no task, and neither does a range with such a bound.
+    Anything that is not a task ID, such as an empty cell or ``—``, is ignored.
     """
 
     numbers: frozenset[int]
@@ -142,19 +148,32 @@ class _TasksCell:
 
     @classmethod
     def parse(cls, cell: str) -> _TasksCell:
-        ranges = tuple((int(found.group("first")), int(found.group("last"))) for found in TASK_RANGE.finditer(cell))
-        explicit = TASK_ID.findall(TASK_RANGE.sub(" ", cell))
-        return cls(numbers=frozenset(_task_number(task_id) for task_id in explicit), ranges=ranges)
+        bounds = (
+            (_task_number(found.group("first")), _task_number(found.group("last")))
+            for found in TASK_RANGE.finditer(cell)
+        )
+        ranges = tuple((first, last) for first, last in bounds if first is not None and last is not None)
+        explicit = (_task_number(task_id[1:]) for task_id in TASK_ID.findall(TASK_RANGE.sub(" ", cell)))
+        return cls(numbers=frozenset(number for number in explicit if number is not None), ranges=ranges)
 
     def lists(self, task_id: str) -> bool:
         """Whether the cell names the task's number or one of its ranges covers it."""
-        number = _task_number(task_id)
+        number = _task_number(task_id[1:])
+        if number is None:
+            return False
         return number in self.numbers or any(first <= number <= last for first, last in self.ranges)
 
 
-def _task_number(task_id: str) -> int:
-    """The number a task ID such as ``T03`` stands for, without its zero padding."""
-    return int(task_id[1:])
+def _task_number(digits: str) -> int | None:
+    """The number the digits of a task ID such as ``T03`` stand for, without their zero padding.
+
+    Returns None when the digits, zero padding removed, are more than ``MAX_TASK_NUMBER_DIGITS``
+    long: that is not a usable task number, and ``int()`` could reject it outright.
+    """
+    significant = digits.lstrip("0") or "0"
+    if len(significant) > MAX_TASK_NUMBER_DIGITS:
+        return None
+    return int(significant)
 
 
 def _slice_at(position: int, headings: list[re.Match[str]]) -> str | None:

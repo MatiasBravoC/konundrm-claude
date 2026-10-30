@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from tasks_document import Task, read_tasks
+from tasks_document import Task, TasksDocument, read_tasks
 
 TEMPLATE = Path(__file__).resolve().parents[2] / "skills" / "writing-plans" / "templates" / "tasks.md"
 
@@ -88,6 +88,37 @@ def _expected_partitions(rows: list[list[Item]]) -> dict[str, str | None]:
                 if expected[f"T{number}"] is None:
                     expected[f"T{number}"] = f"P{index}"
     return expected
+
+
+# CPython refuses int() on strings longer than this many digits (sys.get_int_max_str_digits()).
+INT_DIGIT_LIMIT = 4300
+STRAY_TOKENS = (",", "**", "\u2014", "x", "T", "Tx", "abc", "P1", "T-", "..", "to")
+# Maps every byte to an ASCII digit, so thousands of random digits cost one translate call.
+BYTE_TO_DIGIT = bytes(ord("0") + value % 10 for value in range(256))
+
+
+def _random_task_id(rng: random.Random) -> str:
+    """A task ID of 1 to 4 digits, or now and then one well past CPython's int digit limit, sometimes zero-padded."""
+    length = rng.randint(INT_DIGIT_LIMIT - 100, INT_DIGIT_LIMIT + 1700) if rng.random() < 0.1 else rng.randint(1, 4)
+    digits = str(rng.randint(1, 9)) + rng.randbytes(length - 1).translate(BYTE_TO_DIGIT).decode("ascii")
+    padding = "0" * rng.randint(1, 3) if rng.random() < 0.2 else ""
+    return f"T{padding}{digits}"
+
+
+def _random_cell(rng: random.Random) -> str:
+    """A Tasks cell mixing IDs, ranges with any accepted separator, commas, bold, placeholders and stray text."""
+    tokens: list[str] = []
+    for _ in range(rng.randint(0, 5)):
+        kind = rng.random()
+        if kind < 0.35:
+            tokens.append(_random_task_id(rng))
+        elif kind < 0.7:
+            space = rng.choice(("", " "))
+            separator = rng.choice(RANGE_SEPARATORS)
+            tokens.append(f"{_random_task_id(rng)}{space}{separator}{space}{_random_task_id(rng)}")
+        else:
+            tokens.append(rng.choice(STRAY_TOKENS))
+    return "".join(f"{token}{rng.choice(('', ' ', ', '))}" for token in tokens)
 
 
 class ReadTasksTest(unittest.TestCase):
@@ -286,6 +317,52 @@ class ReadTasksTest(unittest.TestCase):
             {task.id: task.partition for task in tasks},
             {"T1": "P1", "T02": "P2", "T4": "P3", "T6": None},
         )
+
+    def test_a_task_id_with_thousands_of_digits_does_not_crash_the_reader(self) -> None:
+        # R3.8: an explicit ID or a range bound longer than CPython's 4300-digit int limit does not
+        # make read_tasks raise, and such a cell matches no task. A range with one over-long bound
+        # lists nothing, even when its other bound is small, so T1 and T2 fall through to P4.
+        huge = "1" * 5000
+        _, tasks = self.read(
+            "- **Status:** Approved\n\n"
+            "## Slice S1: apply\n\n"
+            "- [ ] **T1** First\n"
+            "- [ ] **T2** Second\n\n"
+            "### Partitions\n\n"
+            "| Wave | Partition | Tasks | Depends on |\n"
+            "| --- | --- | --- | --- |\n"
+            f"| 1 | P1 | T{huge} | \u2014 |\n"
+            f"| 2 | P2 | T1\u2013T{huge} | P1 |\n"
+            f"| 3 | P3 | T{huge}\u2013T2 | P2 |\n"
+            "| 4 | P4 | T1, T2 | P3 |\n"
+        )
+        self.assertEqual({task.id: task.partition for task in tasks}, {"T1": "P4", "T2": "P4"})
+
+    def test_the_reader_never_raises_on_any_partition_cell(self) -> None:
+        # R3.8: over 200 seeded documents, read_tasks returns a TasksDocument whatever the Tasks cells
+        # hold: IDs of any length (some past CPython's int digit limit, some zero-padded), ranges with
+        # every accepted separator, commas, bold, placeholders and stray letters. Some task lines carry
+        # an over-long ID of their own.
+        seed = 73
+        rng = random.Random(seed)  # noqa: S311 - seeded for reproducible test data, not cryptography
+        # 200 cases, because each one writes the file read_tasks takes, and file I/O dominates the run.
+        for case in range(200):
+            task_ids = ["T1", "T2", "T03", *(_random_task_id(rng) for _ in range(rng.randint(0, 2)))]
+            task_lines = "".join(f"- [ ] **{task_id}** Task\n" for task_id in task_ids)
+            cells = [_random_cell(rng) for _ in range(rng.randint(1, 4))]
+            rows = "".join(
+                f"| {index} | {'**' if bold else ''}P{index}{'**' if bold else ''} | {cell} | \u2014 |\n"
+                for index, (cell, bold) in enumerate(((cell, rng.random() < 0.3) for cell in cells), start=1)
+            )
+            with self.subTest(seed=seed, case=case, task_ids=task_ids, cells=cells):
+                self.path.write_text(
+                    "- **Status:** Approved\n\n## Slice S1: apply\n\n"
+                    f"{task_lines}\n### Partitions\n\n"
+                    "| Wave | Partition | Tasks | Depends on |\n| --- | --- | --- | --- |\n"
+                    f"{rows}",
+                    encoding="utf-8",
+                )
+                self.assertIsInstance(read_tasks(self.path), TasksDocument)
 
     def test_reads_whether_partitions_run_in_parallel(self) -> None:
         # R3.6: the parallel answer is read back from the header; a plan without the line is serial.

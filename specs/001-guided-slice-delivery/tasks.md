@@ -566,12 +566,13 @@ una sugerencia de la revisión de código de T29; T72 porque en T27 un nombre de
 
 <!-- Agregadas el 2026-10-30 por la sesión principal con las notas de revisión de las sesiones de
 S3 y de agentes (T61, T63, T66 y T68). -->
-- [ ] **T73** Un ID de tarea o un límite de rango con miles de dígitos no hace caer al lector · `behavior` · Risk: medium · Covers: R3.8
+- [x] **T73** Un ID de tarea o un límite de rango con miles de dígitos no hace caer al lector · `behavior` · Risk: medium · Covers: R3.8
   - Test: `P/hooks/tests/test_tasks_document.py::test_a_task_id_with_thousands_of_digits_does_not_crash_the_reader` (un ID explícito y un límite de rango más allá del tope de 4300 dígitos de `int` en CPython: `read_tasks` no lanza y esa celda no asigna ninguna tarea)
   - Files: `P/hooks/scripts/tasks_document.py` (modify: tope de dígitos en un solo lugar)
   - Invariants: `read_tasks` nunca lanza con ningún texto de celda de partición
   - Verify: `... -k test_a_task_id_with_thousands_of_digits_does_not_crash_the_reader`
   - Depends on: T61
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T74** Al iniciar sesión, solo se listan las particiones de la oleada en curso · `behavior` · Risk: low · Covers: R3.7
   - Test: `P/hooks/tests/test_session_doctor.py::test_lists_only_the_current_wave_partitions` (con tareas pendientes en la oleada 1, las particiones de la oleada 2 no se listan; terminada la oleada 1, sí)
