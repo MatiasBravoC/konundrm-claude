@@ -515,10 +515,11 @@ pedido de ser maximalista: las sugerencias de las revisiones de código que vale
   - Depends on: T8
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T65** La prueba de roles de solo lectura confirma el nombre del rol antes de la denegación · `chore` · Risk: low · Covers: R8.5
+- [x] **T65** La prueba de roles de solo lectura confirma el nombre del rol antes de la denegación · `chore` · Risk: low · Covers: R8.5
   - Files: `P/hooks/tests/test_roles.py` (modify `test_read_only_roles_may_not_change_anything` y los nombres de los ayudantes de la propiedad)
   - Verify: `... -k test_read_only_roles`
   - Depends on: T42
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T66** Un intento apartado se recupera nombrando su entrada del stash por el mensaje, nunca por posición · `behavior` · Risk: low · Covers: R8.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_a_set_aside_attempt_is_recovered_by_its_stash_message` (develop-feature y fix-bug: `git stash list --grep=<mensaje> --format=%gd` o equivalente; ningún `git stash apply` sin la entrada)

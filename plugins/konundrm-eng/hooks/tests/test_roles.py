@@ -26,21 +26,21 @@ def generate_paths(seed: int, count: int) -> list[str]:
     rng = random.Random(seed)  # noqa: S311 - repeatable test inputs, not cryptography
     test_folders = sorted(TEST_DIRECTORIES)  # sorted: a frozenset's order changes between runs
 
-    def segment() -> str:
+    def draw_segment() -> str:
         return "".join(rng.choice(PATH_CHARACTERS) for _ in range(rng.randint(1, 12)))
 
-    def under_folders(*last: str) -> str:
-        return "/".join([*(segment() for _ in range(rng.randint(0, 6 - len(last)))), *last])
+    def draw_path_ending_in(*last: str) -> str:
+        return "/".join([*(draw_segment() for _ in range(rng.randint(0, 6 - len(last)))), *last])
 
-    def test_file_name() -> str:
-        return "".join(segment() if character == "*" else character for character in rng.choice(TEST_FILE_GLOBS))
+    def draw_test_file_name() -> str:
+        return "".join(draw_segment() if character == "*" else character for character in rng.choice(TEST_FILE_GLOBS))
 
     shapes = (
-        lambda: under_folders(segment()),
-        lambda: under_folders(rng.choice(test_folders), segment()),
-        lambda: under_folders(test_file_name()),
-        lambda: under_folders("." + segment()),
-        lambda: f"specs/{rng.randrange(1000):03d}-{segment()}/{rng.choice(FEATURE_DOCUMENTS)}",
+        lambda: draw_path_ending_in(draw_segment()),
+        lambda: draw_path_ending_in(rng.choice(test_folders), draw_segment()),
+        lambda: draw_path_ending_in(draw_test_file_name()),
+        lambda: draw_path_ending_in("." + draw_segment()),
+        lambda: f"specs/{rng.randrange(1000):03d}-{draw_segment()}/{rng.choice(FEATURE_DOCUMENTS)}",
     )
     return [shapes[index % len(shapes)]() for index in range(count)]
 
@@ -95,6 +95,7 @@ class ChangeDenialReasonTest(unittest.TestCase):
         for name in read_only_names:
             with self.subTest(role=name):
                 role = agent_role({"agent_type": f"konundrm-eng:{name}"})
+                self.assertEqual(role, name)
                 self.assertIn("read-only", change_denial_reason(role, "src/a.py") or "")
                 self.assertIn("read-only", change_denial_reason(role, "tests/test_a.py") or "")
 
