@@ -22,6 +22,24 @@ PASSING = f'"{sys.executable}" -c "raise SystemExit(0)"'
 FAILING = f'"{sys.executable}" -c "print(\'1 failed\'); raise SystemExit(1)"'
 
 
+def install_fake_python(data: Path) -> tuple[Path, Path]:
+    """Caches a fake Python in run.sh's data folder that leaves a marker and saves its stdin.
+
+    Args:
+        data: The folder run.sh reads as $CLAUDE_PLUGIN_DATA.
+
+    Returns:
+        The marker the fake creates when it starts, and the file that holds the stdin it received.
+    """
+    marker = data / "python-started"
+    stdin_copy = data / "python-stdin"
+    fake_python = data / "fake-python"
+    fake_python.write_text(f'#!/bin/sh\n: > "{marker.as_posix()}"\ncat > "{stdin_copy.as_posix()}"\n', newline="\n")
+    fake_python.chmod(0o755)
+    (data / "python-path").write_text(fake_python.as_posix() + "\n", newline="\n")
+    return marker, stdin_copy
+
+
 class HookScriptsTest(unittest.TestCase):
     def setUp(self) -> None:
         self._project = tempfile.TemporaryDirectory()
@@ -229,12 +247,7 @@ class HookScriptsTest(unittest.TestCase):
     @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
     def test_run_sh_skips_python_for_a_command_that_is_not_the_check(self) -> None:
         # R5.1
-        data = Path(self._data.name)
-        marker = data / "python-started"
-        fake_python = data / "fake-python"
-        fake_python.write_text(f'#!/bin/sh\n: > "{marker.as_posix()}"\ncat >/dev/null\n', newline="\n")
-        fake_python.chmod(0o755)
-        (data / "python-path").write_text(fake_python.as_posix() + "\n", newline="\n")
+        marker, _ = install_fake_python(Path(self._data.name))
         event = {
             "session_id": "it-session",
             "cwd": str(self.root),
@@ -256,6 +269,45 @@ class HookScriptsTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(marker.exists(), "run.sh started Python for a command that is not the check")
+
+    @unittest.skipIf(shutil.which("sh") is None, "no POSIX sh on PATH")
+    def test_run_sh_runs_python_for_the_check_and_a_custom_check(self) -> None:
+        # R5.2: the discovered check and a check set in KONUNDRM_CHECK_CMD both reach Python, which
+        # reads the event byte for byte, past the 8 KB run.sh reads before it decides.
+        marker, stdin_copy = install_fake_python(Path(self._data.name))
+        (self.root / "package.json").write_text('{"scripts": {"check": "x"}}')
+        discovered_env = {key: value for key, value in self.env.items() if key != "KONUNDRM_CHECK_CMD"}
+        custom_env = {**self.env, "KONUNDRM_CHECK_CMD": "make verify"}
+
+        def launch(command: str, env: dict[str, str]) -> bytes:
+            event = {
+                "session_id": "it-session",
+                "cwd": str(self.root),
+                "hook_event_name": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": command},
+                "tool_response": {"stdout": "ok ñ " * 6_000, "stderr": "", "interrupted": False},
+            }
+            sent = (json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8")
+            marker.unlink(missing_ok=True)
+            stdin_copy.unlink(missing_ok=True)
+            result = subprocess.run(
+                [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), "record_check_result.py"],
+                input=sent,
+                capture_output=True,
+                env=env,
+                timeout=60,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return sent
+
+        sent = launch("npm run check", discovered_env)
+        self.assertGreater(len(sent), 32_000)
+        self.assertTrue(marker.exists(), "run.sh skipped Python for the project's check")
+        self.assertEqual(stdin_copy.read_bytes(), sent, "Python received a different event than run.sh")
+
+        launch("make verify", custom_env)
+        self.assertTrue(marker.exists(), "run.sh skipped Python for the check set in KONUNDRM_CHECK_CMD")
 
 
 # Whitespace Python's str.split() and str.strip() remove, including some a C-locale shell does not.
@@ -289,11 +341,7 @@ class RunShFastPathPropertyTest(unittest.TestCase):
         # R5.1 invariant: the fast path never skips a command quality_check would record as the check.
         with tempfile.TemporaryDirectory() as data_name:
             data = Path(data_name)
-            marker = data / "python-started"
-            fake_python = data / "fake-python"
-            fake_python.write_text(f'#!/bin/sh\n: > "{marker.as_posix()}"\ncat >/dev/null\n', newline="\n")
-            fake_python.chmod(0o755)
-            (data / "python-path").write_text(fake_python.as_posix() + "\n", newline="\n")
+            marker, _ = install_fake_python(data)
             rng = random.Random(29)  # noqa: S311 - seeded for reproducible test data, not cryptography
             skipped = []
             checked = 0
@@ -345,6 +393,67 @@ class RunShFastPathPropertyTest(unittest.TestCase):
                     skipped.append((override, command))
             self.assertGreaterEqual(checked, 15, "the generator produced too few commands that run the check")
             self.assertEqual(skipped, [], "run.sh skipped Python for (KONUNDRM_CHECK_CMD, command) pairs")
+
+    def test_run_sh_hands_python_every_check_event_byte_for_byte(self) -> None:
+        # R5.2 invariant: for an event whose command runs the check, the bytes Python reads are the
+        # bytes that reached run.sh, whatever the size, trailing newlines or where 8192 falls.
+        block = 8192
+        near_block = tuple(block + delta for delta in (-2, -1, 0, 1, 2))
+        sizes = (300, 1_500, *near_block, 2 * block - 1, 2 * block + 1, 3 * block + 7)
+        multibyte = ("ñ", "€", "😀")
+        pieces = ("ok ", "ñ", "€", "😀", "\r\n", "x", "\\r\\n")
+        with tempfile.TemporaryDirectory() as data_name:
+            data = Path(data_name)
+            marker, stdin_copy = install_fake_python(data)
+            root = data / "project"
+            root.mkdir()
+            (root / "package.json").write_text('{"scripts": {"check": "x"}}')
+            base_env = {**os.environ, "CLAUDE_PLUGIN_DATA": data_name, "CLAUDE_PROJECT_DIR": str(root)}
+            base_env.pop("KONUNDRM_CHECK_CMD", None)
+            rng = random.Random(41)  # noqa: S311 - seeded for reproducible test data, not cryptography
+            mismatches = []
+            for index, size in enumerate(sizes):
+                newlines = "\n" * rng.choice((0, 1, 1, 3))
+                if index % 2:
+                    command, env = "make verify", {**base_env, "KONUNDRM_CHECK_CMD": "make verify"}
+                else:
+                    command, env = "npm run check", base_env
+                event = {
+                    "session_id": "it-session",
+                    "cwd": str(root),
+                    "hook_event_name": "PostToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": command},
+                    "tool_response": {"stdout": "@FILL@", "stderr": "", "interrupted": False},
+                }
+                head, tail = json.dumps(event, ensure_ascii=False).encode("utf-8").split(b"@FILL@")
+                room = size - len(head) - len(tail) - len(newlines)
+                fill = b""
+                char = rng.choice(multibyte).encode("utf-8")
+                if room >= block - len(head) + len(char):
+                    # A multibyte character that starts 1..len-1 bytes before byte 8192, so it straddles it.
+                    fill = b"x" * (block - len(head) - rng.randint(1, len(char) - 1)) + char
+                while len(fill) < room:
+                    piece = rng.choice(pieces).encode("utf-8")
+                    fill += piece if len(fill) + len(piece) <= room else b"x"
+                sent = head + fill + tail + newlines.encode("ascii")
+                self.assertEqual(len(sent), size)
+                marker.unlink(missing_ok=True)
+                stdin_copy.unlink(missing_ok=True)
+
+                result = subprocess.run(
+                    [shutil.which("sh") or "sh", str(HOOKS / "run.sh"), "record_check_result.py"],
+                    input=sent,
+                    capture_output=True,
+                    env=env,
+                    timeout=60,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                received = stdin_copy.read_bytes() if marker.exists() else None
+                if received != sent:
+                    mismatches.append((command, size, len(newlines), None if received is None else len(received)))
+            self.assertEqual(mismatches, [], "Python got other bytes for (command, size, trailing newlines, got)")
 
 
 def git(root: Path, *args: str) -> None:

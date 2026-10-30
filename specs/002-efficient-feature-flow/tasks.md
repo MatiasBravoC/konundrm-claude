@@ -34,12 +34,13 @@ actualiza en el paso rojo de esa tarea. -->
     - Recommendation: B, confirmada midiendo ambas en esta máquina con un evento chico y uno de 200 KB.
   - Rounds: spec 2 · code 3 · escalations 0
 
-- [ ] **T2** `run.sh` arranca Python para el check del proyecto y para un check propio configurado · `behavior` · Risk: medium · Covers: R5.2
+- [x] **T2** `run.sh` arranca Python para el check del proyecto y para un check propio configurado · `behavior` · Risk: medium · Covers: R5.2
   - Test: `P/hooks/tests/integration/test_hook_scripts.py::test_run_sh_runs_python_for_the_check_and_a_custom_check` (`npm run check` → marcador y evento intacto; con `KONUNDRM_CHECK_CMD=make verify`, `make verify` → marcador)
   - Files: `P/hooks/run.sh` (modify)
   - Invariants: el evento que recibe Python es byte a byte el que llegó a `run.sh`.
   - Verify: `... -k test_run_sh_runs_python_for_the_check_and_a_custom_check`
   - Depends on: T1
+  - Rounds: spec 1 · code 2 · escalations 0
 
 - [ ] **T3** Si no puede leer el comando, `run.sh` corre el registro completo · `behavior` · Risk: medium · Covers: R5.3
   - Test: `P/hooks/tests/integration/test_hook_scripts.py::test_run_sh_runs_python_when_it_cannot_tell_the_command` (comillas escapadas dentro del comando, campo `command` después de los primeros 8 KB, evento sin `command` → marcador)
