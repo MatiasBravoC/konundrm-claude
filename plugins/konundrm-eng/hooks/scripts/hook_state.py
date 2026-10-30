@@ -110,6 +110,8 @@ class SubagentRecord:
 
     Attributes:
         role: The subagent's konundrm-eng role.
+        root: Project root the subagent started in, where before_tree was taken; None in a record
+            an older plugin version wrote.
         before_tree: Tree snapshot taken when the subagent started.
         blocks: Times its stop was blocked because of changes outside its role.
     """
@@ -119,12 +121,16 @@ class SubagentRecord:
         self._path = _state_directory() / "agents" / name
         data = _load(self._path)
         self.role: str | None = data.get("role")
+        self.root: str | None = data.get("root")
         self.before_tree: str | None = data.get("before_tree")
         self.blocks = _as_int(data.get("blocks"))
 
     def save(self) -> None:
         """Persists the record; failures are ignored."""
-        _save(self._path, {"role": self.role, "before_tree": self.before_tree, "blocks": self.blocks})
+        _save(
+            self._path,
+            {"role": self.role, "root": self.root, "before_tree": self.before_tree, "blocks": self.blocks},
+        )
 
     def delete(self) -> None:
         """Removes the record once the subagent has stopped."""

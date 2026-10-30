@@ -169,7 +169,7 @@ revisiones de código y de las sesiones paralelas. -->
 subagentes fotografiaba la copia principal en SubagentStart y comparaba y restauraba en el worktree en
 SubagentStop. T70 hace que la auditoría use una sola raíz por subagente; T56 vuelve a entrar después.
 Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para decidir. -->
-- [ ] **T70** La auditoría de subagentes compara y restaura solo en el árbol que fotografió al empezar · `behavior` · Risk: high · Covers: R3.3
+- [x] **T70** La auditoría de subagentes compara y restaura solo en el árbol que fotografió al empezar · `behavior` · Risk: high · Covers: R3.3
   - Test: `P/hooks/tests/test_audit_subagent_changes.py::test_audit_restores_only_in_the_tree_it_snapshotted` (un SubagentStart y un SubagentStop del mismo subagente que resuelven raíces distintas —copia principal y worktree enlazado reales en carpetas temporales— no restauran ni borran nada en ningún árbol; con la misma raíz, todo sigue como hoy)
   - Files: `P/hooks/scripts/audit_subagent_changes.py` (modify: el registro guarda la raíz de SubagentStart y SubagentStop usa esa), `P/hooks/scripts/hook_state.py` (si hace falta)
   - Invariants: para cualquier par de eventos de un subagente, la auditoría compara y restaura solo dentro del árbol que fotografió al empezar (propiedad en el mismo test sobre raíces generadas con `random.Random(23)`)
@@ -178,6 +178,7 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Evidence: `specs/001-guided-slice-delivery/evidence/T70.md` con los hooks SubagentStart y SubagentStop corridos sobre un worktree enlazado real (eventos armados a mano) y el árbol sin cambios después
   - Verify: `... -k test_audit_restores_only_in_the_tree_it_snapshotted`
   - Depends on: —
+  - Rounds: spec 1 · code 2 · escalations 0
 
 - [ ] **T56** Los gates de una sesión que trabaja en un worktree revisan ese worktree, no la copia principal · `behavior` · Risk: medium · Covers: R3.3
   - Test: `P/hooks/tests/test_project_paths.py::test_project_root_is_the_worktree_the_session_works_in` (con un repositorio y un worktree enlazado reales en carpetas temporales: con `CLAUDE_PROJECT_DIR` en la copia principal y el `cwd` del evento dentro del worktree, la raíz es el worktree; con el `cwd` dentro de la copia principal o fuera del repositorio, la raíz sigue siendo `CLAUDE_PROJECT_DIR`)

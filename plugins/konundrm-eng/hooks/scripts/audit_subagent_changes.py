@@ -1,10 +1,16 @@
 """SubagentStart and SubagentStop hook: audits what each konundrm-eng subagent actually changed.
 
-At start it snapshots the working tree. At stop it compares the tree with that snapshot and checks
-every changed file against the role's rules (roles.py), whatever tool made the change: Edit, Bash,
-a script or a generator. The first time it finds a violation it blocks the stop and tells the
-subagent how to put those files back. If the subagent stops again with the violation still there,
-the hook restores the files itself and warns the person.
+At start it snapshots the working tree and remembers which project root it snapshotted. At stop it
+compares that same root with the snapshot and checks every changed file against the role's rules
+(roles.py), whatever tool made the change: Edit, Bash, a script or a generator. The first time it
+finds a violation it blocks the stop and tells the subagent how to put those files back. If the
+subagent stops again with the violation still there, the hook restores the files itself and warns
+the person.
+
+The stop never resolves the root again from its own event: a session can work in a linked worktree
+that shares the repository's objects with the main checkout, so comparing one checkout with the
+other's snapshot would see every difference between them as the subagent's change and restore or
+delete files in the wrong tree.
 
 Changes are attributed to a subagent by time, so konundrm-eng subagents must run one at a time on
 a working tree; develop-feature already works that way.
@@ -14,6 +20,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from file_kinds import is_tool_artifact
@@ -72,29 +79,39 @@ def restore_instructions(role: str, tree: str, violations: list[Violation]) -> s
 
 
 def on_start(event: dict[str, Any]) -> int:
-    """Snapshots the working tree when a konundrm-eng subagent starts."""
+    """Snapshots the working tree when a konundrm-eng subagent starts and records which root it snapshotted."""
     role = agent_role(event)
     agent_id = event.get("agent_id")
     if role is None or not agent_id:
         return 0
-    tree = snapshot_tree(project_root(event))
+    root = project_root(event)
+    tree = snapshot_tree(root)
     if tree is None:
         return 0
     record = SubagentRecord(event.get("session_id"), str(agent_id))
-    record.role, record.before_tree, record.blocks = role, tree, 0
+    record.role, record.root, record.before_tree, record.blocks = role, str(root), tree, 0
     record.save()
     return 0
 
 
 def on_stop(event: dict[str, Any]) -> int:
-    """Blocks, then reverts, changes a stopping subagent made outside its role."""
+    """Blocks, then reverts, changes a stopping subagent made outside its role.
+
+    Compares and restores only in the root the subagent's start snapshotted. A record without that
+    root (written by a plugin version before the upgrade) is unauditable: it is dropped and nothing
+    is checked, because guessing the root from this event could restore files in another checkout.
+    When the stored root is gone or no longer a Git tree, no snapshot is taken and nothing changes.
+    """
     agent_id = event.get("agent_id")
     if not agent_id:
         return 0
     record = SubagentRecord(event.get("session_id"), str(agent_id))
     if not record.role or not record.before_tree:
         return 0
-    root = project_root(event)
+    if not record.root:
+        record.delete()
+        return 0
+    root = Path(record.root)
     after = snapshot_tree(root)
     violations = [] if after is None else find_violations(record.role, changed_paths(root, record.before_tree, after))
     if not violations:
