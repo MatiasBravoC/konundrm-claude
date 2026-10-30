@@ -388,7 +388,8 @@ With `Checkpoints: pre-approved` in the `tasks.md` header, still write and commi
    file and the message of any stash it left), and anything escalated.
    When any task was `high`, tell the user to read that diff before pushing. **Ask before
    pushing** or opening pull requests. On a yes, offer two deliveries: one stacked pull request
-   per slice (the default) or a single pull request with every slice. Then run the
+   per slice (the default) or a single pull request with every slice. When any task is high risk,
+   warn that with a single pull request `risk:high` will cover the whole feature. Then run the
    `opening-pull-requests` skill with the choice: each pull request carries its traceability
    table, and `risk:high` on the slices that hold a high-risk task so CI repeats mutation testing
    on them.

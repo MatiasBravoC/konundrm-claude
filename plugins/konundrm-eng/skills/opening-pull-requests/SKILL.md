@@ -52,6 +52,16 @@ with every slice.
 **Single:** the feature branch is one pull request against the default branch, and its
 description covers every slice.
 
+When any task is high risk, warn the user before opening the single pull request that `risk:high`
+will cover the whole feature, so CI repeats mutation testing on all of it. With a single pull
+request and a high-risk task, also run mutation testing locally on all the changed code before
+opening it, with the project's changed-code mutation command, the same one CI's `risk:high` job
+runs (with setup-project's templates, `uv run --with "mutmut>=3.8,<4" python
+scripts/check_mutation.py --base <base>` in Python, `npx stryker run --mutate <changed line
+ranges>` in TypeScript), and kill or justify every surviving mutant. If the tool cannot run on this machine (mutmut does not run on
+native Windows), record that in the evidence and tell the user: the `risk:high` CI run is then the
+first mutation check.
+
 **Stacked:** each slice is one pull request:
 
 1. Find each task's commit: `git log --format=%H -E --grep '^Task: T<n>( |$)' <base>..HEAD`.

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .plugin_files import PLUGIN_ROOT, SKILLS_DIR, read_frontmatter
-from .test_flows import _NEGATION, _blocks, _in_one_sentence, _sentences, _split_blocks
+from .test_flows import _NEGATION, _blocks, _in_one_sentence, _section_blocks, _sentences, _split_blocks
 
 _WRITING_PLANS = SKILLS_DIR / "writing-plans" / "SKILL.md"
 _PARTITIONS_HEADER = re.compile(r"\bwave\W+partition\W+tasks\W+depends on\b")
@@ -570,6 +570,237 @@ class StackedDeliveryRiskLabelTest(unittest.TestCase):
             f"opening-pull-requests/SKILL.md: {gap}"
             for gap in _delivery_stacked_label_gaps(_blocks(_DELIVERY_OPENING_PULL_REQUESTS))
         ]
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
+# R2.4: with a single pull request and any high-risk task, the user is warned before it opens that `risk:high` covers
+# the whole feature, and mutation testing runs locally on all the changed code first when the tool runs here.
+_DELIVERY_DEVELOP_FEATURE = SKILLS_DIR / "develop-feature" / "SKILL.md"
+_DELIVERY_WARNS = re.compile(r"\b(?:warn\w*|tell\w*|alert\w*|inform\w*|notif\w*)\b")
+# No qualifier between "every" and the slices or tasks: "each high-risk task" is R2.3's stacked meaning, not the whole
+# feature.
+_DELIVERY_WHOLE_FEATURE = re.compile(
+    r"\b(?:whole|entire) (?:feature|pull request)\b"
+    r"|\b(?:every|each|all)(?: (?:the|its|of its|of the))? (?:slices?|tasks?)\b"
+)
+_DELIVERY_BEFORE_OPENING = re.compile(r"\bbefore\b(?: \S+){0,4}? (?:open\w*|push\w*|creat\w*)\b")
+_DELIVERY_MUTATION = re.compile(r"\b(?:mutation|mutmut)\b")
+_DELIVERY_LOCALLY = re.compile(r"\blocal(?:ly)?\b|\bon this machine\b")
+_DELIVERY_RUNS = re.compile(r"\b(?:run|runs|running)\b")
+# No qualifier before the changed code either: "all the high-risk changed code" is part of it.
+_DELIVERY_ALL_CHANGED_CODE = re.compile(r"\b(?:all|every|whole|entire)(?: (?:of )?(?:the|its))? (?:chang\w*|diff)\b")
+# A run scoped to part of the changed code: the high-risk tasks' own `Mutation:` commands (each covers only its task's
+# files) or the high-risk code alone, while CI's `risk:high` job gates every changed function of the pull request.
+_DELIVERY_NARROWED_RUN = re.compile(
+    r"\bmutation:? commands?\b(?: \S+){0,3}? tasks?\b"
+    r"|\btasks?['\u2019]?s?(?: own)? mutation:? commands?\b"
+    r"|\bhigh[- ]risk (?:chang\w*|code|files?|functions?|diff)\b"
+)
+# What ties a run to part of the changed code when it comes after the run verb, wherever it sits: a high-risk mention
+# ("of the high-risk tasks", "in the high-risk tasks' files", "tasks at risk: high") or any task or slice ("of those
+# tasks", "in each task's files"), since the whole diff belongs to no task. Not the `risk:high` label, which has no
+# space after its colon.
+_DELIVERY_RUN_TIE = re.compile(
+    r"\bhigh(?:er|est)?[- ]risk\b|\brisk:? high\b|\brisk(?:y|ier|iest)\b|\btasks?\b|\bslices?\b"
+)
+# Words that make the run optional instead of required ("optionally run", "you may run", "consider running", "if you
+# like"), read anywhere in the sentence.
+_DELIVERY_OPTIONAL = re.compile(
+    r"\b(?:optional\w*|may|might|consider\w*|feel free|at your discretion|if desired|up to (?:you|the user)"
+    r"|if (?:you|they|the user) (?:likes?|wants?|wish(?:es)?|prefers?|chooses?))\b"
+)
+# "can" and "could" make the run permissive too, but are read only from the start of the run's own clause, so a
+# condition before it ("when the tool can run here, run mutation testing …") stays a condition.
+_DELIVERY_PERMITS = re.compile(r"\b(?:can|could)\b")
+# Where the clause that may negate a tie starts. Unlike _DELIVERY_CLAUSE_BREAK, no colon, so "rather than the
+# `Mutation:` commands of the high-risk tasks" keeps its "rather than".
+_DELIVERY_TIE_CLAUSE_BREAK = re.compile(r"[,;()—]")
+# Ways to drop a step that _DELIVERY_NEGATION does not read as negations ("skip running mutation testing").
+_DELIVERY_SKIPS = re.compile(r"\b(?:skip\w*|omit\w*|avoid\w*)\b")
+_DELIVERY_TOOL = re.compile(r"\b(?:tool|mutmut|mutation)\b")
+_DELIVERY_CANNOT_RUN = re.compile(
+    r"\b(?:cannot|can't|can not|does not|doesn't|won't|fails? to)\b(?: \S+){0,2}? run\b|\b(?:un|not )available\b"
+)
+_DELIVERY_FALLBACK = re.compile(r"\bci\b|\bevidence\b|\brecord\w*\b|\b(?:tell|warn|inform)\w*\b(?: \S+){0,2} user\b")
+
+
+def _delivery_single_high_risk_blocks(blocks: list[str]) -> list[str]:
+    """Return the blocks about the single pull request that also name a high-risk task."""
+    return [
+        block
+        for block in blocks
+        if _DELIVERY_SINGLE_PULL_REQUEST.search(block) and _DELIVERY_HIGH_RISK_TASK.search(block)
+    ]
+
+
+def _delivery_warns_whole_feature(sentence: str) -> bool:
+    """Return whether a sentence warns, unnegated, that one `risk:high` covers the whole single pull request.
+
+    The sentence names the single pull request (so R2.3's check reads it as single delivery), a high-risk task, a
+    warning, the `risk:high` label and the whole feature (or every slice or task, with no qualifier such as
+    "high-risk" in between), with no negation in any form and no "skip", "omit" or "avoid".
+    """
+    return bool(
+        _DELIVERY_SINGLE_PULL_REQUEST.search(sentence)
+        and _DELIVERY_HIGH_RISK_TASK.search(sentence)
+        and _DELIVERY_WARNS.search(sentence)
+        and _DELIVERY_RISK_HIGH_LABEL.search(sentence)
+        and _DELIVERY_WHOLE_FEATURE.search(sentence)
+        and not _DELIVERY_NEGATION.search(sentence)
+        and not _DELIVERY_SKIPS.search(sentence)
+    )
+
+
+def _delivery_clause_after(sentence: str, index: int) -> str:
+    """Return the text of a sentence from `index` up to the end of the clause holding it."""
+    end = _DELIVERY_CLAUSE_BREAK.search(sentence, index)
+    return sentence[index : end.start() if end else len(sentence)]
+
+
+def _delivery_mutation_run(sentence: str) -> re.Match[str] | None:
+    """Return the first "run", "runs" or "running" whose own clause, from it on, names mutation testing, or None."""
+    return next(
+        (
+            run
+            for run in _DELIVERY_RUNS.finditer(sentence)
+            if _DELIVERY_MUTATION.search(_delivery_clause_after(sentence, run.start()))
+        ),
+        None,
+    )
+
+
+def _delivery_ties_run_to_part(sentence: str, run: re.Match[str]) -> bool:
+    """Return whether anything after a run verb ties the run to part of the changed code, unnegated.
+
+    A `_DELIVERY_RUN_TIE` after the verb, anywhere up to the end of the sentence, ties it unless its own clause (from
+    the last `_DELIVERY_TIE_CLAUSE_BREAK` before it) negates it ("not only the high-risk tasks' code", "rather than the
+    `Mutation:` commands of the high-risk tasks"). A high-risk task named before the verb, as the condition, does not.
+    """
+    for tie in _DELIVERY_RUN_TIE.finditer(sentence, run.end()):
+        breaks = [match.end() for match in _DELIVERY_TIE_CLAUSE_BREAK.finditer(sentence, 0, tie.start())]
+        if not _DELIVERY_NEGATION.search(sentence[breaks[-1] if breaks else 0 : tie.start()]):
+            return True
+    return False
+
+
+def _delivery_makes_run_optional(sentence: str, run: re.Match[str]) -> bool:
+    """Return whether a sentence makes its run optional or permissive instead of required.
+
+    `_DELIVERY_OPTIONAL` counts anywhere in the sentence; "can" and "could" only from the start of the run's clause on.
+    """
+    clause_start = run.start() - len(_delivery_clause_before(sentence, run.start()))
+    return bool(_DELIVERY_OPTIONAL.search(sentence) or _DELIVERY_PERMITS.search(sentence, clause_start))
+
+
+def _delivery_runs_local_mutation_first(sentence: str) -> bool:
+    """Return whether a sentence requires running mutation testing locally on all the changed code before opening.
+
+    The run is the first run verb whose clause names mutation testing (`_delivery_mutation_run`). From that verb on the
+    sentence says "locally", all the changed code (unqualified: "all the high-risk changed code" is rejected) and
+    before opening, and nothing after the verb ties the run to the high-risk tasks or to any task or slice
+    (`_delivery_ties_run_to_part`). The sentence must not narrow the run to the tasks' `Mutation:` commands
+    (`_DELIVERY_NARROWED_RUN`), make it optional or permissive (`_delivery_makes_run_optional`), negate it in any form,
+    or say "skip", "omit" or "avoid".
+    """
+    run = _delivery_mutation_run(sentence)
+    if run is None:
+        return False
+    return bool(
+        _DELIVERY_LOCALLY.search(sentence, run.end())
+        and _DELIVERY_ALL_CHANGED_CODE.search(sentence, run.end())
+        and _DELIVERY_BEFORE_OPENING.search(sentence, run.end())
+        and not _delivery_ties_run_to_part(sentence, run)
+        and not _DELIVERY_NARROWED_RUN.search(sentence)
+        and not _delivery_makes_run_optional(sentence, run)
+        and not _DELIVERY_NEGATION.search(sentence)
+        and not _DELIVERY_SKIPS.search(sentence)
+    )
+
+
+def _delivery_narrows_mutation_run(sentence: str) -> bool:
+    """Return whether a sentence about mutation testing scopes it to part of the changed code, unnegated.
+
+    It names mutation testing and either ties its run to part of the changed code (`_delivery_ties_run_to_part`) or
+    holds a narrowed run (`_DELIVERY_NARROWED_RUN`) whose own clause does not negate it, so "rather than the `Mutation:`
+    commands of the high-risk tasks" is not a narrowing.
+    """
+    if not _DELIVERY_MUTATION.search(sentence):
+        return False
+    run = _delivery_mutation_run(sentence)
+    return (run is not None and _delivery_ties_run_to_part(sentence, run)) or any(
+        not _DELIVERY_NEGATION.search(_delivery_clause_before(sentence, narrowed.start()))
+        for narrowed in _DELIVERY_NARROWED_RUN.finditer(sentence)
+    )
+
+
+def _delivery_says_what_happens_without_the_tool(sentence: str) -> bool:
+    """Return whether a sentence says what happens when the mutation tool cannot run on this machine."""
+    return bool(
+        _DELIVERY_TOOL.search(sentence)
+        and _DELIVERY_CANNOT_RUN.search(sentence)
+        and _DELIVERY_FALLBACK.search(sentence)
+    )
+
+
+def _delivery_single_risk_gaps(opening_blocks: list[str], finish_blocks: list[str]) -> list[str]:
+    """Return what the two skills lack to warn about and pre-check a single pull request with high-risk tasks (R2.4)."""
+    opening = [
+        sentence for block in _delivery_single_high_risk_blocks(opening_blocks) for sentence in _sentences(block)
+    ]
+    finish = [sentence for block in _delivery_single_high_risk_blocks(finish_blocks) for sentence in _sentences(block)]
+    gaps = []
+    if not any(_delivery_warns_whole_feature(s) and _DELIVERY_BEFORE_OPENING.search(s) for s in opening):
+        gaps.append(
+            "opening-pull-requests/SKILL.md: no sentence about a single pull request with a high-risk task warns the"
+            " user, before opening it, that `risk:high` will cover the whole feature"
+        )
+    if not any(_delivery_runs_local_mutation_first(s) for s in opening):
+        gaps.append(
+            "opening-pull-requests/SKILL.md: no sentence about a single pull request with a high-risk task runs"
+            " mutation testing locally on all the changed code before opening it"
+        )
+    gaps.extend(
+        f"opening-pull-requests/SKILL.md: scopes the local mutation run to part of the changed code: {s.strip()!r}"
+        for s in opening
+        if _delivery_narrows_mutation_run(s)
+    )
+    if not any(_delivery_says_what_happens_without_the_tool(s) for s in opening):
+        gaps.append(
+            "opening-pull-requests/SKILL.md: no sentence about a single pull request with a high-risk task says what"
+            " happens when the mutation tool cannot run on this machine"
+        )
+    if not any(_delivery_warns_whole_feature(s) for s in finish):
+        gaps.append(
+            "develop-feature/SKILL.md (Phase 4: Finish): no sentence offering the single pull request warns that, with"
+            " a high-risk task, `risk:high` will cover the whole feature"
+        )
+    return gaps
+
+
+class SingleDeliveryRiskWarningTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_single_delivery_warns_about_risk_high(self) -> None:
+        """R2.4: a single pull request with a high-risk task is warned about and mutation-tested locally first.
+
+        In opening-pull-requests/SKILL.md, the blocks that name the single pull request and a high-risk task hold:
+        one sentence that warns the user, before opening (or pushing) it, that `risk:high` will cover the whole
+        feature (or every slice or task, unqualified: not "each high-risk task"); one that requires running mutation
+        testing locally on all the changed code (unqualified: not "all the high-risk changed code") before opening it,
+        with nothing after its run verb naming a high-risk mention, a task or a slice ("of the high-risk tasks", "in
+        the high-risk tasks' files") and nothing making it optional ("optionally", "may", "consider", "if you like",
+        or "can" in the run's clause); no sentence about mutation testing that ties its run that way, unnegated, or
+        scopes it to the tasks' own `Mutation:` commands or to the high-risk code; and one that says what happens (CI,
+        evidence, a record or telling the user) when the tool cannot run on this machine. A high-risk task named before
+        the run verb, as its condition, is fine, and so is the `risk:high` label after it. In develop-feature's
+        `## Phase 4: Finish`, where the single delivery is offered, one sentence warns that with a high-risk task
+        `risk:high` will cover the whole feature. Warning and local-run sentences carry no negation in any form and no
+        "skip", "omit" or "avoid", and each warning names the single pull request, so R2.3's check ignores it.
+        """
+        gaps = _delivery_single_risk_gaps(
+            _blocks(_DELIVERY_OPENING_PULL_REQUESTS), _section_blocks(_DELIVERY_DEVELOP_FEATURE, "Phase 4: Finish")
+        )
 
         self.assertEqual(gaps, [], "\n".join(gaps))
 
