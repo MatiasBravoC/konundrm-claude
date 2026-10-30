@@ -297,11 +297,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
 
 ## Slice S6: entrega final y resumen de la feature
 
-- [ ] **T34** Al terminar, develop-feature ofrece PRs apiladas por slice (por defecto) o una sola · `behavior` · Risk: low · Covers: R2.2
+- [x] **T34** Al terminar, develop-feature ofrece PRs apiladas por slice (por defecto) o una sola · `behavior` · Risk: low · Covers: R2.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_offers_stacked_or_single_delivery`
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/opening-pull-requests/SKILL.md` (modify)
   - Verify: `... -k test_develop_feature_offers_stacked_or_single_delivery`
   - Depends on: T33
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T35** Con PRs apiladas, `risk:high` va solo en las de slices con tareas de riesgo alto · `behavior` · Risk: low · Covers: R2.3
   - Test: `P/hooks/tests/contract/test_skills.py::test_stacked_delivery_labels_only_high_risk_slices`

@@ -1610,5 +1610,88 @@ class OtherFlowsTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
 
+# R2.2: the two deliveries develop-feature offers when the user approves pushing, and opening-pull-requests supports.
+_DELIVERY_STACKED = re.compile(r"\bstack\w*")
+_DELIVERY_PER_SLICE = re.compile(r"\b(?:per|each|every|one) slice\b|\bslice by slice\b|\bslices? each\b")
+_DELIVERY_SINGLE = re.compile(
+    r"\b(?:single|one) pull request\b(?: \S+){0,6} (?:all|every|each)\b(?: \S+){0,3} slices?\b"
+    r"|\b(?:single|one) pull request\b(?: \S+){0,4} (?:whole|entire) feature\b"
+    r"|\b(?:all|every)\b(?: \S+){0,3} slices?\b(?: \S+){0,4} (?:single|one) pull request\b"
+)
+_DELIVERY_DEFAULT = re.compile(r"\bdefault\b(?!\s*branch|>)")
+_DELIVERY_PUSH = re.compile(r"\bpush\w*")
+
+
+def _delivery_offers_both(sentence: str) -> bool:
+    """Return whether a sentence names both deliveries: stacked pull requests per slice and a single pull request."""
+    return all(pattern.search(sentence) for pattern in (_DELIVERY_STACKED, _DELIVERY_PER_SLICE, _DELIVERY_SINGLE))
+
+
+def _delivery_names_stacked_the_default(sentence: str) -> bool:
+    """Return whether a sentence calls the stacked pull requests, not the single one, the default.
+
+    "Default" belongs to the delivery named last before it ("stacked per slice (the default)"), or to the first one
+    named after it when none comes before ("by default, stacked per slice").
+    """
+    default = _DELIVERY_DEFAULT.search(sentence)
+    if default is None:
+        return False
+    named = sorted(
+        [(match.start(), "stacked") for match in _DELIVERY_STACKED.finditer(sentence)]
+        + [(match.start(), "single") for match in _DELIVERY_SINGLE.finditer(sentence)]
+    )
+    before = [delivery for start, delivery in named if start < default.start()]
+    after = [delivery for start, delivery in named if start >= default.start()]
+    owner = before[-1] if before else next(iter(after), None)
+    return owner == "stacked"
+
+
+def _delivery_asks_before_pushing(sentence: str) -> bool:
+    """Return whether a sentence asks the user, or waits for their approval, before pushing."""
+    return _DELIVERY_PUSH.search(sentence) is not None and bool(_ASKS.search(sentence) or _APPROVES.search(sentence))
+
+
+def _delivery_gaps(skill: str, blocks: list[str], *, at_push_approval: bool) -> list[str]:
+    """Return one message per R2.2 delivery rule that no block of a skill states.
+
+    Args:
+        skill: The skill's name, for the messages.
+        blocks: The skill's blocks, from `_blocks` or `_section_blocks`.
+        at_push_approval: Whether the offer must also sit in the block that asks before pushing.
+    """
+    sentences = [sentence for block in blocks for sentence in _sentences(block)]
+    gaps = []
+    if not any(_DELIVERY_SINGLE.search(sentence) for sentence in sentences):
+        gaps.append(f"{skill}: no sentence names a single pull request with every slice")
+    if not any(_delivery_offers_both(sentence) for sentence in sentences):
+        gaps.append(f"{skill}: no sentence offers stacked pull requests per slice or a single pull request")
+    if not any(_delivery_names_stacked_the_default(sentence) for sentence in sentences):
+        gaps.append(f"{skill}: no sentence makes the stacked pull requests per slice the default")
+    if at_push_approval and not any(
+        any(_delivery_asks_before_pushing(sentence) for sentence in _sentences(block))
+        and any(_delivery_offers_both(sentence) for sentence in _sentences(block))
+        for block in blocks
+    ):
+        gaps.append(f"{skill}: the block that asks before pushing does not offer both deliveries")
+    return gaps
+
+
+class FeatureDeliveryFlowTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_develop_feature_offers_stacked_or_single_delivery(self) -> None:
+        """R2.2: when the feature is done and the user approves pushing, develop-feature's Phase 4 offers one stacked
+        pull request per slice, the default, or a single pull request with every slice, and opening-pull-requests
+        supports both deliveries with the stacked one as its default."""
+        develop_feature = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Phase 4: Finish")
+        opening_pull_requests = _blocks(SKILLS_DIR / "opening-pull-requests" / "SKILL.md")
+
+        gaps = _delivery_gaps("develop-feature Phase 4", develop_feature, at_push_approval=True) + _delivery_gaps(
+            "opening-pull-requests", opening_pull_requests, at_push_approval=False
+        )
+
+        self.assertEqual(gaps, [])
+
+
 if __name__ == "__main__":
     unittest.main()

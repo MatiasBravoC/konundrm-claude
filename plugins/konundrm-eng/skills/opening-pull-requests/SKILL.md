@@ -13,8 +13,8 @@ clear enough that the reviewer knows what to check first (Standards → Git and 
 
 - **Receives:** local commits on a branch that is not the default branch, and the user's yes to
   push.
-- **Produces:** pushed branches and open pull requests, one per slice, with their URLs. Never a
-  merge or an approval.
+- **Produces:** pushed branches and open pull requests, one per slice or one for the whole
+  feature, with their URLs. Never a merge or an approval.
 
 ## Workflow
 
@@ -45,8 +45,14 @@ going on: big pull requests get worse reviews.
 
 ### 3. Slices
 
-With a feature folder (`specs/<NNN-slug>/tasks.md` with `## Slice S<n>` headings), each slice is
-one pull request:
+With a feature folder (`specs/<NNN-slug>/tasks.md` with `## Slice S<n>` headings), the user
+chooses the delivery: stacked pull requests, one per slice (the default), or a single pull request
+with every slice.
+
+**Single:** the feature branch is one pull request against the default branch, and its
+description covers every slice.
+
+**Stacked:** each slice is one pull request:
 
 1. Find each task's commit: `git log --format=%H -E --grep '^Task: T<n>( |$)' <base>..HEAD`.
 2. Slice `S<k>` ends at the last commit of its tasks. The spec-and-plan commit belongs to the
