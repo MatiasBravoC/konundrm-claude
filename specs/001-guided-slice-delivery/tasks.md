@@ -471,11 +471,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T50
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T52** Hay una evaluación de comportamiento por cada mecanismo nuevo con usuario · `behavior` · Risk: low · Covers: R10.3
+- [x] **T52** Hay una evaluación de comportamiento por cada mecanismo nuevo con usuario · `behavior` · Risk: low · Covers: R10.3
   - Test: `P/hooks/tests/contract/test_release.py::test_each_new_mechanism_has_a_behavior_eval` (`behavior-slice-checkpoint`, `behavior-design-decision`, `behavior-slice-summary`, `behavior-feature-summary`, `behavior-improvement-notes`, cada una con `prompt.md` con frontmatter y al menos un grader con `type:`)
   - Files: `P/evals/behavior-*/prompt.md`, `P/evals/behavior-*/graders/*.md` (new)
   - Verify: `... -k test_each_new_mechanism_has_a_behavior_eval`
   - Depends on: T50
+  - Rounds: spec 2 · code 2 · escalations 0
 
 - [ ] **T53** La versión es 0.6.0 y el changelog la describe · `behavior` · Risk: low · Covers: R10.1
   - Test: `P/hooks/tests/contract/test_release.py::test_version_and_changelog_agree` (la versión de plugin.json es la de la primera entrada del changelog, que nombra modelo y esfuerzo por rol, rethinker, particiones, pausas por slice, resúmenes y notas de mejora)
