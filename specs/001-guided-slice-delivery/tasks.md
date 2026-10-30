@@ -535,10 +535,11 @@ pedido de ser maximalista: las sugerencias de las revisiones de código que vale
   - Depends on: T10
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T68** La sección Model and effort deja de citar resultados que nada respalda · `chore` · Risk: low · Covers: —
+- [x] **T68** La sección Model and effort deja de citar resultados que nada respalda · `chore` · Risk: low · Covers: —
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `npm run check` y que la frase "solved slightly more tasks" ya no esté
   - Depends on: T3
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T69** La plantilla del CI explica que `--model` y `--effort` fijan solo la sesión que orquesta · `chore` · Risk: low · Covers: R1.7
   - Files: `P/skills/setup-project/templates/claude-review.yml` (modify: un comentario YAML arriba de `claude_args:`, nunca dentro del bloque)
