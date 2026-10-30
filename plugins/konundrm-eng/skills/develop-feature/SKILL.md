@@ -54,11 +54,31 @@ runs this solved slightly more tasks than running everything at `high`, for less
 
 ## Phase 0: Prepare
 
-1. If `$ARGUMENTS` points to an existing `specs/<NNN-slug>/`, **resume**: read its files, skip
-   stages whose documents are `Approved`, take the base commit from the `tasks.md` header, and
-   continue at the first task without a commit. A checked box only counts when
-   `git log -E --grep '^Task: T<n>( |$)'` finds its commit (anchored, so T1 never matches T10);
-   uncheck any box that has none.
+1. If `$ARGUMENTS` points to an existing `specs/<NNN-slug>/`, **resume**, in this order:
+   - Read its files, skip stages whose documents are `Approved` and take the base commit from the
+     `tasks.md` header.
+   - When the plan is `Approved` but `tasks.md` has no `- **Parallel:**` line yet (the session
+     stopped between the approval and recording the answer), ask the parallel question now, before
+     Phase 3, and record the answer as [Phase 2](#phase-2-plan) describes, instead of assuming `no`.
+   - A checked box only counts when `git log -E --grep '^Task: T<n>( |$)'` finds its commit
+     (anchored, so T1 never matches T10); uncheck any box that has none.
+   - In the main session, look for an unfinished wave before going on: run `git worktree list` and
+     `git branch --list 'wave/*'`. A worktree or branch named `wave/<NNN-slug>-p<k>` means its wave
+     is unfinished, so finish that wave first, before any other task. Finish or abort a cherry-pick
+     in progress, then judge what is integrated by each task's `Task:` commit (the
+     `git log -E --grep` above), never by boxes, SHAs or branch names: a task committed here is
+     integrated; one committed only on its partition's branch is still to integrate; one with no
+     commit is still being built. When the wave's first partition is built and every other
+     partition is integrated (each of its tasks has its commit here and its `evidence/P<k>.md` is
+     here), nothing is left to build or pick, but nothing committed shows whether the check and
+     the wave-wide review ran: at [Parallel partitions](#parallel-partitions), run the check
+     command (routing a red check as step 6 does), then step 7 again, then step 8.
+     Otherwise resume at step 3, and for each partition whose branch still lacks its report commit
+     (`docs(<scope>): report partition P<k>`) and whose folder has no session open, start that
+     session again there with the same `--partition P<k>` prompt (it resumes from its own
+     commits). Never build another partition's tasks here.
+   - Continue at the first task without a commit among the tasks this session builds (in a
+     parallel wave, the main session builds only the wave's first partition).
 2. Confirm the repository root and that the tree is clean. If unrelated changes are pending, ask
    the user to commit or stash them first; never mix them into feature commits.
 3. Get the check command from the plugin, the same one its hooks run: the session context names
@@ -217,7 +237,9 @@ behind its own gates. When the `tasks.md` header says `Parallel: yes`, build eac
 slice's `### Partitions` table this way:
 
 1. Start from a clean tree on the feature branch, with every earlier wave of this slice
-   integrated. Its head is the wave base.
+   integrated. Its head is the wave base: note its SHA as `<wave-base>` in your todo list and in
+   the message that starts the wave, so step 7 has it after HEAD moves. A resumed session
+   recovers it as `git merge-base HEAD wave/<NNN-slug>-p<k>` while a branch of the wave exists.
 2. For every partition of the wave except the first, create a worktree **outside this checkout**,
    on a new branch from the wave base:
    `git worktree add ../<repo>-worktrees/<NNN-slug>-p<k> -b wave/<NNN-slug>-p<k>`. A worktree
@@ -241,11 +263,21 @@ slice's `### Partitions` table this way:
      is `git merge-base HEAD <branch>`. The range ends at the branch's tip, so it includes the
      partition's report commit (`docs(<scope>): report partition P<k>`) and its
      `evidence/P<k>.md`. In `tasks.md`, a conflict keeps both sides' boxes and Rounds lines.
+   - On a resumed wave, pick only what is not here yet. A partition whose tasks and
+     `evidence/P<k>.md` are all here is integrated: skip it. Otherwise, since integration runs in
+     table order, the partition's integrated commits are the start of its branch, so begin the
+     range after them, `git cherry-pick <last>..<branch>`, where `<last>` is the branch's last task
+     commit whose task already has its commit here (the fork point when none has). The report
+     commit carries the last task's `Task:` line, so it counts as integrated only when
+     `evidence/P<k>.md` is here. When a pick still stops on a commit that comes out empty because
+     its task already has its commit here, `git cherry-pick --skip` it.
    - Any other conflict means the partitions were not as independent as planned. Run
      `git cherry-pick --abort`, report which partition and which files conflicted, and stop with a
      `BLOCKED:` line. Only after the user's go-ahead, redo the cherry-pick and hand each conflicted
-     file, with both sides, to the `implementer` (the `test-writer` for a test), then review and
-     commit the resolution as in step 6.
+     file, with both sides, to the `implementer` (the `test-writer` for a test), have
+     `code-reviewer` review the resolution, stage the resolved files (`git add <files>`), then run
+     `git cherry-pick --continue`. The resolution belongs to the commit being picked, not to a
+     separate fix commit, and the rest of the partition's range is then picked as usual.
    - After a partition that changed dependencies or generated files, set the checkout up as
      `AGENTS.md` or the README says.
    - Run the check command after each partition. The history stays linear, one commit per task,
@@ -260,9 +292,15 @@ slice's `### Partitions` table this way:
    duplication or inconsistency between partitions built apart, and route its Critical findings
    as in step 6. A finding carries the `Task:` line of the task whose code it names; when it names
    several, the wave's last integrated task.
-8. Remove each worktree with `git worktree remove <folder>`, never `--force`: if it refuses, show
-   the user what is left, and close any session still open in that folder first. Once every one
-   of its tasks has its commit here, delete its branch (`git branch -D wave/<NNN-slug>-p<k>`).
+8. Close any session still open in a partition's folder, then remove its worktree with
+   `git worktree remove <folder>`, never `--force`: if it refuses, show the user what is left and
+   keep its branch, which Git does not delete while a worktree has it checked out. Delete its
+   branch (`git branch -D wave/<NNN-slug>-p<k>`) only once every one of its tasks has its commit
+   here and its report commit is integrated (`evidence/P<k>.md` is here): the report commit
+   carries the last task's `Task:` line, so searching task lines alone cannot tell. A session
+   that resumes with every partition of the wave integrated never goes back to step 3: it runs
+   the check command (step 6 when red) and step 7 again, then picks up here
+   ([Phase 0](#phase-0-prepare)).
 9. Go on to the slice's next wave. After its last wave, continue with the end of the slice.
 
 ## Phase 4: Finish
@@ -304,5 +342,5 @@ A partition session never waits for the user on a plan change, whether from a re
 the plan turns out to be wrong: it stops with a `BLOCKED:` line for the main session, which relays
 it to the user ([Phase 0](#phase-0-prepare)).
 
-Start that message with a line `BLOCKED: <one-line reason>`. The plugin's stop gate lets the turn
-end on a red tree only when the message carries a `BLOCKED:` or `RED:` line.
+Start the escalation message with a line `BLOCKED: <one-line reason>`. The plugin's stop gate lets
+the turn end on a red tree only when the message carries a `BLOCKED:` or `RED:` line.

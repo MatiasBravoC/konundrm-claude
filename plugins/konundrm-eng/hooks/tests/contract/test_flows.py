@@ -757,6 +757,145 @@ def _integration_conflict_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# Resuming an unfinished parallel wave (R3.5). These run on blocks of `## Phase 0: Prepare` (the partition session's
+# own paragraph left out), `## Phase 2: Plan` and `## Parallel partitions`.
+_WAVE = re.compile(r"\bwaves?\b")
+_FINDS_A_WAVE = re.compile(r"\bgit worktree list\b|\bgit branch --list\b|(?<![\w/])wave/")
+_UNFINISHED = re.compile(
+    r"\bunfinished\b|\bnot (?:yet )?(?:finished|done|integrated)\b|\bincomplete\b|\bin progress\b|\bopen wave\b"
+)
+_FINISH = re.compile(r"\bfinish\w*")
+_FIRST_OR_BEFORE = re.compile(r"\bfirst\b|\bbefore\b")
+_INTEGRATED = re.compile(r"\bintegrat\w*")
+_NOT_BY_SHAS_OR_BOXES = re.compile(
+    r"\b(?:never|not|rather than|instead of)\b(?: \S+){0,4} (?:shas?|boxes|checkbox\w*|checked|branch names?)\b"
+)
+_SKIP = re.compile(r"\bskip\w*")
+_ALREADY_HERE = re.compile(r"\balready\b|\bits commit here\b")
+_RESTARTS = re.compile(r"\bre-?start\w*|\brelaunch\w*|\breopen\w*|\bstart\w*\b(?: \S+){0,4} again\b")
+_NOT_RUNNING = re.compile(
+    r"\bno longer\b|\bnot (?:running|open)\b|\bno (?:\S+ )?session\b|\bstopped\b|\bclosed\b|\bdied\b|\bgone\b"
+)
+_ITS_WORKTREE = re.compile(r"\bworktree\b|\bfolder\b|\bthere\b")
+_SAME_PARTITION_PROMPT = re.compile(r"--partition\b|\b(?:same|step 2|its) (?:prompt|command)\b")
+# "never build", "do not build", "don't ever build": the prohibition itself, not any negation word in the sentence.
+_FORBIDS_BUILDING = re.compile(r"\b(?:never|do not|don't)(?: \S+){0,2} build\b")
+_ANOTHER_PARTITIONS_TASKS = re.compile(r"\banother partition's tasks\b|\btasks of another partition\b")
+_NO_PARALLEL_LINE = re.compile(r"\b(?:no|without|lacks?|missing)\b(?: \S+){0,4} (?:\*\*parallel:\*\*|parallel\b)")
+
+
+def _never_builds_another_partition_here(block: str) -> bool:
+    """Return whether one sentence of a block forbids the main session to build another partition's tasks.
+
+    The prohibition ("never build", "do not build") and "another partition's tasks" must share one sentence, so a
+    sentence that only happens to hold a negation, "build" and "other partition" (Phase 0's "nothing is left to
+    build") does not satisfy it.
+    """
+    return any(
+        _FORBIDS_BUILDING.search(sentence) is not None
+        and _ANOTHER_PARTITIONS_TASKS.search(sentence) is not None
+        and _IN_THE_MAIN_SESSION.search(sentence) is not None
+        for sentence in _SENTENCE_END.split(block)
+    )
+
+
+def _finishes_the_found_wave_first(block: str) -> bool:
+    """Return whether a block, about resuming, finds an unfinished wave and, in one sentence, finishes it first."""
+    return (
+        _RESUMED.search(block) is not None
+        and _FINDS_A_WAVE.search(block) is not None
+        and _UNFINISHED.search(block) is not None
+        and any(
+            _WAVE.search(sentence) is not None
+            and _FINISH.search(sentence) is not None
+            and _FIRST_OR_BEFORE.search(sentence) is not None
+            for sentence in _SENTENCE_END.split(block)
+        )
+    )
+
+
+def _judges_integration_by_task_commits(block: str) -> bool:
+    """Return whether one statement of a block judges what is integrated by the `Task:` commit, not by boxes or SHAs.
+
+    Splits on _STATEMENT_END, not _SENTENCE_END, because the colon of `Task:` would cut the statement in two.
+    """
+    return any(
+        _INTEGRATED.search(statement) is not None
+        and _TASK_LINE.search(statement) is not None
+        and _NOT_BY_SHAS_OR_BOXES.search(statement) is not None
+        for statement in _STATEMENT_END.split(block)
+    )
+
+
+def _skips_commits_already_integrated(block: str) -> bool:
+    """Return whether one sentence of a block skips the cherry-pick of a commit whose task already has its commit."""
+    return any(
+        _CHERRY_PICK.search(sentence) is not None
+        and _SKIP.search(sentence) is not None
+        and "task" in sentence
+        and _ALREADY_HERE.search(sentence) is not None
+        for sentence in _SENTENCE_END.split(block)
+    )
+
+
+def _asks_when_the_parallel_line_is_missing(block: str) -> bool:
+    """Return whether a block, about an approved plan, asks the parallel question when tasks.md lacks its line."""
+    return _APPROVES.search(block) is not None and any(
+        _NO_PARALLEL_LINE.search(sentence) is not None and _ASKS.search(sentence) is not None
+        for sentence in _STATEMENT_END.split(block)
+    )
+
+
+# What develop-feature must say about resuming an unfinished wave, each in one paragraph or list item. The first three
+# rules check their key words within one sentence, so unrelated words elsewhere in Phase 0 step 1 do not satisfy them.
+_RESUMED_WAVE_RULES: dict[str, Callable[[str], bool]] = {
+    "on resume, finding an unfinished wave (a wave/ worktree or branch) and finishing it first": (
+        _finishes_the_found_wave_first
+    ),
+    "deciding what is integrated by each task's Task: commit, never by boxes, SHAs or branch names": (
+        _judges_integration_by_task_commits
+    ),
+    "skipping, when integrating again, the commits whose task already has its commit here": (
+        _skips_commits_already_integrated
+    ),
+    "restarting a partition session that no longer runs in its worktree with its --partition P<k> prompt": (
+        lambda b: (
+            _RESTARTS.search(b) is not None
+            and _NOT_RUNNING.search(b) is not None
+            and _ITS_WORKTREE.search(b) is not None
+            and _SAME_PARTITION_PROMPT.search(b) is not None
+        )
+    ),
+    "the main session never building another partition's tasks": _never_builds_another_partition_here,
+}
+
+# What Phase 0 must say, in one paragraph or list item, so that a resumed session that skips the approved plan's Phase 2
+# still asks the parallel question it finds no answer to (R3.6).
+_RESUMED_PARALLEL_ANSWER_RULE = (
+    "asking the parallel question when the plan is Approved but tasks.md has no Parallel: line"
+)
+
+
+def _resumed_wave_gaps(skill: Path) -> list[str]:
+    """Return one message per part of R3.5 that develop-feature's Phase 0, Phase 2 and Parallel partitions lack, and
+    one when no block of Phase 0 (where a resumed session goes, skipping the approved Phase 2) asks the parallel
+    question tasks.md has no answer to (R3.6)."""
+    prepare = [
+        block for block in _section_blocks(skill, "Phase 0: Prepare") if not block.startswith("**partition session")
+    ]
+    blocks = prepare + _section_blocks(skill, "Phase 2: Plan") + _section_blocks(skill, "Parallel partitions")
+    gaps = [
+        f"develop-feature: no paragraph or list item of Phase 0, Phase 2 or Parallel partitions covers {label} (R3.5)"
+        for label, says_it in _RESUMED_WAVE_RULES.items()
+        if not any(says_it(block) for block in blocks)
+    ]
+    if not any(_asks_when_the_parallel_line_is_missing(block) for block in prepare):
+        gaps.append(
+            f"develop-feature: no paragraph or list item of Phase 0 covers {_RESUMED_PARALLEL_ANSWER_RULE} (R3.6)"
+        )
+    return gaps
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -855,6 +994,18 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         each conflicted file, with both sides, to the implementer (the test-writer for a test), reviewed like any
         integration fix. The `## Escalation` list also names an integration conflict outside the plan's boxes."""
         gaps = _integration_conflict_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_resume_finishes_an_unfinished_wave_first(self) -> None:
+        """R3.5, R3.6: on resume with an unfinished parallel wave (a `wave/` worktree or branch of the feature),
+        develop-feature finishes that wave before anything else; decides what is integrated by each task's `Task:`
+        commit, not by boxes, SHAs or branch names, skipping on re-integration the commits whose task already has its
+        commit here; restarts a partition session that no longer runs in its existing worktree with its
+        `--partition P<k>` prompt; and never builds another partition's tasks in the main session (R3.5). A resumed
+        session skips the approved plan's Phase 2, so Phase 0 itself asks the parallel question when the plan is
+        Approved but tasks.md has no `- **Parallel:**` line yet (R3.6)."""
+        gaps = _resumed_wave_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 

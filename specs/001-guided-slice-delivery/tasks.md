@@ -216,11 +216,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T21
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T23** Al retomar con una oleada sin terminar, se termina primero, juzgando por los commits de tarea · `behavior` · Risk: low · Covers: R3.5
+- [x] **T23** Al retomar con una oleada sin terminar, se termina primero, juzgando por los commits de tarea · `behavior` · Risk: low · Covers: R3.5, R3.6
   - Test: `P/hooks/tests/contract/test_flows.py::test_resume_finishes_an_unfinished_wave_first`
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_resume_finishes_an_unfinished_wave_first`
   - Depends on: T21
+  - Rounds: spec 4 · code 2 · escalations 0
 
 - [ ] **T24** Un plan sin tablas de particiones construye sus slices en orden, como antes · `behavior` · Risk: low · Covers: R2.6
   - Test: `P/hooks/tests/contract/test_flows.py::test_plans_without_partitions_run_in_list_order`
