@@ -132,11 +132,12 @@ de cada archivo (algunos son CRLF). -->
   - Depends on: T11, T14
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T16** writing-plans parte cada slice en particiones y oleadas con reglas comprobables · `behavior` · Risk: low · Covers: R3.1
+- [x] **T16** writing-plans parte cada slice en particiones y oleadas con reglas comprobables · `behavior` · Risk: low · Covers: R3.1
   - Test: `P/hooks/tests/contract/test_skills.py::test_writing_plans_partitions_each_slice` (a lo sumo tres particiones por oleada; sin dependencias ni archivos compartidos dentro de una oleada salvo tasks.md y evidence; regla de manifiesto y lockfile; IDs de partición únicos en la feature; puntos de autorrevisión)
   - Files: `P/skills/writing-plans/SKILL.md` (modify)
   - Verify: `... -k test_writing_plans_partitions_each_slice`
   - Depends on: T15
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [x] **T17** Al iniciar sesión, el hook muestra la siguiente tarea de cada partición durante una oleada en paralelo · `behavior` · Risk: low · Covers: R3.7
   - Rounds: spec 1 · code 1 · escalations 0

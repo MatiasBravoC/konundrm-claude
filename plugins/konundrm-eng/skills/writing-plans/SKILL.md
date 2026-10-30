@@ -25,8 +25,9 @@ Refuse to plan from a spec whose status is not `Approved`; send the user back to
 - [ ] 3. Write design.md
 - [ ] 4. Write tasks.md
 - [ ] 5. Group the tasks into slices
-- [ ] 6. Self-review traceability
-- [ ] 7. Get explicit approval
+- [ ] 6. Partition each slice into waves
+- [ ] 7. Self-review traceability and partitions
+- [ ] 8. Get explicit approval
 ```
 
 ### 1–2. Explore and decide ownership
@@ -86,7 +87,28 @@ Group consecutive tasks under `## Slice S<n>: <what this pull request delivers>`
 A feature small enough for one pull request has one slice. Tasks keep their order and IDs across
 slices.
 
-### 6. Self-review
+### 6. Partitions
+
+Close each slice with a `### Partitions` table, `| Wave | Partition | Tasks | Depends on |`, laid
+out as in [templates/tasks.md](templates/tasks.md). The task list keeps its order; the table only
+groups it.
+
+- A **partition** is a set of tasks one session builds, in list order. Every task belongs to
+  exactly one partition. Keep each dependency chain inside one partition where you can, and follow
+  module boundaries, so partitions stay independent.
+- A partition depends on another when one of its tasks depends on one of that partition's tasks.
+- A **wave** is a set of partitions of one slice that do not depend on each other. A partition
+  goes in a later wave than every partition it depends on, and the partitions of one wave share no
+  file (`tasks.md` and `evidence/` excepted). A task that adds a dependency touches the manifest
+  and the lockfile, so two such tasks never sit in different partitions of one wave.
+- At most three partitions per wave; prefer fewer, balanced ones over many small ones.
+- Partition IDs (`P1`, `P2`…) are unique across the feature: they do not restart in each slice.
+- When no work in a slice is independent, use a single partition with every task of the slice.
+
+develop-feature can build the partitions of one wave at the same time when the user accepts it
+(the `Parallel:` line in the header of `tasks.md`).
+
+### 7. Self-review
 
 - Every acceptance criterion maps to at least one task; no behavior task lacks a criterion.
 - Every task has a risk level, and every money, auth, personal-data, data-deletion or
@@ -96,10 +118,13 @@ slices.
 - No task touches a module the design does not mention.
 - Dependencies point to earlier tasks only, so slices merge in order.
 - Every slice fits the budget and leaves the main branch working.
+- Every task is in exactly one partition; each partition's `Depends on` matches its tasks'
+  dependencies and names only partitions of earlier waves; the partitions of a wave share no file
+  except `tasks.md` and `evidence/`.
 - The last task, or the feature's final verification, exercises the end-to-end flow.
 
-### 7. Approval
+### 8. Approval
 
 Show the ownership table, the threats (if any) and the task list grouped by slice (IDs and titles
-only), and ask for an explicit yes before setting `Status: Approved`. When called from
+only) with each slice's partitions, and ask for an explicit yes before setting `Status: Approved`. When called from
 `develop-feature`, return control to it.
