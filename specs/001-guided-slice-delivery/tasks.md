@@ -388,7 +388,7 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T44
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T46** Las notas se limpian: sin bloques de código y con secretos y correos tapados · `behavior` · Risk: high · Covers: R7.3
+- [x] **T46** Las notas se limpian: sin bloques de código y con secretos y correos tapados · `behavior` · Risk: high · Covers: R7.3
   - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_drops_code_and_redacts_secrets_and_emails`
   - Files: `P/hooks/scripts/improvement_notes.py` (modify)
   - Invariants: el texto limpio no tiene bloques de código, ni secretos que `find_secrets` detecte, ni correos (propiedad en T47)
@@ -397,6 +397,7 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Evidence: `specs/001-guided-slice-delivery/evidence/T46.md` con la corrida de la CLI sobre notas que traen una clave AWS de prueba, un correo y un bloque de código, y el archivo central resultante sin ninguno de ellos
   - Verify: `... -k test_scrub_drops_code_and_redacts_secrets_and_emails`
   - Depends on: T44
+  - Rounds: spec 2 · code 2 · escalations 0
 
 - [ ] **T47** Ningún texto limpio conserva un secreto, un bloque de código o un correo · `property` · Risk: high · Covers: R7.3
   - Test: `P/hooks/tests/test_improvement_notes.py::test_scrubbed_notes_never_keep_secrets_code_or_emails`
