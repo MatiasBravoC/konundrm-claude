@@ -81,6 +81,32 @@ class ReadTasksTest(unittest.TestCase):
         self.assertTrue(all(task.risk in ("low", "medium", "high") for task in document.tasks))
         self.assertTrue(all(task.slice is not None for task in document.tasks))
 
+    def test_reads_the_partition_of_each_task(self) -> None:
+        # R3.1: each task takes the partition of the first row that lists it; unlisted is None.
+        _, tasks = self.read(
+            "- **Status:** Approved\n\n"
+            "## Slice S1: apply\n\n"
+            "- [ ] **T1** First\n"
+            "- [ ] **T2** Second\n"
+            "- [ ] **T3** Third\n\n"
+            "### Partitions\n\n"
+            "| Wave | Partition | Tasks | Depends on |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | P1 | T1, T2 | — |\n"
+            "| 2 | P2 | T3, T1 | P1 |\n\n"
+            "## Slice S2: expiry\n\n"
+            "- [ ] **T4** Fourth\n"
+            "- [ ] **T5** Fifth\n\n"
+            "### Partitions\n\n"
+            "| Wave | Partition | Tasks | Depends on |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | P3 | T4 | — |\n"
+        )
+        self.assertEqual(
+            {task.id: task.partition for task in tasks},
+            {"T1": "P1", "T2": "P1", "T3": "P2", "T4": "P3", "T5": None},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

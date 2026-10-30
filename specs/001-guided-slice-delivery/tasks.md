@@ -93,7 +93,8 @@ de cada archivo (algunos son CRLF). -->
 
 ## Slice S3: slices con particiones en el plan
 
-- [ ] **T11** El lector de tasks.md asigna cada tarea a la partición de su slice · `behavior` · Risk: medium · Covers: R3.1
+- [x] **T11** El lector de tasks.md asigna cada tarea a la partición de su slice · `behavior` · Risk: medium · Covers: R3.1
+  - Rounds: spec 1 · code 1 · escalations 0
   - Test: `P/hooks/tests/test_tasks_document.py::test_reads_the_partition_of_each_task`
   - Files: `P/hooks/scripts/tasks_document.py` (modify)
   - Invariants: cada tarea toma la partición de la primera fila que la lista; una tarea no listada no tiene partición (propiedad en T13)

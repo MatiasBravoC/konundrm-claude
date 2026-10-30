@@ -1,8 +1,10 @@
-"""Reads a feature's tasks.md: its status, and each task's ID, title, box, risk and review rounds.
+"""Reads a feature's tasks.md: its status and each task's fields, partition and review rounds.
 
 writing-plans creates the file from its template and develop-feature checks the boxes and adds a
-``Rounds:`` line per task. The impact report and the session doctor both read it, so the format
-has this one parser. HTML comments are ignored: the template carries a commented example.
+``Rounds:`` line per task. Each slice ends with a ``### Partitions`` table
+(``| Wave | Partition | Tasks | Depends on |``) that assigns its tasks to partitions. The impact
+report and the session doctor both read it, so the format has this one parser. HTML comments are
+ignored: the template carries a commented example.
 
 Sections:
     Task, TasksDocument — what a tasks.md says.
@@ -21,6 +23,11 @@ RISK = re.compile(r"\bRisk:\s*(?P<risk>low|medium|high)\b", re.IGNORECASE)
 SLICE_HEADING = re.compile(r"(?m)^#{2,3}\s+Slice\s+(?P<slice>S\d+)\b")
 ROUNDS = re.compile(r"Rounds:\s*spec\s*(\d+)\D+code\s*(\d+)\D+escalations\s*(\d+)", re.IGNORECASE)
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+PARTITION_TABLE = re.compile(
+    r"(?mi)^\|\s*Wave\s*\|\s*Partition\s*\|\s*Tasks\s*\|\s*Depends on\s*\|[ \t]*\n"
+    r"(?P<rows>(?:\|[^\n]*(?:\n|$))*)"
+)
+SEPARATOR_CELL = re.compile(r"^:?-+:?$")
 
 
 @dataclass(frozen=True)
@@ -34,6 +41,8 @@ class Task:
         risk: ``low``, ``medium`` or ``high``, or None when the line has no Risk field.
         slice: The pull-request slice it belongs to (``S1``), or None.
         rounds: Spec review rounds, code review rounds and escalations, once recorded.
+        partition: The partition (``P1``) of the first ``### Partitions`` row that lists it, or
+            None when no row lists it.
     """
 
     id: str
@@ -42,6 +51,7 @@ class Task:
     risk: str | None
     slice: str | None
     rounds: tuple[int, int, int] | None
+    partition: str | None = None
 
 
 @dataclass(frozen=True)
@@ -65,17 +75,33 @@ def _rounds(block: str) -> tuple[int, int, int] | None:
     return spec, code, escalations
 
 
-def _task(match: re.Match[str], block: str, slice_: str | None) -> Task:
+def _task(match: re.Match[str], block: str, slice_: str | None, partitions: dict[str, str]) -> Task:
     rest = match.group("rest")
     risk = RISK.search(rest)
+    task_id = match.group("id")
     return Task(
-        id=match.group("id"),
+        id=task_id,
         title=rest.split(" · ", 1)[0].strip(),
         done=match.group("box").lower() == "x",
         risk=risk.group("risk").lower() if risk else None,
         slice=slice_,
         rounds=_rounds(block),
+        partition=partitions.get(task_id),
     )
+
+
+def _partitions(text: str) -> dict[str, str]:
+    """Maps each task ID to the partition of the first Partitions row that lists it."""
+    partitions: dict[str, str] = {}
+    for table in PARTITION_TABLE.finditer(text):
+        for row in table.group("rows").splitlines():
+            cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
+            if len(cells) < 3 or SEPARATOR_CELL.match(cells[0]):
+                continue
+            partition, task_ids = cells[1], cells[2]
+            for task_id in task_ids.split(","):
+                partitions.setdefault(task_id.strip(), partition)
+    return partitions
 
 
 def _slice_at(position: int, headings: list[re.Match[str]]) -> str | None:
@@ -103,10 +129,11 @@ def read_tasks(path: Path) -> TasksDocument:
         return TasksDocument(status="", tasks=())
     status = STATUS.search(text)
     headings = list(SLICE_HEADING.finditer(text))
+    partitions = _partitions(text)
     matches = list(TASK.finditer(text))
     ends = [*(match.start() for match in matches[1:]), len(text)]
     tasks = tuple(
-        _task(match, text[match.end() : end], _slice_at(match.start(), headings))
+        _task(match, text[match.end() : end], _slice_at(match.start(), headings), partitions)
         for match, end in zip(matches, ends, strict=True)
     )
     return TasksDocument(status=status.group("status") if status else "", tasks=tasks)
