@@ -418,11 +418,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T44
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T49** La CLI recibe las notas por stdin, las limpia y dice dónde quedaron · `behavior` · Risk: low · Covers: R7.2, R7.4
+- [x] **T49** La CLI recibe las notas por stdin, las limpia y dice dónde quedaron · `behavior` · Risk: low · Covers: R7.2, R7.4
   - Test: `P/hooks/tests/test_improvement_notes.py::test_cli_reads_notes_from_stdin_and_prints_where_they_went`
   - Files: `P/hooks/scripts/improvement_notes.py` (modify)
   - Verify: `... -k test_cli_reads_notes_from_stdin_and_prints_where_they_went`
   - Depends on: T48, T46
+  - Rounds: spec 2 · code 2 · escalations 0
 
 - [ ] **T57** La limpieza trata como código los bloques `~~~` y los que se abren dentro de una viñeta o una cita · `behavior` · Risk: high · Covers: R7.3
   - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_drops_tilde_and_nested_code_blocks` (bloques con `~~~`, bloques abiertos tras `- `, `1. ` o `> `, y una línea de cierre indentada 4 espacios o más, que no cierra el bloque)

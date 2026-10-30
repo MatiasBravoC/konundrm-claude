@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import random
 import re
 import string
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -477,6 +479,147 @@ class ScrubTest(unittest.TestCase):
         self.assertEqual(
             covered_patterns, set(secret_patterns.SECRET_PATTERNS), "a credential format was not generated"
         )
+
+
+_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "improvement_notes.py"
+
+
+def _mentions(output: str, path: Path, project_root: Path) -> bool:
+    """Whether the output names the path, absolute or relative to the project root."""
+    relative = path.relative_to(project_root) if path.is_relative_to(project_root) else path
+    return any(form in output for form in (str(path), path.as_posix(), str(relative), relative.as_posix()))
+
+
+class CommandLineTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        # Resolved so the paths the script prints match these (Windows temp paths may be 8.3 short names).
+        self.root = Path(self._tmp.name).resolve()
+        self.home = self.root / "home"
+        self.project = self.root / "project"
+        self.feature_dir = self.project / "specs" / "001-x"
+        self.home.mkdir()
+        self.feature_dir.mkdir(parents=True)
+
+    def _run(self, notes: str, *, config_dir: Path, feature: str) -> subprocess.CompletedProcess[str]:
+        # HOME and USERPROFILE point at the temporary folder too, so the real ~/.claude is never touched.
+        # The notes arrive as UTF-8 bytes, as run.sh pipes them, while the child's locale encoding is
+        # left non-UTF-8 (cp1252 on Windows, ASCII under an uncoerced C locale elsewhere): the script
+        # itself must read stdin as UTF-8 instead of relying on the caller's environment.
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key.upper() not in {"PYTHONIOENCODING", "PYTHONUTF8", "PYTHONCOERCECLOCALE", "LC_ALL", "LANG"}
+        }
+        env |= {
+            "CLAUDE_CONFIG_DIR": str(config_dir),
+            "HOME": str(self.home),
+            "USERPROFILE": str(self.home),
+            "PYTHONUTF8": "0",
+            "PYTHONCOERCECLOCALE": "0",
+            "LC_ALL": "C",
+        }
+        completed = subprocess.run(
+            [sys.executable, str(_SCRIPT), "--project", "konundrm-claude", "--feature", feature, "--scope", "slice 7"],
+            input=notes.encode("utf-8"),
+            cwd=self.project,
+            env=env,
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+        return subprocess.CompletedProcess(
+            completed.args,
+            completed.returncode,
+            completed.stdout.decode("utf-8", errors="replace"),
+            completed.stderr.decode("utf-8", errors="replace"),
+        )
+
+    def test_cli_reads_notes_from_stdin_and_prints_where_they_went(self) -> None:
+        # R7.2: the CLI reads the notes from stdin, scrubs them and appends them, dated and tagged with
+        # --project, --feature and --scope, to <CLAUDE_CONFIG_DIR>/konundrm-eng/improvements.md.
+        # R7.4: when that file cannot be written, the notes go to specs/<--feature>/improvement-notes.md
+        # under the working directory (the project root) and the output warns and names both files.
+        # R7.2, R7.4: the notes are stored exactly as written, accents included, whatever the caller's
+        # locale encoding (run.sh sets no PYTHONIOENCODING).
+        # Threats row 2: a hostile --feature never lets the fallback leave specs/ or touch the config folder.
+        # Fake credentials are split literals, so this file never holds one a scanner would flag.
+        aws_key = "AK" + "IA" + "Q7RZ3M9TB2KX4WNP"
+        email = "ana.perez@cliente-ejemplo.cl"
+        # Accented text the cp1252 code page would corrupt (ó) or cannot decode at all (Í, Á).
+        prose = "Los checkpoints de slice fueron demasiado largos. La revisión mostró el Índice del ÁREA."
+        notes = (
+            f"{prose}\n"
+            "```python\n"
+            "def filtrar_cliente(rut):\n"
+            "    return 'codigo-propietario'\n"
+            "```\n"
+            f"El log del hook mostró la clave {aws_key} completa.\n"
+            f"La spec citaba a {email} como responsable.\n"
+        )
+        leaks = ("```", "filtrar_cliente", "codigo-propietario", aws_key, email)
+
+        # Central file writable.
+        config_dir = self.root / "config"
+        config_dir.mkdir()
+        days = {date.today().isoformat()}
+        result = self._run(notes, config_dir=config_dir, feature="001-x")
+        days.add(date.today().isoformat())
+
+        central = config_dir / "konundrm-eng" / "improvements.md"
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(central.is_file(), f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}")
+        content = central.read_text(encoding="utf-8")
+        for text in ("konundrm-claude", "001-x", "slice 7", prose):
+            self.assertIn(text, content)
+        self.assertTrue(any(day in content for day in days), content)
+        for leaked in leaks:
+            self.assertNotIn(leaked, content)
+        self.assertEqual(secret_patterns.find_secrets(content), [], content)
+        self.assertTrue(_mentions(result.stdout, central, self.project), result.stdout)
+        self.assertFalse((self.feature_dir / "improvement-notes.md").exists())
+
+        # Central file not writable: a regular file stands where its folder should be.
+        blocked_config = self.root / "blocked-config"
+        blocked_config.mkdir()
+        blocker = blocked_config / "konundrm-eng"
+        blocker.write_bytes(b"not a folder")
+        blocked_central = blocked_config / "konundrm-eng" / "improvements.md"
+        days = {date.today().isoformat()}
+        result = self._run(notes, config_dir=blocked_config, feature="001-x")
+        days.add(date.today().isoformat())
+
+        fallback = self.feature_dir / "improvement-notes.md"
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(fallback.is_file(), output)
+        fallback_content = fallback.read_text(encoding="utf-8")
+        for text in ("konundrm-claude", "001-x", "slice 7", prose):
+            self.assertIn(text, fallback_content)
+        self.assertTrue(any(day in fallback_content for day in days), fallback_content)
+        for leaked in leaks:
+            self.assertNotIn(leaked, fallback_content)
+        self.assertTrue(_mentions(output, fallback, self.project), f"fallback path not named: {output!r}")
+        self.assertTrue(
+            _mentions(output, blocked_central, self.project), f"no warning about the central file: {output!r}"
+        )
+        self.assertEqual(blocker.read_bytes(), b"not a folder")
+
+        # Hostile --feature with the central file blocked: nothing is written outside specs/ nor in the
+        # config folder. Both targets exist, so a naive specs/<feature> join would write into them.
+        escape = self.root / "escape"
+        escape.mkdir()
+        before = sorted(p for p in self.root.rglob("*") if p.is_file())
+        for hostile in ("../../escape", str(escape), str(blocked_config)):
+            self._run(notes, config_dir=blocked_config, feature=hostile)
+
+            after = sorted(p for p in self.root.rglob("*") if p.is_file())
+            new_files = [p for p in after if p not in before]
+            outside = [p for p in new_files if not p.is_relative_to(self.project / "specs")]
+            self.assertEqual(outside, [], f"--feature {hostile!r} wrote outside specs/")
+            self.assertEqual(sorted(blocked_config.rglob("*")), [blocker], f"--feature {hostile!r}")
+            self.assertEqual(blocker.read_bytes(), b"not a folder")
 
 
 if __name__ == "__main__":

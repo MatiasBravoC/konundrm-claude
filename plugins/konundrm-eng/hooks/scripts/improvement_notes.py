@@ -9,15 +9,19 @@ Sections:
     FALLBACK_NOTES_FILE — the notes file's name in the feature's folder when the central one fails.
     scrub()             — drops code blocks and redacts credentials and e-mail addresses.
     append_notes()      — adds one dated entry tagged with project, feature and scope.
+    main()              — command line: notes on stdin, --project, --feature and --scope.
 """
 
 from __future__ import annotations
 
+import argparse
 import re
+import sys
 from datetime import date
 from pathlib import Path
 
 from secret_patterns import SECRET_PATTERNS
+from session_doctor import claude_config_directory
 
 NOTES_FILE = Path("konundrm-eng") / "improvements.md"
 FALLBACK_NOTES_FILE = "improvement-notes.md"
@@ -177,3 +181,78 @@ def _append_entry(path: Path, entry: str) -> None:
 
 def _single_line(value: str) -> str:
     return " ".join(value.split())
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Scrubs the notes read from stdin and appends them to the central notes file, or the fallback.
+
+    The central file is ``NOTES_FILE`` inside Claude's configuration folder
+    (``session_doctor.claude_config_directory``); the fallback is
+    ``specs/<--feature>/improvement-notes.md`` under the working directory, the project root.
+
+    Args:
+        argv: Command-line arguments without the program name; ``sys.argv[1:]`` when None.
+            ``--project``, ``--feature`` and ``--scope`` are required, and ``--feature`` must be a
+            single folder name under ``specs/`` (no separator, drive, "." or "..").
+
+    Returns:
+        0 when the notes were written, naming the file on stdout (and, when it was the fallback,
+        warning on stderr which central file failed); 1 when neither file could be written. A
+        usage error, including an unsafe ``--feature``, exits with 2 before anything is written.
+
+    Side effects:
+        Reads stdin to its end as UTF-8 whatever the locale, replacing undecodable bytes with
+        U+FFFD; creates or appends to one of the two notes files.
+    """
+    arguments = _parse_arguments(argv)
+    # Decoded explicitly: the locale's code page (cp1252 on Windows) would garble or crash on UTF-8.
+    notes = scrub(sys.stdin.buffer.read().decode("utf-8", errors="replace"))
+    config_dir = claude_config_directory()
+    central_path = config_dir / NOTES_FILE
+    fallback_dir = Path.cwd() / "specs" / arguments.feature
+    try:
+        written_path, used_fallback = append_notes(
+            notes,
+            project=arguments.project,
+            feature=arguments.feature,
+            scope=arguments.scope,
+            today=date.today(),
+            config_dir=config_dir,
+            fallback_dir=fallback_dir,
+        )
+    except OSError as error:
+        print(
+            f"improvement notes not saved: neither {central_path} nor "
+            f"{fallback_dir / FALLBACK_NOTES_FILE} could be written ({error.strerror or error}).",
+            file=sys.stderr,
+        )
+        return 1
+    if used_fallback:
+        print(f"warning: could not write {central_path}; the notes stay with the feature.", file=sys.stderr)
+    print(f"Improvement notes saved to {written_path}")
+    return 0
+
+
+def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="improvement_notes.py",
+        description="Appends the improvement notes read from stdin, scrubbed of code, credentials and "
+        "e-mail addresses, to the central notes file, or to the feature's folder when that fails.",
+    )
+    parser.add_argument("--project", required=True, help="name of the project the notes come from")
+    parser.add_argument("--feature", required=True, help="the feature's folder name under specs/")
+    parser.add_argument("--scope", required=True, help='what the notes cover, such as "slice 2" or "feature"')
+    arguments = parser.parse_args(argv)
+    if not _is_folder_name(arguments.feature):
+        parser.error(f"--feature must be one folder name under specs/, not {arguments.feature!r}")
+    return arguments
+
+
+def _is_folder_name(name: str) -> bool:
+    # Path(name).name drops any drive, root or parent part, so it equals name only for one segment;
+    # both separators are refused on every platform so the check does not depend on the OS.
+    return name not in ("", ".", "..") and "/" not in name and "\\" not in name and Path(name).name == name
+
+
+if __name__ == "__main__":
+    sys.exit(main())
