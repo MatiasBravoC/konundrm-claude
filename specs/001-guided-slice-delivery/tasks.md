@@ -371,12 +371,13 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T42
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T44** improvement_notes agrega notas con fecha, proyecto, feature y alcance al archivo central · `behavior` · Risk: medium · Covers: R7.2
+- [x] **T44** improvement_notes agrega notas con fecha, proyecto, feature y alcance al archivo central · `behavior` · Risk: medium · Covers: R7.2
   - Test: `P/hooks/tests/test_improvement_notes.py::test_appends_dated_notes_tagged_with_project_feature_and_scope` (la ruta es siempre `<config>/konundrm-eng/improvements.md`, aunque el proyecto o la feature tengan `/`, `..` o saltos de línea)
   - Files: `P/hooks/scripts/improvement_notes.py` (new)
   - Invariants: agregar nunca borra ni cambia lo anterior (propiedad en T45)
   - Verify: `... -k test_appends_dated_notes_tagged_with_project_feature_and_scope`
   - Depends on: —
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T45** Agregar notas nunca borra ni cambia las anteriores · `property` · Risk: medium · Covers: R7.2
   - Test: `P/hooks/tests/test_improvement_notes.py::test_appending_keeps_every_earlier_note`
