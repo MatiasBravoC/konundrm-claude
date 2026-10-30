@@ -588,10 +588,11 @@ S3 y de agentes (T61, T63, T66 y T68). -->
   - Depends on: T66
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T76** La sección Model and effort no contradice su tabla sobre los primeros intentos · `chore` · Risk: low · Covers: —
+- [x] **T76** La sección Model and effort no contradice su tabla sobre los primeros intentos · `chore` · Risk: low · Covers: —
   - Files: `P/skills/develop-feature/SKILL.md` (modify: "First attempts on low- and medium-risk tasks run at `medium`…")
   - Verify: `npm run check`
   - Depends on: T68
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ## Slice S10: versión 0.6.0 y README
 

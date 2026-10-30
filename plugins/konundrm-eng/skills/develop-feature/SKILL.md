@@ -50,8 +50,8 @@ listed (Claude Code sets `effort` only when told a level):
 | `test-writer`, `implementer` and `spec-reviewer` on a `high` task | `opus` | `high` |
 | `spec-reviewer` over the whole feature (Phase 4) | `opus` | `high` |
 
-First attempts run at `medium` and only failures go up to `high`, so the extra effort goes only
-to work that has shown it needs it.
+First attempts on low- and medium-risk tasks run at `medium` and only failures go up to `high`,
+so the extra effort goes only to work that has shown it needs it.
 
 ## Phase 0: Prepare
 
