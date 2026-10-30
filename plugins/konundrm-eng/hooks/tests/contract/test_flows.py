@@ -11,6 +11,7 @@ from .plugin_files import SKILLS_DIR, read_section
 
 DEVELOP_FEATURE_DIR = SKILLS_DIR / "develop-feature"
 MODEL_AND_EFFORT_LINK_TARGET = "../develop-feature/SKILL.md#model-and-effort"
+RETHINK_LINK_TARGET = "../develop-feature/SKILL.md#rethink"
 
 # A line that opens a new Markdown block: a list item, a heading or a table row.
 _BLOCK_START = re.compile(r"\s*(?:[-*+]\s|\d+\.\s|#|\|)")
@@ -55,6 +56,16 @@ _AFTER_THE_STASH = re.compile(r"\bafter\b(?: \S+){0,5} (?:stash\w*|aside)\b")
 _STASH_BEFORE_WRITING = re.compile(r"\bstash\w*\b.*\bbefore (?:writ|commit|appl|sav|mak)\w*")
 _EXCLUDED = re.compile(r":\(exclude\)(\S+)")
 _PLAN_DOCUMENTS = ("tasks.md", "design.md", "requirements.md")
+# fix-bug's rethink (R8.1, R8.4), which may follow develop-feature's Rethink section through a link instead of
+# restating it.
+_STATEMENT_END = re.compile(r"(?<!\s)[.;!?](?=\s|$)")  # unlike _SENTENCE_END, keeps "<condition>: escalate." whole
+_DISPATCHES_THE_RETHINKER = re.compile(r"\bdispatch\w*(?: \S+){0,3} (?:konundrm-eng:)?rethinker\b")
+# Saying to follow a linked section, not only pointing at it: "follow ...", "rethink as ... says", "per ...".
+_FOLLOWS = re.compile(
+    r"\b(?:follow\w*|appl(?:y|ies)|runs?|use|using|per|like|as in)\b"
+    r"|\b(?:as|what)\b(?: \S+){0,4} (?:says|describes|does)\b"
+)
+_RED = re.compile(r"\bred\b")
 
 
 def _says_opus_high(row: str) -> bool:
@@ -158,6 +169,11 @@ def _is_third_failure_of_the_same_review(block: str) -> bool:
 def _is_two_failed_reviews(block: str) -> bool:
     """Return whether a block names two (more) failed reviews ("if the task still fails two more reviews")."""
     return _in_one_clause(block, _TWO, _REVIEW) and _FAILURE.search(block) is not None
+
+
+def _names_a_rethink_trigger(text: str) -> bool:
+    """Return whether text names a trigger of the rethink: a fifth failed review, or a third failure of one review."""
+    return _is_fifth_failed_review(text) or _is_third_failure_of_the_same_review(text)
 
 
 # What develop-feature's `## Rethink` section must say, each in one paragraph or list item of it.
@@ -269,16 +285,22 @@ def _after_rethink_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+def _escalation_blocks(skill: Path) -> list[str]:
+    """Return the blocks of a skill's `## Escalation` section, as `_section_blocks` does, whatever follows that word
+    in its heading ("Escalation: stop and ask the user when")."""
+    lines = skill.read_text(encoding="utf-8").splitlines()
+    heading = next((line[3:] for line in lines if line.startswith("## Escalation")), "Escalation")
+    return _section_blocks(skill, heading)
+
+
 def _escalation_gaps(skill: Path) -> list[str]:
     """Return one message per item of the skill's `## Escalation` list that still asks the user at a rethink
     trigger without pointing to the rethink, and one when no item asks after the rethink's two extra failures."""
-    lines = skill.read_text(encoding="utf-8").splitlines()
-    heading = next((line[3:] for line in lines if line.startswith("## Escalation")), "Escalation")
-    blocks = _section_blocks(skill, heading)
+    blocks = _escalation_blocks(skill)
     gaps = [
         f"develop-feature Escalation: asks the user at a rethink trigger instead of rethinking: {block!r}"
         for block in blocks
-        if "rethink" not in block and (_is_fifth_failed_review(block) or _is_third_failure_of_the_same_review(block))
+        if "rethink" not in block and _names_a_rethink_trigger(block)
     ]
     if not any(_is_two_failed_reviews(block) and "rethink" in block for block in blocks):
         gaps.append(
@@ -302,6 +324,64 @@ def _rethinker_prompt_gaps(prompts: Path) -> list[str]:
     contents = read_section(prompts, "Contents").lower().splitlines()
     if not any(line.lstrip().startswith(("-", "*")) and "rethinker" in line for line in contents):
         gaps.append("dispatch-prompts.md: the Contents list does not name the rethinker prompt")
+    return gaps
+
+
+# The two triggers of the rethink (R8.1); fix-bug must stop its fix rounds and rethink at each.
+_RETHINK_TRIGGERS: dict[str, Callable[[str], bool]] = {
+    "the fifth failed review": _is_fifth_failed_review,
+    "the third failure of the same review": _is_third_failure_of_the_same_review,
+}
+
+
+def _follows_the_rethink_link(block: str) -> bool:
+    """Return whether one sentence of a block links to develop-feature's Rethink section and says to follow it."""
+    link = f"]({RETHINK_LINK_TARGET.lower()})"  # blocks are lowercased
+    return any(link in sentence and _FOLLOWS.search(sentence) for sentence in _SENTENCE_END.split(block))
+
+
+def _fix_bug_rethink_gaps(skill: Path) -> list[str]:
+    """Return what fix-bug lacks to rethink a stuck fix: at each trigger, a paragraph or list item that stops the fix
+    rounds and rethinks (R8.1); one that dispatches the rethinker or says to follow develop-feature's Rethink section
+    (R8.1); and one that stops to ask the user when the fix still fails two more reviews after its rethink (R8.4)."""
+    blocks = _blocks(skill)
+    gaps = []
+    for trigger, names_it in _RETHINK_TRIGGERS.items():
+        rethinking = [block for block in blocks if names_it(block) and "rethink" in block]
+        if not rethinking:
+            gaps.append(f"fix-bug: no paragraph or list item rethinks at {trigger} (R8.1)")
+        elif not any(_in_one_clause(block, _STOP, _FIXING) for block in rethinking):
+            gaps.append(
+                f"fix-bug: the paragraph or list item that rethinks at {trigger} does not stop the fix rounds (R8.1)"
+            )
+    if not any(_DISPATCHES_THE_RETHINKER.search(block) or _follows_the_rethink_link(block) for block in blocks):
+        gaps.append(f"fix-bug: nothing dispatches the rethinker or says to follow {RETHINK_LINK_TARGET} (R8.1)")
+    asking = [block for block in blocks if _ASKS_THE_USER.search(block)]
+    asking += _escalation_blocks(skill)  # its heading already says "stop and ask the user when"
+    if not any(_is_two_failed_reviews(block) and "rethink" in block for block in asking):
+        gaps.append("fix-bug: nothing asks the user when the fix still fails two more reviews after its rethink (R8.4)")
+    return gaps
+
+
+def _fix_bug_escalation_gaps(skill: Path) -> list[str]:
+    """Return each fix-bug instruction that still asks the user at a rethink trigger instead of rethinking (a sentence
+    that escalates there, or one condition of the Escalation list), and a gap when the Escalation list no longer asks
+    the user when the baseline check is red."""
+    statements = [statement.strip() for block in _blocks(skill) for statement in _STATEMENT_END.split(block)]
+    gaps = [
+        f"fix-bug: escalates at a rethink trigger instead of rethinking: {statement!r} (R8.1)"
+        for statement in statements
+        if _names_a_rethink_trigger(statement) and _ASKS_THE_USER.search(statement) and "rethink" not in statement
+    ]
+    escalation = _escalation_blocks(skill)
+    conditions = [condition.strip() for item in escalation for condition in _CLAUSE_BREAK.split(item)]
+    gaps += [
+        f"fix-bug Escalation: asks the user at a rethink trigger instead of rethinking: {condition!r} (R8.1)"
+        for condition in conditions
+        if _names_a_rethink_trigger(condition) and "rethink" not in condition
+    ]
+    if not any("baseline" in item and _RED.search(item) for item in escalation):
+        gaps.append("fix-bug Escalation: no longer asks the user when the baseline check is red for unrelated reasons")
     return gaps
 
 
@@ -410,6 +490,18 @@ class OtherFlowsTest(unittest.TestCase):
             missing.append(f"fix-bug: no Markdown link to {MODEL_AND_EFFORT_LINK_TARGET}")
 
         self.assertEqual(missing, [])
+
+    def test_fix_bug_rethinks_a_stuck_fix(self) -> None:
+        """R8.1, R8.4: fix-bug, at the fifth failed review or the third failure of the same review, stops the fix
+        rounds and rethinks, dispatching the rethinker or saying to follow develop-feature's Rethink section through a
+        link to it; it asks the user only when the fix still fails two more reviews after its rethink, so no sentence
+        and no Escalation item asks the user at either trigger without the rethink; and its Escalation list still asks
+        the user when the baseline check is red."""
+        skill = SKILLS_DIR / "fix-bug" / "SKILL.md"
+
+        gaps = _fix_bug_rethink_gaps(skill) + _fix_bug_escalation_gaps(skill)
+
+        self.assertEqual(gaps, [])
 
 
 if __name__ == "__main__":

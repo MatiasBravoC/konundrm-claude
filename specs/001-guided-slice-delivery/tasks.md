@@ -84,11 +84,12 @@ de cada archivo (algunos son CRLF). -->
   - Depends on: T8, T3
   - Rounds: spec 2 · code 1 · escalations 0
 
-- [ ] **T10** fix-bug también replantea un arreglo trabado · `behavior` · Risk: low · Covers: R8.1, R8.4
+- [x] **T10** fix-bug también replantea un arreglo trabado · `behavior` · Risk: low · Covers: R8.1, R8.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_fix_bug_rethinks_a_stuck_fix`
   - Files: `P/skills/fix-bug/SKILL.md` (modify)
   - Verify: `... -k test_fix_bug_rethinks_a_stuck_fix`
   - Depends on: T9
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ## Slice S3: slices con particiones en el plan
 

@@ -15,7 +15,7 @@ is the one teams run most; keep it tight.
 Bug: $ARGUMENTS
 
 Dispatch prompts: [reference/dispatch-prompts.md](reference/dispatch-prompts.md). The code,
-security and finding-verifier prompts, and the implementer's fix round, are develop-feature's
+security, finding-verifier and rethinker prompts, and the implementer's fix round, are develop-feature's
 ([../develop-feature/reference/dispatch-prompts.md](../develop-feature/reference/dispatch-prompts.md)),
 with the bug's `B1` in place of the task.
 
@@ -109,8 +109,14 @@ develop-feature's flaky-test prompt.
 
 Send each Critical finding of a high-risk fix, and any doubtful one, to a `finding-verifier`
 first. Route confirmed findings as develop-feature does (a wrong test to the `test-writer`,
-everything else to the `implementer`'s fix round) and review again. Three failed rounds of the
-same review: escalate.
+everything else to the `implementer`'s fix round) and review again.
+
+At the fifth failed review, or a third failure of the same review, stop the fix rounds and
+rethink as develop-feature's [Rethink](../develop-feature/SKILL.md#rethink) says, with `B1` in
+place of the task. There, `<NNN-slug> T<n>` becomes `<YYYY-MM-DD>-<slug> B1`, the task loop's
+steps 1, 2 and 3 become steps 3, 5 and 6 here, and the RETHINK report goes in
+`specs/bugs/<YYYY-MM-DD>-<slug>-rethink.md`, which lands in the fix commit. If two more reviews
+fail after it, escalate.
 
 ### 7. Verify by risk
 
@@ -148,7 +154,8 @@ nothing without a yes. **Ask before pushing**; on a yes, run `opening-pull-reque
 
 - the bug does not reproduce, or the correct behavior is unclear;
 - the fix needs a design change: propose it as a feature for `/konundrm-eng:develop-feature`;
-- the same review fails three times, or the baseline check is red for unrelated reasons.
+- the fix still fails two reviews after its rethink (step 6), or the baseline check is red for
+  unrelated reasons.
 
 Start that message with a line `BLOCKED: <one-line reason>`.
 
