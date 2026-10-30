@@ -1375,6 +1375,174 @@ def _preapproved_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# The improvement notes (R7.1, R7.5; R7.4's warning). These run on blocks from _section_blocks of develop-feature's
+# `## Slice checkpoint` and `## Phase 4: Finish`, and on its dispatch-prompts.md `## process-reviewer` section.
+_NOTES_DISPATCHES = re.compile(r"\bdispatch\w*(?: \S+){0,3} (?:konundrm-eng:)?process-reviewer\b")
+_NOTES_SCRIPT = re.compile(r"\bimprovement_notes\.py\b")
+_NOTES_RUN_SH = re.compile(r"\bhooks/run\.sh\b")
+_NOTES_PROJECT_FLAG = re.compile(r"--project\b")
+_NOTES_FEATURE_FLAG = re.compile(r"--feature\b")
+_NOTES_SLICE_SCOPE = re.compile(r"--scope \"?'?slice\b")
+_NOTES_FEATURE_SCOPE = re.compile(r"--scope \"?'?feature\b")
+_NOTES_REPORT = re.compile(r"\breport\b|\bimprovement notes\b")
+_NOTES_WHOLE_FEATURE = re.compile(r"\b(?:whole|full|entire) feature\b")
+_NOTES_MENTION = re.compile(r"\bprocess-reviewer\b|\bimprovement notes\b|\bnotes\b")
+_NOTES_STEP_REFERENCE = re.compile(r"\bsteps? (\d+(?:(?:, | and | to |-)\d+)*)")
+_NOTES_FALLBACK = re.compile(
+    r"\bf(?:a|e)ll\w*(?: \S+){0,2} back\b|\bfallback\b|\bfeature(?:'s)? folder\b|\bimprovement-notes\.md\b"
+)
+_NOTES_TELLS = re.compile(r"\b(?:tell|warn|inform|relay|show|pass\w* on)\w*|\blet\w*(?: \S+){0,3} know\b")
+_NOTES_CHANGES = re.compile(r"\b(?:chang|edit|modif|alter|appl|implement|patch|rewrit|updat)\w*")
+_NOTES_PLUGIN = re.compile(r"\bplugin\b|\bskills?\b|\bagents?\b|\bhooks?\b")
+_NOTES_NAMES = re.compile(r"\bnotes\b")
+# The six parts of the flow record R7.1 names, each as the process-reviewer prompt must name it.
+_NOTES_RECORD_PARTS: dict[str, re.Pattern[str]] = {
+    "review rounds": re.compile(r"\brounds?\b"),
+    "escalations": re.compile(r"\bescalat\w*"),
+    "rethinks": re.compile(r"\brethinks?\b"),
+    "blocked subagents": re.compile(r"\bblocked\b"),
+    "gate events": re.compile(r"\bgates?\b"),
+    "the user's corrections": re.compile(r"\bcorrect(?:ion|ed|s)\w*"),
+}
+_NOTES_SCOPE = re.compile(r"\bscope\b|\bslice\b(?: \S+){0,3} or (?:the )?(?:whole )?feature\b")
+
+
+def _notes_step_numbers(sentence: str) -> set[int]:
+    """Return the step numbers a sentence cites ("steps 1 to 4", "steps 1, 2 and 3", "step 2")."""
+    numbers: set[int] = set()
+    for match in _NOTES_STEP_REFERENCE.finditer(sentence):
+        cited = match.group(1)
+        for low, high in re.findall(r"(\d+)(?: to |-)(\d+)", cited):
+            numbers.update(range(int(low), int(high) + 1))
+        numbers.update(int(number) for number in re.findall(r"\d+", cited))
+    return numbers
+
+
+def _notes_saves(block: str, scope: re.Pattern[str]) -> bool:
+    """Return whether a block passes the process-reviewer's report to improvement_notes.py through the plugin's
+    run.sh, with --project, --feature and the --scope the pattern names."""
+    patterns = (_NOTES_SCRIPT, _NOTES_RUN_SH, _NOTES_PROJECT_FLAG, _NOTES_FEATURE_FLAG, scope, _NOTES_REPORT)
+    return all(pattern.search(block) for pattern in patterns)
+
+
+def _notes_order_gaps(
+    where: str, blocks: list[str], scope: re.Pattern[str], before: list[int], after: list[int]
+) -> tuple[list[str], int | None]:
+    """Return one message per ordering rule a section breaks about dispatching the process-reviewer and saving its
+    notes, and the index of the dispatching block (None when there is none).
+
+    Args:
+        where: the section's name, used to start each message.
+        blocks: the section's blocks, from `_section_blocks`.
+        scope: the `--scope` the saving block must pass.
+        before: indices of the blocks the dispatch must come after (one of them at least).
+        after: indices of the blocks the dispatch and the save must come before (all of them, and at least one).
+    """
+    dispatching = [index for index, block in enumerate(blocks) if _NOTES_DISPATCHES.search(block)]
+    if not dispatching:
+        return [f"develop-feature {where}: no step dispatches konundrm-eng:process-reviewer"], None
+    at = dispatching[0]
+    gaps = []
+    saving = [index for index, block in enumerate(blocks) if index >= at and _notes_saves(block, scope)]
+    if not saving:
+        gaps.append(
+            f"develop-feature {where}: no step from the dispatch on passes the process-reviewer's report to"
+            f" sh ${{CLAUDE_PLUGIN_ROOT}}/hooks/run.sh improvement_notes.py with --project, --feature and"
+            f" --scope {'feature' if scope is _NOTES_FEATURE_SCOPE else 'slice S<k>'}"
+        )
+    if not any(index < at for index in before):
+        gaps.append(f"develop-feature {where}: the process-reviewer is not dispatched after the step before it")
+    last = max([at, *saving[:1]])
+    if not after or any(index <= last for index in after):
+        gaps.append(f"develop-feature {where}: the process-reviewer and the notes do not come before the step after")
+    return gaps, at
+
+
+def _notes_checkpoint_gaps(blocks: list[str]) -> list[str]:
+    """Return one message per R7.1 rule develop-feature's `## Slice checkpoint` breaks: after the summary commit and
+    before the stop that shows the user the summary, it dispatches the process-reviewer and saves its notes with a
+    slice scope; and with `Checkpoints: pre-approved` it still does so."""
+    commits = [index for index, block in enumerate(blocks) if _CHECKPOINT_SUMMARY_COMMIT.search(block)]
+    shows = [
+        index
+        for index, block in enumerate(blocks)
+        if any(
+            all(pattern.search(sentence) for pattern in (_CHECKPOINT_STOPS, _SHOWS, _USER, _SUMMARIES))
+            and not _NEGATION.search(sentence)
+            for sentence in _sentences(block)
+        )
+    ]
+    gaps, at = _notes_order_gaps("Slice checkpoint", blocks, _NOTES_SLICE_SCOPE, commits, shows)
+    number = _DELIVERY_LIST_NUMBER.match(blocks[at]) if at is not None else None
+
+    def keeps_the_notes(sentence: str) -> bool:
+        if not (_PREAPPROVED_LINE.search(sentence) and _COMMIT.search(sentence) and _SUMMARIES.search(sentence)):
+            return False
+        if number is not None and int(number.group(1)) in _notes_step_numbers(sentence):
+            return True
+        clauses = _CLAUSE_BREAK.split(sentence)
+        return any(_NOTES_MENTION.search(clause) and not _NEGATION.search(clause) for clause in clauses)
+
+    if not any(keeps_the_notes(sentence) for block in blocks for sentence in _sentences(block)):
+        gaps.append(
+            "develop-feature Slice checkpoint: the Checkpoints: pre-approved sentence does not keep the"
+            " process-reviewer step along with writing and committing the summary"
+        )
+    return gaps
+
+
+def _notes_finish_gaps(blocks: list[str]) -> list[str]:
+    """Return one message per R7.1 rule develop-feature's `## Phase 4: Finish` breaks: after the step that writes the
+    feature summary and before the one that sets `Status: Done`, it dispatches the process-reviewer over the whole
+    feature and saves its notes with the feature scope."""
+    summaries = [
+        index
+        for index, block in enumerate(blocks)
+        if any(_delivery_writes_the_summary(sentence) for sentence in _sentences(block))
+    ]
+    done = [index for index, block in enumerate(blocks) if _DELIVERY_STATUS_DONE.search(block)]
+    gaps, at = _notes_order_gaps("Phase 4", blocks, _NOTES_FEATURE_SCOPE, summaries, done)
+    if at is not None and not _NOTES_WHOLE_FEATURE.search(blocks[at]):
+        gaps.append("develop-feature Phase 4: the process-reviewer is not dispatched over the whole feature")
+    return gaps
+
+
+def _notes_prompt_gaps(prompts: Path) -> list[str]:
+    """Return what a dispatch-prompts file lacks for the process-reviewer: a fenced `## process-reviewer` prompt that
+    names the six parts of the flow record and the scope, and an entry for it in the `## Contents` list."""
+    section = read_section(prompts, "process-reviewer")
+    prompt = " ".join(section.replace("`", "").lower().split())
+    gaps = [] if "```" in section else ["dispatch-prompts.md: no '## process-reviewer' section with a fenced prompt"]
+    gaps += [
+        f"dispatch-prompts.md: the process-reviewer prompt does not name {part}"
+        for part, pattern in _NOTES_RECORD_PARTS.items()
+        if not pattern.search(prompt)
+    ]
+    if not _NOTES_SCOPE.search(prompt):
+        gaps.append("dispatch-prompts.md: the process-reviewer prompt does not name the scope (slice or feature)")
+    contents = read_section(prompts, "Contents").lower().splitlines()
+    if not any(line.lstrip().startswith(("-", "*")) and "process-reviewer" in line for line in contents):
+        gaps.append("dispatch-prompts.md: the Contents list does not name the process-reviewer prompt")
+    return gaps
+
+
+def _notes_gaps(skill: Path, prompts: Path) -> list[str]:
+    """Return one message per part of R7.1 and R7.5 (and R7.4's warning to the user) that develop-feature lacks."""
+    checkpoint = _section_blocks(skill, "Slice checkpoint")
+    finish = _section_blocks(skill, "Phase 4: Finish")
+    gaps = _notes_checkpoint_gaps(checkpoint) + _notes_finish_gaps(finish)
+    if not any(_in_one_sentence(block, _NOTES_FALLBACK, _NOTES_TELLS, _USER) for block in checkpoint + finish):
+        gaps.append(
+            "develop-feature: no sentence of the Slice checkpoint or Phase 4 tells the user when the notes fell back"
+            " to the feature folder"
+        )
+    if not any(
+        _in_one_sentence(block, _NEGATION, _NOTES_CHANGES, _NOTES_PLUGIN, _NOTES_NAMES) for block in _blocks(skill)
+    ):
+        gaps.append("develop-feature: no sentence forbids changing the plugin on the strength of the notes (R7.5)")
+    return gaps + _notes_prompt_gaps(prompts)
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -1547,6 +1715,18 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         recommended option, records it as `- Decision: <option> (recommended)` with the options below it, and the
         slice summary cites it."""
         gaps = _preapproved_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_develop_feature_records_improvement_notes(self) -> None:
+        """R7.1, R7.5: develop-feature's Slice checkpoint dispatches konundrm-eng:process-reviewer after committing the
+        slice summary and before stopping to show it, and passes its report to improvement_notes.py through the
+        plugin's run.sh with --project, --feature and a slice --scope, also under `Checkpoints: pre-approved`; Phase 4
+        does the same over the whole feature, with the feature scope, after writing the feature summary and before
+        `Status: Done`; the user is told when the notes fell back to the feature folder (R7.4); a sentence forbids
+        changing the plugin on the strength of the notes; and dispatch-prompts.md has a `## process-reviewer` prompt,
+        named in its Contents, that names the six parts of the flow record and the scope."""
+        gaps = _notes_gaps(DEVELOP_FEATURE_DIR / "SKILL.md", DEVELOP_FEATURE_DIR / "reference" / "dispatch-prompts.md")
 
         self.assertEqual(gaps, [])
 

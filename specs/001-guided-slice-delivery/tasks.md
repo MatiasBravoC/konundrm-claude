@@ -455,11 +455,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T47
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T50** develop-feature pide notas al process-reviewer en cada pausa de slice y al final, y las guarda con el script sin tocar el plugin · `behavior` · Risk: low · Covers: R7.1, R7.5
+- [x] **T50** develop-feature pide notas al process-reviewer en cada pausa de slice y al final, y las guarda con el script sin tocar el plugin · `behavior` · Risk: low · Covers: R7.1, R7.5
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_records_improvement_notes`
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/develop-feature/reference/dispatch-prompts.md` (modify)
   - Verify: `... -k test_develop_feature_records_improvement_notes`
   - Depends on: T43, T49, T29
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ## Slice S8: suite, evaluaciones y versión
 

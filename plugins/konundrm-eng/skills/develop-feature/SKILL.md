@@ -27,6 +27,7 @@ Request: $ARGUMENTS
 | Security review (high risk) | `konundrm-eng:security-reviewer` subagent | no Critical finding |
 | Finding check | `konundrm-eng:finding-verifier` subagent | each Critical finding confirmed or refuted |
 | Rethink (stuck task) | `konundrm-eng:rethinker` subagent | a RETHINK report saying what to do differently, or a plan change the user approves |
+| Process review (each slice, then the feature) | `konundrm-eng:process-reviewer` subagent | its improvement notes saved with `improvement_notes.py` |
 | Risk verification | you | properties, mutation and evidence as the task's risk requires |
 | Gate and commit | you, with the `committing-changes` skill | the check command passes; one atomic commit |
 | Pull requests | you, with the `opening-pull-requests` skill | the user approves the push; one pull request per slice |
@@ -355,19 +356,30 @@ wave is integrated:
 2. Commit it with the `committing-changes` skill in its develop-feature mode, as
    `docs(<scope>): summarize slice S<k>` carrying the `Task:` line of the slice's last task, so the
    summary stays inside that slice's pull request.
-3. Stop and show the user the summary, with its reading order first: the files and line ranges to
+3. Dispatch `konundrm-eng:process-reviewer` over the slice's flow record (its prompt is in
+   [reference/dispatch-prompts.md](reference/dispatch-prompts.md)), then pass its report, the
+   `IMPROVEMENT NOTES` block, on stdin to
+   `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" improvement_notes.py --project <project>
+   --feature <NNN-slug> --scope "slice S<k>"`, where `<project>` is the repository's folder name.
+   The script prints where the notes went. When it warns that the notes fell back to the feature
+   folder (`specs/<NNN-slug>/improvement-notes.md`), tell the user, and commit that file as
+   `docs(<scope>): keep slice S<k> improvement notes` carrying the `Task:` line of the slice's
+   last task, so it stays in that slice's pull request. Never change the plugin's skills, agents
+   or hooks on the strength of these notes: they are proposals for the plugin's author.
+4. Stop and show the user the summary, with its reading order first: the files and line ranges to
    read, in order.
-4. Ask two or three short questions about the slice's code, each answerable from the summary and
+5. Ask two or three short questions about the slice's code, each answerable from the summary and
    the files it points to. When the user answers wrong or says they don't know, explain the right
    answer, citing the file and the lines that show it.
-5. Wait for the user's go-ahead before starting the next slice. Never make the go-ahead depend on
+6. Wait for the user's go-ahead before starting the next slice. Never make the go-ahead depend on
    the answers.
-6. When the user asks for changes at the pause, turn the changes into new tasks in `tasks.md` or
+7. When the user asks for changes at the pause, turn the changes into new tasks in `tasks.md` or
    into a plan change to `design.md`/`tasks.md`, and wait for the user to approve them before
    starting the next slice. Never make those changes on the spot, outside the task loop.
 
 With `Checkpoints: pre-approved` in the `tasks.md` header, still write and commit the summary
-(steps 1 and 2), then start the next slice without stopping, asking questions or waiting.
+and save the improvement notes (steps 1 to 3), then start the next slice without stopping,
+asking questions or waiting.
 
 ## Phase 4: Finish
 
@@ -381,15 +393,20 @@ With `Checkpoints: pre-approved` in the `tasks.md` header, still write and commi
    otherwise give the user the exact steps.
 4. Write the feature summary from `templates/feature-summary.md` to `specs/<NNN-slug>/summary.md`,
    filling every section from the three documents, `summaries/`, `evidence/` and the feature's
-   commits. It goes into the final commit of step 6, which lands before any slice branch is cut
+   commits. It goes into the final commit of step 7, which lands before any slice branch is cut
    or pushed. A stacked slice whose branch ends at an earlier commit reaches the summary through
    its pull request's link, pinned to the SHA of that final commit (`opening-pull-requests`).
-5. If the feature changed a fact the project's `AGENTS.md` or `CLAUDE.md` states (a command, a
+5. Dispatch `konundrm-eng:process-reviewer` over the whole feature's flow record, then pass its
+   report on stdin to `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" improvement_notes.py --project
+   <project> --feature <NNN-slug> --scope feature`, as in the [Slice checkpoint](#slice-checkpoint).
+   When the script warns that the notes fell back to the feature folder, tell the user; that file
+   goes into the final commit of step 7.
+6. If the feature changed a fact the project's `AGENTS.md` or `CLAUDE.md` states (a command, a
    layer, an ownership rule), update that line in the same final commit, so the next session does
    not read stale instructions.
-6. Set the three documents to `Status: Done` and commit them with `summary.md` in a final
+7. Set the three documents to `Status: Done` and commit them with `summary.md` in a final
    `docs(<scope>)` commit.
-7. Report: commits made, a table mapping each requirement ID to its test(s) and evidence, the
+8. Report: commits made, a table mapping each requirement ID to its test(s) and evidence, the
    risk level of each task, Suggestions not applied, refuted findings, each rethink (its evidence
    file and the message of any stash it left), and anything escalated.
    When any task was `high`, tell the user to read that diff before pushing. **Ask before

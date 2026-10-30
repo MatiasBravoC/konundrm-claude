@@ -18,6 +18,7 @@ where [Model and effort](../SKILL.md#model-and-effort) lists them.
 - test-writer (surviving mutant)
 - test-writer (flaky test)
 - rethinker
+- process-reviewer
 
 ## test-writer
 
@@ -194,4 +195,26 @@ Latest RED and GREEN reports:
 Find why the attempts keep failing and what to do differently. The attempt is uncommitted: read
 it with `git diff HEAD`, plus untracked files from `git status --porcelain`, and the code around
 it. Do not change any file. Return your RETHINK report.
+```
+
+## process-reviewer
+
+```
+Feature folder: specs/<NNN-slug>/ (requirements.md, design.md, tasks.md)
+Scope: <slice S<k> or feature>
+Commits in scope: <base>..HEAD
+
+Flow record for this scope:
+- Review rounds: the `Rounds:` lines of the scope's tasks in tasks.md, and the findings of each
+  round: <findings, in order, each with its task and round>
+- Escalations: <each time a task went to the user, and why, or "none">
+- Rethinks: the specs/<NNN-slug>/evidence/T<n>-rethink.md files of the scope's tasks
+- Blocked subagents: <each report that came back Status: BLOCKED, with its reason, or "none">
+- Gate events: the gates section of
+  `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" metrics_report.py --days <days since the scope began>`
+- User corrections: <what the user corrected or overrode, or "none">, and the slice summaries in
+  specs/<NNN-slug>/summaries/
+
+Propose improvements to the plugin's workflow from this record, in general terms, without the
+project's code, names or data. Do not change any file. Return your IMPROVEMENT NOTES report.
 ```
