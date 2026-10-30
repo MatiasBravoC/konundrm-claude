@@ -139,6 +139,14 @@ Record the `tasks.md` header line `- **Checkpoints:** pre-approved` when the use
 pauses between slices in advance, in the request or when approving the plan, and
 `- **Checkpoints:** ask` otherwise; a `tasks.md` without that line reads as `ask`.
 
+Record the `tasks.md` header line `- **Decisions:** pre-approved` when the user approved the open
+decisions in advance, in the request or when approving the plan, and `- **Decisions:** ask`
+otherwise; a `tasks.md` without that line reads as `ask`. The user approves the pauses and the
+decisions separately: approving the pauses does not approve the decisions, nor the other way round.
+Here, open decisions are the ones a `test-writer` or `implementer` returns as `Status: DECISION`
+during the build ([Phase 3](#phase-3-task-loop)); choosing among the plan's own `- Decision:`
+options at plan approval does not approve the build's open decisions in advance.
+
 Then commit the three documents as `docs(<scope>): add spec and plan for <slug>`, so every
 later commit contains only its task. From here on, work autonomously until the feature is done or
 an escalation rule fires.
@@ -236,11 +244,13 @@ lands in the task's commit. Then send the task to a new subagent of the same rol
 prompt, whose task block now carries the decision. A `Status: DECISION` is not an escalation nor a
 `BLOCKED`: the design is not wrong, it left the choice open.
 
-With `Checkpoints: pre-approved` in the `tasks.md` header, an open decision never pauses the
+With `Decisions: pre-approved` in the `tasks.md` header, an open decision never pauses the
 task, so no `RED:` line is needed: take the recommended option and record it as
 `- Decision: <option> (recommended)`, with the options from the subagent's `Decision:` report
 below it, so the slice summary cites the recommended choice. Then send the task to a new subagent
-of the same role with the same prompt.
+of the same role with the same prompt. `Checkpoints: pre-approved` alone does not take the
+recommended option: with `Checkpoints: pre-approved` and `Decisions: ask`, an open decision still
+pauses the task and waits for the user's choice, as above.
 
 Never accept "it passes" from a subagent without running the command yourself. The plugin also
 audits each subagent when it finishes: files changed outside its role are sent back to it, then

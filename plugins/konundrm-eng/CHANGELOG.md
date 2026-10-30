@@ -55,8 +55,10 @@ as 0.5.0 did; that already covers the per-dispatch `effort` parameter.
   pros and cons and a recommendation, when a task has two or more reasonable approaches, and the
   user picks one at plan approval. A test-writer or implementer that meets an approach the plan
   left open returns `Status: DECISION`; develop-feature pauses that task, shows the options and
-  records `- Decision: <option> (user)`. Under `Checkpoints: pre-approved` it takes the
-  recommended option and records `(recommended)`. The slice summaries cite every decision.
+  records `- Decision: <option> (user)`. With `- **Decisions:** pre-approved` in the `tasks.md`
+  header (set when the user approves the decisions in advance, apart from the pauses) it takes the
+  recommended option and records `(recommended)`; `Checkpoints: pre-approved` alone still pauses
+  the task. The slice summaries cite every decision.
 - Feature summary: in its finish phase develop-feature writes `specs/<NNN-slug>/summary.md` from
   `templates/feature-summary.md` (spec, module ownership, slice summaries, decisions,
   requirements with tests and evidence, rethinks, refuted findings, suggestions not applied and
@@ -148,8 +150,10 @@ reached the test-writer and the implementer). `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=
 every role, and the orchestrators' per-dispatch `opus`/`high` overrides, on one model, so leave
 it unset too. To run a role on another model or effort, edit the agent's frontmatter. Plans
 written with 0.5.0 still run, slice by slice, with no partitions and no parallel question. A
-plan without a `Checkpoints:` line reads as `ask` and pauses after each slice; add
-`- **Checkpoints:** pre-approved` to its header to keep an unattended run going.
+plan without a `Checkpoints:` line reads as `ask` and pauses after each slice, and one without a
+`Decisions:` line reads as `ask` and pauses on each open decision; add
+`- **Checkpoints:** pre-approved` and `- **Decisions:** pre-approved` to its header to keep an
+unattended run going.
 
 ## [0.5.0] - 2026-10-20
 

@@ -1403,9 +1403,9 @@ def _changes_gaps(skill: Path) -> list[str]:
     ]
 
 
-# Checkpoints the user approved in advance (R4.5, R5.3). Each rule runs within one sentence (_in_one_sentence) of the
+# Checkpoints the user approved in advance (R4.5). Each rule runs within one sentence (_in_one_sentence) of the
 # section that owns it, and names the `Checkpoints:` header value, so the sentences about the ordinary pause ("wait
-# for the user's go-ahead", "wait for the user's choice") cannot satisfy it alone.
+# for the user's go-ahead") cannot satisfy it alone.
 _PREAPPROVED_LINE = re.compile(r"\bcheckpoints:(?:\*\*)? ?pre-approved\b")
 _PREAPPROVED_ASK_LINE = re.compile(r"\bcheckpoints:(?:\*\*)? ?ask\b")
 _PREAPPROVED_IN_ADVANCE = re.compile(r"\bin advance\b|\bbeforehand\b|\bahead of time\b")
@@ -1417,15 +1417,6 @@ _PREAPPROVED_NEGATED = r"\b(?:never|not|no|without)\b(?: \S+){0,4} "
 _PREAPPROVED_NEVER_STOPS = re.compile(_PREAPPROVED_NEGATED + r"(?:stop|halt)\w*")
 _PREAPPROVED_NEVER_ASKS = re.compile(_PREAPPROVED_NEGATED + r"ask\w*")
 _PREAPPROVED_NEVER_WAITS = re.compile(_PREAPPROVED_NEGATED + r"wait\w*")
-_PREAPPROVED_NEVER_PAUSES = re.compile(_PREAPPROVED_NEGATED + r"paus\w*")
-_PREAPPROVED_TAKES_RECOMMENDED = re.compile(
-    r"\b(?:take|takes|taking|choose|chooses|choosing|pick|picks|picking)\b(?: \S+){0,2} recommended\b"
-)
-_PREAPPROVED_RECOMMENDED_FORMAT = re.compile(r"\bdecision: ?<[^>]+> ?\(recommended\)")
-_PREAPPROVED_RECOMMENDED = re.compile(r"\brecommended\b")
-_PREAPPROVED_SLICE_SUMMARY = re.compile(
-    r"\bslice(?:'s)? summar(?:y|ies)\b|\bsummar(?:y|ies) of (?:the|its|each|that) slice\b"
-)
 
 # Section of develop-feature's SKILL.md -> what it must say about pre-approved checkpoints, each in one sentence.
 _PREAPPROVED_RULES: dict[str, dict[str, tuple[re.Pattern[str], ...]]] = {
@@ -1459,30 +1450,11 @@ _PREAPPROVED_RULES: dict[str, dict[str, tuple[re.Pattern[str], ...]]] = {
         "R4.5 with Checkpoints: pre-approved it asks no questions": (_PREAPPROVED_LINE, _PREAPPROVED_NEVER_ASKS),
         "R4.5 with Checkpoints: pre-approved it does not wait": (_PREAPPROVED_LINE, _PREAPPROVED_NEVER_WAITS),
     },
-    "Phase 3: Task loop": {
-        "R5.3 with Checkpoints: pre-approved an open decision never pauses the task": (
-            _PREAPPROVED_LINE,
-            _DECISION,
-            _PREAPPROVED_NEVER_PAUSES,
-        ),
-        "R5.3 with Checkpoints: pre-approved it takes the recommended option": (
-            _PREAPPROVED_LINE,
-            _PREAPPROVED_TAKES_RECOMMENDED,
-        ),
-        "R5.3 it records - Decision: <option> (recommended) with the options below it": (
-            _PREAPPROVED_RECOMMENDED_FORMAT,
-            _OPTIONS,
-            _BELOW,
-        ),
-    },
 }
-_PREAPPROVED_CITED_RULE = "R5.3 the slice summary cites the recommended decision"
-_PREAPPROVED_CITED = (_PREAPPROVED_RECOMMENDED, _PREAPPROVED_SLICE_SUMMARY, _CITE)
 
 
 def _preapproved_gaps(skill: Path) -> list[str]:
-    """Return one message per part of R4.5 and R5.3 that its section of develop-feature's SKILL.md lacks, and one
-    when neither Phase 3 nor the Slice checkpoint says the slice summary cites the recommended decision."""
+    """Return one message per part of R4.5 that its section of develop-feature's SKILL.md lacks."""
     gaps: list[str] = []
     for heading, rules in _PREAPPROVED_RULES.items():
         blocks = _section_blocks(skill, heading)
@@ -1491,9 +1463,252 @@ def _preapproved_gaps(skill: Path) -> list[str]:
             for label, patterns in rules.items()
             if not any(_in_one_sentence(block, *patterns) for block in blocks)
         ]
+    return gaps
+
+
+# Decisions the user approved in advance (R5.2, R5.3), recorded apart from the pauses: the `Decisions:` header line,
+# not `Checkpoints:`, lets an open decision take the recommended option. The header line itself contains
+# "decisions:", so the words that prove what the user approved, or what an open decision does, must name a decision
+# outside that line (_DECISIONS_DECISION never matches "decision:" or "decisions:").
+#
+# Two kinds of check. The positive rules (_DECISIONS_RULES, _DECISIONS_CITED, the CHANGELOG's take rule) each ask that
+# one sentence of the owning section say something. One structural rule (_decisions_leaves_out_the_line) runs on every
+# sentence of develop-feature's SKILL.md and of the CHANGELOG's 0.6.0 entry: a sentence that names
+# `Checkpoints: pre-approved` together with a decision or the recommended option also names the `Decisions:` line that
+# decides it, and never offers the two `pre-approved` lines with "or". It is polarity-free on purpose: it reads only
+# which header lines and words a sentence names, never a negation, a clause or a verb, because whether a negation or a
+# condition covers a phrase is not something a regex can decide, and every guard that tried had correct sentences on
+# both sides of its boundary. Its message states the rule, so it never claims what a sentence means. Two known
+# limits: a correct sentence that relates `Checkpoints: pre-approved` to a decision without naming the `Decisions:`
+# line fails (add the line), and a sentence that names both lines without "or" is judged by the positive rules alone.
+
+# Header tokens: the `Decisions:` line's two values, any `Decisions:` header, a decision named outside the header, and
+# the two `pre-approved` lines offered as alternatives ("`Decisions: pre-approved` or `Checkpoints: pre-approved`").
+_DECISIONS_LINE = re.compile(r"\bdecisions:(?:\*\*)? ?pre-approved\b")
+_DECISIONS_ASK_LINE = re.compile(r"\bdecisions:(?:\*\*)? ?ask\b")
+_DECISIONS_HEADER = re.compile(r"\bdecisions:")
+_DECISIONS_DECISION = re.compile(r"\bdecisions?\b(?!:)")
+_DECISIONS_EITHER_LINE = re.compile(
+    rf"{_PREAPPROVED_LINE.pattern},? or (?:\S+ ){{0,2}}\W*{_DECISIONS_LINE.pattern}"
+    rf"|{_DECISIONS_LINE.pattern},? or (?:\S+ ){{0,2}}\W*{_PREAPPROVED_LINE.pattern}"
+)
+
+
+def _decisions_not_after_header() -> str:
+    """Return lookbehinds that fail right after a header name, with or without `**` and the space.
+
+    So a header value ("decisions: ask", "**checkpoints:** ask") never counts as the user being asked. Python's
+    lookbehinds have a fixed width, hence one per spelling.
+    """
+    return "".join(
+        f"(?<!{name}:{bold}{space})"
+        for name in ("decisions", "checkpoints")
+        for bold in ("", r"\*\*")
+        for space in ("", " ")
+    )
+
+
+# Approval. Approving the decisions: "approved the open decisions in advance". Keeping the two approvals apart:
+# "separately", "apart", "independently", "on its own", or a negation at most 2 words before the approval ("approving
+# the pauses does not approve the decisions"); the adjective "separate" ("with no separate question") does not count.
+_DECISIONS_APPROVED = re.compile(r"\bapprov\w*(?: [^\s,;:.()]+){0,3} decisions?\b(?!:)")
+_DECISIONS_APART = re.compile(
+    r"\b(?:separately|apart|independently|on its own)\b|\b(?:not|never|nor|\w+n't)\b(?: [^\s,;:.()]+){0,2} approv\w*"
+)
+_DECISIONS_WITHOUT = re.compile(r"\b(?:without|lacking|lacks|missing|ha(?:s|ve) no)\b")
+# "reads as ask", "defaults to ask", "read it as ask", "counts the line as ask".
+_DECISIONS_READS_AS_ASK = re.compile(r"\b(?:reads?|counts?|means?|defaults?)(?: [^\s,;:.()]+){0,2}? (?:as |to )?ask\b")
+
+# Negation, for the positive rules only. _DECISIONS_CLAUSE_NEGATION governs a verb of its own clause: "does not take",
+# "never pauses", "never stops or pauses"; "no RED: line is needed: take" does not.
+_DECISIONS_CLAUSE_NEGATION = r"\b(?:never|not|no|nor|without)\b(?: [^\s,;:.()]+){0,3} "
+
+# Phase 3 verbs. One verb set says what happens to the recommended option, for the positive rules: active ("takes",
+# "use", "goes with the recommended option") or passive ("the recommended option is taken"); negated ("does not use",
+# "is not taken") in _DECISIONS_NEGATED_TAKE.
+_DECISIONS_TAKE = (
+    r"(?:take[sn]?|taking|took|choos(?:e|es|ing)|chose|chosen|pick(?:s|ed|ing)?|us(?:e|es|ed|ing)"
+    r"|appl(?:y|ies|ied|ying)|follow(?:s|ed|ing)?|accept(?:s|ed|ing)?|(?:go|goes|going|went|gone) with)\b"
+)
+_DECISIONS_TAKES_RECOMMENDED = re.compile(
+    rf"\b{_DECISIONS_TAKE}(?: \S+){{0,2}} recommended\b"
+    rf"|\brecommended\b(?: [^\s,;:.()]+){{0,2}} (?:is|are|gets?|be|been)\b(?: [^\s,;:.()]+){{0,2}}? {_DECISIONS_TAKE}"
+)
+_DECISIONS_NEGATED_TAKE = re.compile(_DECISIONS_CLAUSE_NEGATION + _DECISIONS_TAKE)
+_DECISIONS_NEGATED_PAUSE = re.compile(_DECISIONS_CLAUSE_NEGATION + r"paus\w*")
+_DECISIONS_ASKS_OR_WAITS = re.compile(r"\bwait\w*|" + _decisions_not_after_header() + r"\bask\w*")
+_DECISIONS_RECOMMENDED_FORMAT = re.compile(r"\bdecision: ?<[^>]+> ?\(recommended\)")
+_DECISIONS_RECOMMENDED = re.compile(r"\brecommended\b")
+_DECISIONS_SLICE_SUMMARY = re.compile(
+    r"\bslice(?:'s)? summar(?:y|ies)\b|\bsummar(?:y|ies) of (?:the|its|each|that) slice\b"
+)
+
+# Template and CHANGELOG. The template patterns run on its header's list items from _split_blocks (lowercased, a
+# multi-line comment joined). The CHANGELOG entry is the one that ships R5.2 and R5.3; a newer entry above it
+# ([Unreleased], [0.7.0]) is not this check's concern.
+_DECISIONS_TEMPLATE = SKILLS_DIR / "writing-plans" / "templates" / "tasks.md"
+_DECISIONS_TEMPLATE_LINE = re.compile(r"^- \*\*decisions:\*\* ask\b")
+_DECISIONS_TEMPLATE_CHECKPOINTS = re.compile(r"^- \*\*checkpoints:\*\*")
+_DECISIONS_CHANGELOG = SKILLS_DIR.parent / "CHANGELOG.md"
+_DECISIONS_CHANGELOG_HEADING = re.compile(r"^## (\[0\.6\.0\].*)$")
+
+
+def _decisions_says(
+    *patterns: re.Pattern[str], unless: re.Pattern[str] | None = None, in_block: re.Pattern[str] | None = None
+) -> Callable[[str], bool]:
+    """Return a predicate on a block from `_blocks`: whether one of its sentences matches every pattern.
+
+    Args:
+        patterns: what that one sentence must all match.
+        unless: what that sentence must not match (a negated verb), or None.
+        in_block: what the whole block must also match (the header line the sentence refers to), or None.
+    """
+
+    def says(block: str) -> bool:
+        if in_block is not None and not in_block.search(block):
+            return False
+        return any(
+            all(pattern.search(sentence) for pattern in patterns) and not (unless and unless.search(sentence))
+            for sentence in _sentences(block)
+        )
+
+    return says
+
+
+# Section of develop-feature's SKILL.md -> what it must say about pre-approved decisions, each in one sentence.
+_DECISIONS_RULES: dict[str, dict[str, Callable[[str], bool]]] = {
+    "Phase 2: Plan": {
+        "R5.3 it records Decisions: pre-approved when the user approved the decisions in advance": _decisions_says(
+            _RECORDS, _DECISIONS_LINE, _DECISIONS_APPROVED, _PREAPPROVED_IN_ADVANCE
+        ),
+        "R5.3 that approval comes in the request or when approving the plan": _decisions_says(
+            _DECISIONS_LINE, _PREAPPROVED_REQUEST, _PREAPPROVED_PLAN_APPROVAL
+        ),
+        "R5.2 it records Decisions: ask otherwise": _decisions_says(_DECISIONS_ASK_LINE, _PREAPPROVED_OTHERWISE),
+        "R5.2 a tasks.md without the Decisions: line reads as ask": _decisions_says(
+            _TASKS_MD, _DECISIONS_WITHOUT, _DECISIONS_READS_AS_ASK, in_block=_DECISIONS_HEADER
+        ),
+        "R5.2 approving the pauses does not approve the decisions, nor the other way round": _decisions_says(
+            _APPROVES, _PAUSES, _DECISIONS_DECISION, _DECISIONS_APART
+        ),
+    },
+    "Phase 3: Task loop": {
+        "R5.3 with Decisions: pre-approved an open decision never pauses the task": _decisions_says(
+            _DECISIONS_LINE, _DECISIONS_DECISION, _DECISIONS_NEGATED_PAUSE
+        ),
+        "R5.3 with Decisions: pre-approved it takes the recommended option": _decisions_says(
+            _DECISIONS_LINE, _DECISIONS_TAKES_RECOMMENDED, unless=_DECISIONS_NEGATED_TAKE
+        ),
+        "R5.3 it records - Decision: <option> (recommended) with the options below it": _decisions_says(
+            _DECISIONS_RECOMMENDED_FORMAT, _OPTIONS, _BELOW
+        ),
+        (
+            "R5.2 with Checkpoints: pre-approved and Decisions: ask an open decision still pauses the task and asks "
+            "the user"
+        ): (
+            _decisions_says(
+                _PREAPPROVED_LINE,
+                _DECISIONS_HEADER,
+                _DECISIONS_DECISION,
+                _PAUSES,
+                _DECISIONS_ASKS_OR_WAITS,
+                _USER,
+                unless=_DECISIONS_NEGATED_PAUSE,
+            )
+        ),
+    },
+}
+_DECISIONS_CITED_RULE = "R5.3 the slice summary cites the recommended decision"
+_DECISIONS_CITED = (_DECISIONS_RECOMMENDED, _DECISIONS_SLICE_SUMMARY, _CITE)
+
+
+_DECISIONS_LINE_RULE = (
+    "names Checkpoints: pre-approved with an open decision or the recommended option but not the Decisions: line that "
+    "decides it, or offers either line with 'or' (R5.3)"
+)
+
+
+def _decisions_leaves_out_the_line(sentence: str) -> bool:
+    """Return whether a sentence breaks the structural rule: it names `Checkpoints: pre-approved` together with a
+    decision (outside a header) or the recommended option, and either names no `Decisions:` line or offers the two
+    `pre-approved` lines with "or".
+
+    Polarity-free: it reads only which header lines and words the sentence names, with no negation, clause or verb
+    logic, since whether a negation covers a phrase is not something a regex can decide. Known limits: a correct
+    sentence without the `Decisions:` line is reported too (add the line), and a sentence that names both lines
+    without "or" passes here and is judged by the positive rules alone.
+
+    Args:
+        sentence: one lowercased sentence from `_sentences`.
+    """
+    if not _PREAPPROVED_LINE.search(sentence):
+        return False
+    if not (_DECISIONS_DECISION.search(sentence) or _DECISIONS_RECOMMENDED.search(sentence)):
+        return False
+    return not _DECISIONS_HEADER.search(sentence) or bool(_DECISIONS_EITHER_LINE.search(sentence))
+
+
+def _decisions_skill_gaps(skill: Path) -> list[str]:
+    """Return one message per positive rule of R5.2 and R5.3 that its section of develop-feature's SKILL.md lacks
+    (_DECISIONS_RULES, and _DECISIONS_CITED in Phase 3 or the Slice checkpoint), and one per sentence anywhere in the
+    skill that breaks the structural rule of `_decisions_leaves_out_the_line`.
+
+    The messages state the rule a sentence breaks, never what the sentence means. The structural rule's two known
+    limits are those of `_decisions_leaves_out_the_line`.
+    """
+    gaps: list[str] = []
+    for heading, rules in _DECISIONS_RULES.items():
+        blocks = _section_blocks(skill, heading)
+        gaps += [
+            f"develop-feature {heading}: no sentence says {label}"
+            for label, says in rules.items()
+            if not any(says(block) for block in blocks)
+        ]
     cited_in = _section_blocks(skill, "Phase 3: Task loop") + _section_blocks(skill, "Slice checkpoint")
-    if not any(_in_one_sentence(block, *_PREAPPROVED_CITED) for block in cited_in):
-        gaps.append(f"develop-feature Phase 3 or Slice checkpoint: no sentence says {_PREAPPROVED_CITED_RULE}")
+    if not any(_in_one_sentence(block, *_DECISIONS_CITED) for block in cited_in):
+        gaps.append(f"develop-feature Phase 3 or Slice checkpoint: no sentence says {_DECISIONS_CITED_RULE}")
+    sentences = [sentence.strip() for block in _blocks(skill) for sentence in _sentences(block)]
+    gaps += [
+        f"develop-feature: this sentence {_DECISIONS_LINE_RULE}: {sentence!r}"
+        for sentence in sentences
+        if _decisions_leaves_out_the_line(sentence)
+    ]
+    return gaps
+
+
+def _decisions_template_gaps(template: Path) -> list[str]:
+    """Return a message when, in the header of writing-plans' tasks.md template (before its first `## ` heading), the
+    `- **Decisions:** ask` list item is not the one right after or right before the `- **Checkpoints:**` item."""
+    header = template.read_text(encoding="utf-8").split("\n## ", 1)[0]
+    items = _split_blocks(header.splitlines())
+    found = next((index for index, item in enumerate(items) if _DECISIONS_TEMPLATE_CHECKPOINTS.match(item)), None)
+    if found is not None and any(_DECISIONS_TEMPLATE_LINE.match(item) for item in items[max(found - 1, 0) : found + 2]):
+        return []
+    return ["writing-plans templates/tasks.md header: no - **Decisions:** ask line next to - **Checkpoints:**"]
+
+
+def _decisions_changelog_gaps(changelog: Path) -> list[str]:
+    """Return the R5.3 gaps of the CHANGELOG's 0.6.0 entry: one per sentence of the entry that breaks the structural
+    rule of `_decisions_leaves_out_the_line` (with that rule's two known limits), and one when no sentence takes the
+    recommended option under `Decisions: pre-approved`; or a single message when there is no 0.6.0 entry.
+
+    The messages state the rule a sentence breaks, never what the sentence means.
+    """
+    lines = changelog.read_text(encoding="utf-8").splitlines()
+    heading = next((match.group(1) for match in map(_DECISIONS_CHANGELOG_HEADING.match, lines) if match), None)
+    if heading is None:
+        return ["CHANGELOG.md: there is no [0.6.0] entry"]
+    blocks = _split_blocks(read_section(changelog, heading).splitlines())
+    sentences = [sentence.strip() for block in blocks for sentence in _sentences(block)]
+    gaps = [
+        f"CHANGELOG.md 0.6.0 entry: this sentence {_DECISIONS_LINE_RULE}: {sentence!r}"
+        for sentence in sentences
+        if _decisions_leaves_out_the_line(sentence)
+    ]
+    if not any(
+        _DECISIONS_LINE.search(sentence) and _DECISIONS_TAKES_RECOMMENDED.search(sentence) for sentence in sentences
+    ):
+        gaps.append("CHANGELOG.md 0.6.0 entry: no sentence takes the recommended option under Decisions: pre-approved")
     return gaps
 
 
@@ -1916,13 +2131,33 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
     def test_pre_approved_checkpoints_do_not_stop(self) -> None:
-        """R4.5, R5.3: develop-feature records `- **Checkpoints:** pre-approved` in the tasks.md header when the user
-        approved the pauses in advance (in the request or when approving the plan), `ask` otherwise; with
+        """R4.5: develop-feature records `- **Checkpoints:** pre-approved` in the tasks.md header when the user
+        approved the pauses in advance (in the request or when approving the plan), `ask` otherwise; and with
         `Checkpoints: pre-approved` the Slice checkpoint still writes and commits the summary, then goes on to the next
-        slice without stopping, asking questions or waiting; and an open decision never pauses the task: it takes the
-        recommended option, records it as `- Decision: <option> (recommended)` with the options below it, and the
-        slice summary cites it."""
+        slice without stopping, asking questions or waiting."""
         gaps = _preapproved_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_pre_approved_decisions_are_recorded_apart_from_pauses(self) -> None:
+        """R5.2, R5.3: a sentence of develop-feature's Phase 2 says it records `- **Decisions:** pre-approved` in the
+        tasks.md header when the user approved the decisions in advance (in the request or when approving the plan),
+        one that it records `ask` otherwise, one that a missing line reads as ask, and one that approving the pauses
+        does not approve the decisions; sentences of Phase 3 say that with `Decisions: pre-approved` an open decision
+        never pauses and takes the recommended option, recorded as `- Decision: <option> (recommended)` with the
+        options below it, and that with `Checkpoints: pre-approved` and `Decisions: ask` it still pauses the task and
+        asks the user; Phase 3 or the Slice checkpoint has the slice summary cite it; a sentence of the CHANGELOG's
+        0.6.0 entry takes the recommended option under `Decisions: pre-approved`; and writing-plans' tasks.md template
+        has a `- **Decisions:** ask` header line next to `- **Checkpoints:**`. Structural rule, polarity-free because a
+        regex cannot tell what a negation covers: every sentence of the skill and of that entry that names
+        `Checkpoints: pre-approved` with a decision or the recommended option also names the `Decisions:` line, and
+        none offers the two `pre-approved` lines with "or". Its limits: a correct sentence without the `Decisions:`
+        line fails (add the line), and one naming both lines is judged by the positive rules alone."""
+        gaps = (
+            _decisions_skill_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+            + _decisions_template_gaps(_DECISIONS_TEMPLATE)
+            + _decisions_changelog_gaps(_DECISIONS_CHANGELOG)
+        )
 
         self.assertEqual(gaps, [])
 

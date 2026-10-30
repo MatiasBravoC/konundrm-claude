@@ -6,6 +6,7 @@
 - **Base commit:** `b8c3142`
 - **Pull request budget:** 400 changed lines per slice
 - **Checkpoints:** pre-approved <!-- el usuario lo aprobó durante la corrida (2026-10-30): seguir sin pausas entre slices -->
+- **Decisions:** pre-approved <!-- el usuario lo aprobó durante la corrida: tomar las decisiones necesarias y contarlas en el resumen -->
 
 <!-- Rutas relativas a la raíz del repositorio; P = plugins/konundrm-eng.
 Verify de una prueba: python -m unittest discover -s plugins/konundrm-eng/hooks/tests -t plugins/konundrm-eng/hooks -k <test_name>
@@ -614,11 +615,12 @@ para que el changelog cubra también S9. -->
 
 <!-- Agregadas el 2026-10-30 por la sesión principal (permiso del usuario para decidir) con los dos
 huecos que encontró la revisión de spec de toda la feature (Phase 4, paso 2). -->
-- [ ] **T77** Aprobar las decisiones de antemano se registra aparte de aprobar las pausas · `behavior` · Risk: low · Covers: R5.2, R5.3
+- [x] **T77** Aprobar las decisiones de antemano se registra aparte de aprobar las pausas · `behavior` · Risk: low · Covers: R5.2, R5.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_pre_approved_decisions_are_recorded_apart_from_pauses` (Phase 2 registra `- **Decisions:** pre-approved` solo cuando el usuario aprobó de antemano las decisiones, y `- **Decisions:** ask` si no; Phase 3 toma la opción recomendada solo con `Decisions: pre-approved`, y con `Checkpoints: pre-approved` sola sigue pausando la tarea y preguntando; la plantilla de tasks.md trae la línea `Decisions:`; las reglas R5.3 de `test_pre_approved_checkpoints_do_not_stop` pasan a esta prueba)
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/writing-plans/templates/tasks.md`, `P/CHANGELOG.md` (modify; el README lo ajusta la integración si nombra la aprobación de decisiones)
   - Verify: `... -k test_pre_approved_decisions_are_recorded_apart_from_pauses`
   - Depends on: T32, T53
+  - Rounds: spec 4 · code 4 · escalations 0
 
 - [x] **T78** Las features en paralelo usan worktrees fuera de la carpeta del proyecto · `behavior` · Risk: low · Covers: R9.2
   - Test: `P/hooks/tests/contract/test_flows.py::test_parallel_features_use_worktrees_outside_the_project` (ningún bloque de develop-feature recomienda `claude --worktree` ni `.claude/worktrees/` como lugar donde construir; la frase sobre construir varias features a la vez dice crear cada worktree fuera de la carpeta del proyecto)

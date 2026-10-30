@@ -8,6 +8,8 @@
 - **Parallel:** no <!-- yes | no: whether the partitions of one wave may be built at the same time -->
 - **Checkpoints:** ask <!-- ask | pre-approved: pre-approved when the user approved the pauses
 between slices in advance (in the request or when approving the plan) -->
+- **Decisions:** ask <!-- ask | pre-approved: pre-approved when the user approved the open decisions
+in advance (in the request or when approving the plan), apart from the pauses -->
 
 <!-- One task = one red-green-refactor cycle = one commit. develop-feature checks the box and adds
 a "Rounds" line (review rounds and escalations, read by the impact report) in the task's own

@@ -123,7 +123,10 @@ rol, edita el frontmatter de su agente.
 - **Decisiones de diseño contigo.** Cuando una tarea admite dos o más enfoques razonables, el plan
   te los muestra al aprobarlo, con pros, contras y una recomendación, y tú eliges. Si un subagente
   encuentra durante la construcción un enfoque que el plan dejó abierto, esa tarea se pausa hasta
-  que elijas. Cada decisión queda registrada en `tasks.md` y los resúmenes la citan.
+  que elijas. Con `- **Decisions:** pre-approved` en el encabezado de `tasks.md` (queda así solo si
+  apruebas de antemano las decisiones, aparte de las pausas) toma la opción recomendada y la
+  registra como `(recommended)`. Cada decisión queda registrada en `tasks.md` y los resúmenes la
+  citan.
 - **Pausa por entrega.** Al cerrar cada entrega, el orquestador escribe y commitea su resumen,
   `specs/<NNN-slug>/summaries/S<k>.md`: qué cambió y por qué, requisitos, tamaño, riesgos,
   decisiones, rondas de revisión y replanteos, y un orden de lectura con archivos y líneas. Te lo
@@ -132,7 +135,8 @@ rol, edita el frontmatter de su agente.
   respuestas; lo que pidas cambiar ahí pasa a ser tareas nuevas o un cambio de plan aprobado antes
   de la entrega siguiente. Con `- **Checkpoints:** pre-approved` en el encabezado de `tasks.md`
   (queda así si apruebas las pausas al pedir la feature o con el plan) escribe el resumen y sigue
-  sin detenerse, y en las decisiones abiertas toma la opción recomendada.
+  sin detenerse. Aprobar las pausas no aprueba las decisiones: sin `- **Decisions:** pre-approved`,
+  una decisión abierta sigue pausando su tarea.
 - **Resumen de la feature.** Al final escribe `specs/<NNN-slug>/summary.md`: el problema, qué
   módulo es dueño de qué, los resúmenes de cada entrega, las decisiones, los requisitos con sus
   tests y evidencia, los replanteos, los hallazgos refutados, las sugerencias no aplicadas y cómo
