@@ -24,10 +24,14 @@ _CODE_MARKER = "[code removed]"
 _SECRET_MARKER = "[secret removed]"  # noqa: S105 - the text left in place of a credential, not one
 _EMAIL_MARKER = "[email removed]"
 
-# A line that opens a fenced block, at any indentation (list items indent theirs).
-_OPENING_FENCE = re.compile(r"\s*(`{3,})")
+# The start of a line (matched without its ending, so it cannot reach the next line) that may open
+# a fenced block: three or more backticks at any indentation, as wide as _CLOSING_FENCE accepts
+# (list items indent theirs, and a no-break space is still indentation).
+_FENCE_START = re.compile(r"\s*(`{3,})")
 # A line that is only a fence; it closes the block when at least as long as the opening one.
 _CLOSING_FENCE = re.compile(r"\s*(`{3,})\s*")
+# Any run of backticks; a later run exactly as long as the line's first one closes an inline span.
+_ANY_BACKTICK_RUN = re.compile(r"`+")
 # Three or more backticks outside a block (an inline span); reduced to one so no fence remains.
 _BACKTICK_RUN = re.compile(r"`{3,}")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
@@ -43,15 +47,19 @@ _PRIVATE_KEY_BLOCK = re.compile(
 def scrub(notes: str) -> str:
     """Removes a project's code, credentials and e-mail addresses from notes.
 
-    Every fenced code block (opened by a line starting with three or more backticks, at any
-    indentation) is dropped with its contents and replaced by a "[code removed]" line; a block
-    never closed runs to the end of the text. Any other run of three or more backticks is reduced
-    to one. Then every private key outside a block, from its "-----BEGIN … PRIVATE KEY-----"
-    header through its "-----END … PRIVATE KEY-----" line (or through the end of the text when
-    that line is missing), every other match of a ``secret_patterns.SECRET_PATTERNS`` pattern,
-    placeholder or not, becomes "[secret removed]" and every e-mail address "[email removed]",
-    repeated until nothing matches, since removing one value can expose another that it was
-    glued to.
+    Every fenced code block is dropped with its contents and replaced by a "[code removed]" line.
+    A block opens at a line starting with three or more backticks, at any indentation, unless a
+    run of exactly as many backticks follows later on that line, which makes the start an inline
+    span (as in "```npm run check``` failed"); a shorter or longer run, such as a lone backtick
+    in the info string, still opens a block. The block closes at a line holding only a fence at
+    least as long as the opening one, and a block never closed runs to the end of the text. An
+    inline span split across lines is therefore dropped as a block, erring on the safe side.
+    Any other run of three or more backticks, such as an inline span, is reduced to one.
+    Then every private key outside a block, from its "-----BEGIN … PRIVATE KEY-----" header
+    through its "-----END … PRIVATE KEY-----" line (or through the end of the text when that line
+    is missing), every other match of a ``secret_patterns.SECRET_PATTERNS`` pattern, placeholder
+    or not, becomes "[secret removed]" and every e-mail address "[email removed]", repeated until
+    nothing matches, since removing one value can expose another that it was glued to.
 
     Args:
         notes: Text of the notes, in Markdown.
@@ -72,14 +80,25 @@ def _drop_code_blocks(text: str) -> str:
             if closing and len(closing.group(1)) >= closing_fence_length:
                 closing_fence_length = 0
             continue
-        opening = _OPENING_FENCE.match(line)
+        content = line.splitlines()[0]
+        opening = _opening_fence(content)
         if opening:
             closing_fence_length = len(opening.group(1))
-            content = line.splitlines()[0]
             kept.append(line[: opening.start(1)] + _CODE_MARKER + line[len(content) :])
         else:
             kept.append(_BACKTICK_RUN.sub("`", line))
     return "".join(kept)
+
+
+def _opening_fence(content: str) -> re.Match[str] | None:
+    # The fence's run is greedy, so the rest starts after its last backtick.
+    start = _FENCE_START.match(content)
+    if start is None:
+        return None
+    fence_length = len(start.group(1))
+    rest = content[start.end() :]
+    is_inline_span = any(len(run.group()) == fence_length for run in _ANY_BACKTICK_RUN.finditer(rest))
+    return None if is_inline_span else start
 
 
 def _redact_until_clean(text: str) -> str:

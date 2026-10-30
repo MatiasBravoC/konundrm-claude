@@ -399,7 +399,7 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T44
   - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T47** Ningún texto limpio conserva un secreto, un bloque de código o un correo · `property` · Risk: high · Covers: R7.3
+- [x] **T47** Ningún texto limpio conserva un secreto, un bloque de código o un correo · `property` · Risk: high · Covers: R7.3
   - Test: `P/hooks/tests/test_improvement_notes.py::test_scrubbed_notes_never_keep_secrets_code_or_emails`
   - Generator domain: 300 textos con `random.Random(17)` que mezclan prosa, secretos de las formas que reconoce `secret_patterns`, correos y bloques de código
   - Invariants: igual que T46
@@ -409,6 +409,7 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Files: `P/hooks/scripts/improvement_notes.py` (sin cambios esperados)
   - Verify: `... -k test_scrubbed_notes_never_keep_secrets_code_or_emails`
   - Depends on: T46
+  - Rounds: spec 3 · code 4 · escalations 0
 
 - [ ] **T48** Si el archivo central no se puede escribir, las notas quedan con la feature y se avisa · `behavior` · Risk: low · Covers: R7.4
   - Test: `P/hooks/tests/test_improvement_notes.py::test_falls_back_to_the_feature_folder_when_the_central_file_cannot_be_written`

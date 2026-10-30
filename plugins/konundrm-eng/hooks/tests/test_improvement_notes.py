@@ -8,6 +8,7 @@ import string
 import sys
 import tempfile
 import unittest
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
@@ -83,6 +84,180 @@ class AppendNotesTest(unittest.TestCase):
                 after = path.read_bytes()
                 self.assertGreater(len(after), len(before), f"sequence {sequence}: nothing was appended")
                 self.assertEqual(after[: len(before)], before, f"sequence {sequence}: earlier notes changed")
+
+
+# Generated notes for the scrub property (T47). Fake credentials are assembled from split literals and
+# seeded noise, so this file never holds a value a secret scanner would flag.
+_ALNUM = string.ascii_letters + string.digits
+_UPPER_DIGITS = string.ascii_uppercase + string.digits
+_TOKEN_ALPHABET = _ALNUM + "_-"
+_BASE64 = _ALNUM + "+/"
+_PROSE_WORDS = (
+    "la", "revisión", "del", "módulo", "falló", "después", "de", "corrección", "y", "el", "índice",
+    "quedó", "pequeño", "señal", "acción", "también", "conviene", "dividir", "tareas", "más", "cortas",
+)  # fmt: skip
+# Backticks and "@" in prose that are neither a fence nor an e-mail address.
+_PROSE_EXTRAS = ("`npm run check`", "`scrub()`", "``doble ` tick``", "@equipo", "@revisora", "a @ b", "```en línea```")
+# Inline triple-backtick spans that open a prose line. CommonMark never reads them as a fence (a
+# backtick fence's info string has no backticks), so a later bare fence still opens a real block.
+_INLINE_SPAN_LEADS = ("```en línea``` ", "```npm run check``` ", "  ```scrub()``` ")
+# Fence indents include Unicode spaces (no-break, ideographic): a fence they indent still hides code.
+_FENCE_INDENTS = ("", "", " ", "  ", "   ", "    ", "\t", "\u00a0", "\u3000")
+# Some info strings hold a lone backtick; with no equal run after it, the line still opens a block.
+_INFO_STRINGS = ("python", "sh", "ts", "json", " python", "python `x`", "sh `npm`", "ts title=`a.ts`")
+_WRAPPERS = (("", ""), ("`", "`"), ("(", ")"), ('"', '"'), ("<", ">"), ("token=", ""), ("[", "]"))
+_EMAIL_NAMES = ("ana", "perez", "soto", "maria", "jose", "soporte", "devops")
+_EMAIL_SEPARATORS = ("", ".", "_", "+", "-")
+_EMAIL_DOMAINS = ("cliente-ejemplo.cl", "mail.empresa.com", "uc.cl", "proveedor.io")
+_KEY_LABELS = ("", "RSA ", "EC ", "DSA ", "OPENSSH ", "PGP ", "ENCRYPTED ")
+
+
+def _noise(rng: random.Random, length: int, alphabet: str = _ALNUM) -> str:
+    return "".join(rng.choice(alphabet) for _ in range(length))
+
+
+# One shape per entry of secret_patterns.SECRET_PATTERNS but the private key, which is built as a whole block.
+_SECRET_SHAPES = {
+    "aws": lambda rng: (
+        rng.choice(("AK" + "IA", "AS" + "IA", "AB" + "IA", "AC" + "CA")) + _noise(rng, 16, _UPPER_DIGITS)
+    ),
+    "github": lambda rng: "gh" + rng.choice("pousr") + "_" + _noise(rng, rng.randint(36, 60)),
+    "github_pat": lambda rng: "github" + "_pat_" + _noise(rng, rng.randint(50, 90), _ALNUM + "_"),
+    "gitlab": lambda rng: "glp" + "at-" + _noise(rng, rng.randint(20, 40), _TOKEN_ALPHABET),
+    "slack": lambda rng: "xo" + "x" + rng.choice("abposr") + "-" + _noise(rng, rng.randint(10, 40), _ALNUM + "-"),
+    "slack_webhook": lambda rng: (
+        "https://hooks."
+        + "slack.com/services/T"
+        + _noise(rng, 9, _UPPER_DIGITS)
+        + "/B"
+        + _noise(rng, 9, _UPPER_DIGITS)
+        + "/"
+        + _noise(rng, 24)
+    ),
+    "stripe": lambda rng: rng.choice(("sk", "rk")) + "_live_" + _noise(rng, rng.randint(20, 40)),
+    "google": lambda rng: "AI" + "za" + _noise(rng, 35, _TOKEN_ALPHABET),
+    "anthropic": lambda rng: (
+        "sk-"
+        + "ant-"
+        + rng.choice(("api", "admin"))
+        + _noise(rng, 2, string.digits)
+        + "-"
+        + _noise(rng, rng.randint(80, 100), _TOKEN_ALPHABET)
+    ),
+    "openai_project": lambda rng: (
+        "sk-" + rng.choice(("proj", "svcacct", "admin")) + "-" + _noise(rng, rng.randint(40, 60), _TOKEN_ALPHABET)
+    ),
+    "openai_legacy": lambda rng: "sk-" + _noise(rng, 20) + "T3Blbk" + "FJ" + _noise(rng, 20),
+    "npm": lambda rng: "np" + "m_" + _noise(rng, 36),
+    "pypi": lambda rng: "pypi-" + "AgEIcHlwaS5vcmc" + _noise(rng, rng.randint(50, 80), _TOKEN_ALPHABET),
+    "sendgrid": lambda rng: "SG." + _noise(rng, 22, _TOKEN_ALPHABET) + "." + _noise(rng, 43, _TOKEN_ALPHABET),
+    "azure": lambda rng: "AccountKey=" + _noise(rng, 86, _BASE64) + "==",
+}
+
+
+@dataclass
+class _GeneratedNotes:
+    """A generated note plus every piece of project content it carries, so its absence can be checked."""
+
+    newline: str
+    blocks: list[str] = field(default_factory=list)
+    secrets: list[str] = field(default_factory=list)  # one whole credential each, private-key headers included
+    key_lines: list[str] = field(default_factory=list)  # body and END lines of private keys
+    emails: list[str] = field(default_factory=list)
+    code_tokens: list[str] = field(default_factory=list)
+
+    @property
+    def text(self) -> str:
+        return self.newline.join(self.blocks)
+
+
+class _NotesGenerator:
+    """Builds notes mixing Spanish prose, credentials, e-mail addresses, fenced code and private keys."""
+
+    def __init__(self, rng: random.Random) -> None:
+        self.rng = rng
+
+    def notes(self) -> _GeneratedNotes:
+        notes = _GeneratedNotes(newline=self.rng.choice(("\n", "\r\n")))
+        for _ in range(self.rng.randint(1, 8)):
+            roll = self.rng.random()
+            if roll < 0.55:
+                notes.blocks.append(self._paragraph(notes))
+            elif roll < 0.8:
+                notes.blocks.append(self._code_block(notes, is_closed=True))
+            else:
+                notes.blocks.append(self._private_key(notes))
+        # A fence never closed runs to the end of the text, so only the last block may leave it open.
+        if self.rng.random() < 0.2:
+            notes.blocks.append(self._code_block(notes, is_closed=False))
+        notes.blocks.append(self.rng.choice(("", "Fin de las notas.")))
+        return notes
+
+    def _secret(self, notes: _GeneratedNotes) -> str:
+        shape = self.rng.choice(list(_SECRET_SHAPES.values()))
+        value = shape(self.rng)
+        # A placeholder-looking value is not a credential to find_secrets; draw another one.
+        while any(word in value.upper() for word in secret_patterns.PLACEHOLDER_WORDS):
+            value = shape(self.rng)
+        notes.secrets.append(value)
+        return value
+
+    def _email(self, notes: _GeneratedNotes) -> str:
+        # Every piece of the local part carries digits, so a fragment left behind can be told from prose.
+        pieces = [self.rng.choice(_EMAIL_NAMES) + _noise(self.rng, 3, string.digits) for _ in range(2)]
+        address = self.rng.choice(_EMAIL_SEPARATORS).join(pieces) + "@" + self.rng.choice(_EMAIL_DOMAINS)
+        notes.emails.append(address)
+        return address
+
+    def _sensitive_item(self, notes: _GeneratedNotes) -> str:
+        value = self._secret(notes) if self.rng.random() < 0.6 else self._email(notes)
+        opening, closing = self.rng.choice(_WRAPPERS)
+        return opening + value + closing
+
+    def _paragraph(self, notes: _GeneratedNotes) -> str:
+        bullet = self.rng.choice(("", "- ", "> ", "1. ", *_INLINE_SPAN_LEADS))
+        words = []
+        for _ in range(self.rng.randint(3, 12)):
+            roll = self.rng.random()
+            if roll < 0.25:
+                words.append(self._sensitive_item(notes))
+            elif roll < 0.4:
+                words.append(self.rng.choice(_PROSE_EXTRAS))
+            else:
+                words.append(self.rng.choice(_PROSE_WORDS))
+        return bullet + " ".join(words) + self.rng.choice((".", ":", ""))
+
+    def _code_block(self, notes: _GeneratedNotes, *, is_closed: bool) -> str:
+        indent = self.rng.choice(_FENCE_INDENTS)
+        fence = "`" * self.rng.randint(3, 5)
+        # Bare fences are drawn as often as all info strings together: they are the ones a prose line
+        # mistaken for an opening fence would take for its closing fence.
+        info = "" if self.rng.random() < 0.5 else self.rng.choice(_INFO_STRINGS)
+        lines = [indent + fence + info]
+        for _ in range(self.rng.randint(0, 4)):
+            token = "fuente_" + _noise(self.rng, 10, string.ascii_lowercase)
+            notes.code_tokens.append(token)
+            line = indent + self.rng.choice(("def ", "x = ", "", "    return ")) + token
+            if self.rng.random() < 0.3:
+                line += " " + self._sensitive_item(notes)
+            lines.append(line)
+        if len(fence) > 3 and self.rng.random() < 0.5:
+            # A shorter fence inside a longer one is content, not the end of the block.
+            lines.insert(self.rng.randint(1, len(lines)), indent + "```" + self.rng.choice(("", "sh")))
+        if is_closed:
+            closing_fence = fence + "`" * self.rng.randint(0, 2)
+            lines.append(self.rng.choice((indent, "")) + closing_fence + self.rng.choice(("", " ")))
+        return notes.newline.join(lines)
+
+    def _private_key(self, notes: _GeneratedNotes) -> str:
+        label = self.rng.choice(_KEY_LABELS) + "PRIVATE" + " KEY" + self.rng.choice(("", " BLOCK"))
+        header = "-----BEGIN " + label + "-----"
+        notes.secrets.append(header)
+        lines = [_noise(self.rng, 64, _BASE64) for _ in range(self.rng.randint(1, 4))]
+        if self.rng.random() < 0.8:
+            lines.append("-----END " + label + "-----")
+        notes.key_lines.extend(lines)
+        return notes.newline.join([header, *lines])
 
 
 class ScrubTest(unittest.TestCase):
@@ -173,6 +348,109 @@ class ScrubTest(unittest.TestCase):
         self.assertTrue(found.group(1).strip(), f"no marker where the closed key was: {pem_scrubbed!r}")
         pem_tail = pem_scrubbed.split("Otra clave sin cierre:", 1)[1]
         self.assertTrue(pem_tail.strip(), f"the key without END left no marker: {pem_scrubbed!r}")
+
+    def test_scrub_does_not_treat_an_inline_triple_backtick_span_as_a_fence(self) -> None:
+        # R7.3 (Threats, row 1): a prose line that starts with an inline ``` span is not a fence, so the
+        # bare fence after it still opens a block and its code never reaches the notes.
+        # Counterexample found by the T47 property and confirmed by the security review.
+        notes = (
+            "```npm run check``` falló con este código:\n"
+            "```\n"
+            "def filtrar_cliente(rut):\n"
+            '    return "codigo-propietario"\n'
+            "```\n"
+            "Fin de las notas.\n"
+        )
+
+        scrubbed = improvement_notes.scrub(notes)
+
+        for leaked in ("filtrar_cliente", "codigo-propietario", "```"):
+            self.assertNotIn(leaked, scrubbed)
+        self.assertIn("Fin de las notas.", scrubbed)
+
+    def test_scrub_drops_a_fence_indented_with_non_ascii_spaces(self) -> None:
+        # R7.3 (Threats, row 1): a fence indented with a no-break or ideographic space still opens a
+        # block, so its code never reaches the notes and the prose after the block survives.
+        # Found by code review round 2: narrowing the indent to spaces and tabs leaked the block.
+        for space in ("\u00a0", "\u3000"):
+            notes = f"Nota:\n{space}```\ndef filtrar_cliente(): pass\n```\nFin.\n"
+
+            scrubbed = improvement_notes.scrub(notes)
+
+            for leaked in ("filtrar_cliente", "```"):
+                self.assertNotIn(leaked, scrubbed, f"indent {space!r}: {scrubbed!r}")
+            self.assertIn("Fin.", scrubbed, f"indent {space!r}: {scrubbed!r}")
+
+    def test_scrub_drops_a_fence_whose_info_string_has_a_backtick(self) -> None:
+        # R7.3 (Threats, row 1): a fence whose info string holds a single backtick still opens a block;
+        # only a line whose opening run is closed by an equal run later on is an inline span.
+        # Found by code review round 2: rejecting any backtick after the run leaked the block.
+        notes = "```python `x`\ndef filtrar_cliente(): pass\n```\nFin.\n"
+
+        scrubbed = improvement_notes.scrub(notes)
+
+        for leaked in ("filtrar_cliente", "```"):
+            self.assertNotIn(leaked, scrubbed, scrubbed)
+        self.assertIn("Fin.", scrubbed, scrubbed)
+
+    def test_scrub_drops_a_fence_whose_info_string_has_a_longer_backtick_run(self) -> None:
+        # R7.3 (Threats, row 1): a run longer than the opening fence later on the line does not close an
+        # inline span, so the fence still opens a block and a closing fence at least as long ends it.
+        # Kills the `==` → `>=` mutant of _opening_fence found by T47's mutation review.
+        notes = "```py ````\ndef filtrar_cliente(): pass\n````\nFin.\n"
+
+        scrubbed = improvement_notes.scrub(notes)
+
+        for leaked in ("filtrar_cliente", "```"):
+            self.assertNotIn(leaked, scrubbed, scrubbed)
+        self.assertIn("Fin.", scrubbed, scrubbed)
+
+    def test_scrub_redacts_a_secret_exposed_by_removing_another(self) -> None:
+        # R7.3 (Threats, row 1): an AWS key glued to an Azure key has no word boundary after it, so it
+        # only matches once the Azure key is gone; scrub repeats until nothing matches, and leaks neither.
+        # Kills the single-pass mutant of _redact_until_clean found by T47's mutation review.
+        aws_key = "AK" + "IA" + "Q7RZ3M9TB2KX4WNP"
+        azure_key = "Account" + "Key=" + ("Q29ycG9EZUxhQ2xhdmVGYWxzYVBhcmFUZXN0" * 3)[:86] + "=="
+        notes = f"El log mostró {aws_key}{azure_key} completo.\n"
+        self.assertEqual([match.kind for match in secret_patterns.find_secrets(notes)], ["Azure storage account key"])
+
+        scrubbed = improvement_notes.scrub(notes)
+
+        for leaked in (aws_key, azure_key):
+            self.assertNotIn(leaked, scrubbed, scrubbed)
+        self.assertEqual(secret_patterns.find_secrets(scrubbed), [], scrubbed)
+        self.assertTrue(scrubbed.startswith("El log mostró "), scrubbed)
+        self.assertTrue(scrubbed.endswith(" completo.\n"), scrubbed)
+
+    def test_scrubbed_notes_never_keep_secrets_code_or_emails(self) -> None:
+        # R7.3 (Threats, row 1): over 300 generated notes, the scrubbed text keeps no fence, nothing
+        # find_secrets reports, no e-mail address and none of the generated code, credentials or addresses.
+        rng = random.Random(17)  # noqa: S311 - repeatable generated notes for tests, not cryptography
+        generator = _NotesGenerator(rng)
+        covered_patterns: set[secret_patterns.SecretPattern] = set()
+        for index in range(300):
+            case = generator.notes()
+            text = case.text
+            context = f"case {index}: {text!r}"
+            for value in case.secrets:
+                self.assertTrue(secret_patterns.find_secrets(value), f"{context}\nnot a detected secret: {value!r}")
+                covered_patterns.update(s for s in secret_patterns.SECRET_PATTERNS if s.pattern.search(value))
+            self.assertGreaterEqual(len(secret_patterns.find_secrets(text)), len(case.secrets), context)
+
+            scrubbed = improvement_notes.scrub(text)
+
+            failure = f"{context}\nscrubbed: {scrubbed!r}"
+            self.assertNotIn("```", scrubbed, failure)
+            self.assertEqual(secret_patterns.find_secrets(scrubbed), [], failure)
+            # An oracle independent of scrub's own e-mail regex: anything shaped like name@host.tld.
+            self.assertIsNone(re.search(r"\S+@\S+\.\S+", scrubbed), failure)
+            # A fragment of an address, such as the name before a dot, is personal data too.
+            name_pieces = [piece for address in case.emails for piece in re.split(r"[._+-]", address.split("@")[0])]
+            for leaked in (*case.secrets, *case.key_lines, *case.emails, *name_pieces, *case.code_tokens):
+                self.assertNotIn(leaked, scrubbed, failure)
+        self.assertEqual(
+            covered_patterns, set(secret_patterns.SECRET_PATTERNS), "a credential format was not generated"
+        )
 
 
 if __name__ == "__main__":
