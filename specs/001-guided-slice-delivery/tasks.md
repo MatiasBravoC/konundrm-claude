@@ -557,11 +557,12 @@ una sugerencia de la revisión de código de T29; T72 porque en T27 un nombre de
   - Depends on: T29
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T72** Ningún archivo de pruebas de contrato define dos veces un mismo nombre de nivel de módulo · `behavior` · Risk: low · Covers: R10.2
+- [x] **T72** Ningún archivo de pruebas de contrato define dos veces un mismo nombre de nivel de módulo · `behavior` · Risk: low · Covers: R10.2
   - Test: `P/hooks/tests/contract/test_meta.py::test_contract_tests_define_each_module_name_once` (una segunda asignación, `def` o `class` del mismo nombre reemplaza en silencio la primera y la prueba que la usaba deja de poder fallar)
   - Files: — (puede pasar al llegar: devolver CHARACTERIZATION)
   - Verify: `... -k test_contract_tests_define_each_module_name_once`
   - Depends on: T51
+  - Rounds: spec 2 · code 1 · escalations 0
 
 <!-- Agregadas el 2026-10-30 por la sesión principal con las notas de revisión de las sesiones de
 S3 y de agentes (T61, T63, T66 y T68). -->

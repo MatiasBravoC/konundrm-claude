@@ -79,3 +79,98 @@ class ContractTestsNameTheirRequirementsTest(unittest.TestCase):
 
         self.assertIn(Path(__file__).resolve(), modules)
         self.assertEqual(gaps, [])
+
+
+# What binds a name at module level for T72: assignments (plain, annotated with a value, augmented), `def`, `async def`,
+# `class` and imports. Branches of a top-level `if`, `try` or `match` are alternatives, so a later branch's first
+# binding of a name an earlier branch bound stands in for it and replaces nothing; a name bound twice inside one branch,
+# or both inside and outside the statement, is a replacement. A binding is `(name, line, is_alternative)`.
+_ONCE_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
+def _once_assigned_names(node: ast.stmt) -> list[str]:
+    """Return the names a simple module-level statement binds, in order, or [] when it binds none."""
+    if isinstance(node, _ONCE_DEFINITIONS):
+        return [node.name]
+    if isinstance(node, ast.Import | ast.ImportFrom):
+        return [alias.asname or alias.name for alias in node.names if alias.name != "*"]
+    if isinstance(node, ast.Assign | ast.AugAssign) or (isinstance(node, ast.AnnAssign) and node.value is not None):
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        return [
+            name.id
+            for target in targets
+            for name in ast.walk(target)
+            if isinstance(name, ast.Name) and isinstance(name.ctx, ast.Store)
+        ]
+    return []
+
+
+def _once_alternatives(branches: list[list[ast.stmt]]) -> list[tuple[str, int, bool]]:
+    """Return the bindings of alternative branches in source order, marking the ones that only stand in for another.
+
+    A later branch's first binding of a name an earlier branch bound is marked as an alternative: only one of the two
+    runs. Its further bindings of that name keep their mark, so a repeat inside the later branch is still a replacement.
+    """
+    bound_by_earlier: set[str] = set()
+    bindings = []
+    for branch in branches:
+        bound_in_branch: set[str] = set()
+        for name, line, is_alternative in _once_bindings(branch):
+            stands_in = name in bound_by_earlier and name not in bound_in_branch
+            bindings.append((name, line, is_alternative or stands_in))
+            bound_in_branch.add(name)
+        bound_by_earlier |= bound_in_branch
+    return bindings
+
+
+def _once_statement_bindings(node: ast.stmt) -> list[tuple[str, int, bool]]:
+    """Return `(name, line, is_alternative)` for each module-level name one top-level statement binds."""
+    if isinstance(node, ast.If):
+        return _once_alternatives([node.body, node.orelse])
+    if isinstance(node, ast.Try):
+        handlers = [handler.body for handler in node.handlers]
+        return _once_alternatives([node.body + node.orelse, *handlers]) + _once_bindings(node.finalbody)
+    if isinstance(node, ast.Match):
+        return _once_alternatives([case.body for case in node.cases])
+    return [(name, node.lineno, False) for name in _once_assigned_names(node)]
+
+
+def _once_bindings(statements: list[ast.stmt]) -> list[tuple[str, int, bool]]:
+    """Return `(name, line, is_alternative)` for each module-level binding of a block of statements, in source order."""
+    return [binding for node in statements for binding in _once_statement_bindings(node)]
+
+
+def _once_duplicates(path: Path) -> list[str]:
+    """Return one message per module-level binding of a contract module that replaces an earlier one of its name.
+
+    Each message names the file, the name, the line of the binding replaced and the line replacing it, since the second
+    silently replaces the first and the test that used it can no longer fail.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    last_lines: dict[str, int] = {}
+    duplicates = []
+    for name, line, is_alternative in _once_bindings(tree.body):
+        if name in last_lines and not is_alternative:
+            duplicates.append(
+                f"{path.name}: `{name}` is defined on line {last_lines[name]} and again on line {line},"
+                " which replaces the first"
+            )
+        last_lines[name] = line
+    return duplicates
+
+
+class ContractTestsDefineEachNameOnceTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_contract_tests_define_each_module_name_once(self) -> None:
+        """R10.2: no contract module defines a module-level name twice, so no test loses the helper it checks with.
+
+        A second assignment, `def`, `class` or import of a name replaces the first in silence (T27's second `_RECORDS`
+        left T19's test unable to fail). Every Python module of the contract package is read, this one included.
+        """
+        modules = sorted(CONTRACT_DIR.glob("*.py"))
+
+        duplicates = [duplicate for module in modules for duplicate in _once_duplicates(module)]
+
+        self.assertIn(Path(__file__).resolve(), modules)
+        self.assertEqual(duplicates, [])
