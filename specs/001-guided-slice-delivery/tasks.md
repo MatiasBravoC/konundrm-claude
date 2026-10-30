@@ -425,7 +425,7 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T48, T46
   - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T57** La limpieza trata como código los bloques `~~~` y los que se abren dentro de una viñeta o una cita · `behavior` · Risk: high · Covers: R7.3
+- [x] **T57** La limpieza trata como código los bloques `~~~` y los que se abren dentro de una viñeta o una cita · `behavior` · Risk: high · Covers: R7.3
   - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_drops_tilde_and_nested_code_blocks` (bloques con `~~~`, bloques abiertos tras `- `, `1. ` o `> `, y una línea de cierre indentada 4 espacios o más, que no cierra el bloque)
   - Files: `P/hooks/scripts/improvement_notes.py` (modify)
   - Invariants: el texto limpio no conserva ningún bloque de código (extender el generador de la propiedad de T47 con estas formas)
@@ -434,6 +434,7 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Evidence: agregar a `specs/001-guided-slice-delivery/evidence/T46.md` una corrida de la CLI con un bloque `~~~` y uno dentro de una viñeta, y el archivo central resultante sin ninguno de los dos
   - Verify: `... -k test_scrub_drops_tilde_and_nested_code_blocks`
   - Depends on: T47
+  - Rounds: spec 6 · code 1 · escalations 1
 
 - [ ] **T58** La limpieza tapa cualquier clave privada PEM, también las DH · `behavior` · Risk: high · Covers: R7.3
   - Test: `P/hooks/tests/test_improvement_notes.py::test_scrub_removes_every_pem_private_key_block` (`-----BEGIN DH PRIVATE KEY-----` y otras cabeceras `-----BEGIN <tipo> PRIVATE KEY-----` se quitan con todo su cuerpo)
