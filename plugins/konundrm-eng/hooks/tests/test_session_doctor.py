@@ -83,6 +83,39 @@ class FeatureProgressContextTest(unittest.TestCase):
         self.write_tasks("002-search", "Draft", False)
         self.assertIsNone(feature_progress_context(self.root))
 
+    def test_names_each_partitions_next_task_when_they_run_in_parallel(self) -> None:
+        # R3.7: during a parallel wave the session start names the next task of each partition of
+        # the slice being built (S1); S2's partition P3 waits for its own stacked pull request.
+        folder = self.root / "specs" / "005-coupons"
+        folder.mkdir(parents=True)
+        plan = (
+            "- **Status:** Approved\n"
+            "- **Parallel:** {parallel}\n\n"
+            "## Slice S1: apply\n\n"
+            "- [x] **T1** Step 1 · `behavior`\n"
+            "- [ ] **T2** Step 2 · `behavior`\n"
+            "- [ ] **T3** Step 3 · `behavior`\n\n"
+            "### Partitions\n\n"
+            "| Wave | Partition | Tasks | Depends on |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | P1 | T1, T3 | — |\n"
+            "| 1 | P2 | T2 | — |\n\n"
+            "## Slice S2: expiry\n\n"
+            "- [ ] **T4** Step 4 · `behavior`\n\n"
+            "### Partitions\n\n"
+            "| Wave | Partition | Tasks | Depends on |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | P3 | T4 | — |\n"
+        )
+        (folder / "tasks.md").write_text(plan.format(parallel="yes"), encoding="utf-8")
+        parallel_lines = (feature_progress_context(self.root) or "").splitlines()
+        (folder / "tasks.md").write_text(plan.format(parallel="no"), encoding="utf-8")
+        serial_context = feature_progress_context(self.root) or ""
+
+        self.assertIn("- specs/005-coupons: 1 of 4 tasks checked, next per partition: P1 T3, P2 T2", parallel_lines)
+        self.assertIn("- specs/005-coupons: 1 of 4 tasks checked, next T2: Step 2", serial_context)
+        self.assertNotIn("per partition", serial_context)
+
 
 if __name__ == "__main__":
     unittest.main()

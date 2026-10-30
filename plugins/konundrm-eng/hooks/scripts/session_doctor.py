@@ -3,7 +3,8 @@
 Warns the person when Git is missing or when the account-level skills this plugin replaced are
 still installed, since Claude would then choose between two versions of each skill. Adds context
 for Claude: the project's check command, the same one every hook runs, and the features in
-progress under specs/ with their next task. The hook runs on every session start, including the
+progress under specs/ with their next task, or the next task of each partition while a slice's
+partitions run in parallel. The hook runs on every session start, including the
 one after a compaction, so a long develop-feature run finds its place again. A missing Python is
 reported by run.sh, which cannot start this script without one.
 """
@@ -18,7 +19,7 @@ from pathlib import Path
 from hook_io import emit_json, read_hook_input
 from project_paths import project_root
 from quality_check import find_check_command, gates_disabled
-from tasks_document import read_tasks
+from tasks_document import Task, TasksDocument, read_tasks
 
 LEGACY_SKILLS = ("deployer", "documentator", "engineer", "mapper", "tdd", "tester")
 MAX_FEATURES_SHOWN = 3
@@ -67,6 +68,54 @@ def check_command_context(check: str | None) -> str:
     )
 
 
+def next_step(document: TasksDocument) -> str:
+    """Describes where a feature resumes: its next task, or each partition's while they run in parallel.
+
+    Args:
+        document: The feature's parsed tasks.md.
+
+    Returns:
+        ``next per partition: P1 T3, P2 T2`` when the plan runs partitions in parallel and at least
+        two partitions of the first unchecked task's slice still have unchecked tasks, every
+        pending task of that slice having a partition; partitions are in numeric order, each with
+        its first unchecked task. Otherwise ``next T<n>: <title>`` for the first unchecked task, or
+        the finish-phase text when every box is checked.
+    """
+    pending = [task for task in document.tasks if not task.done]
+    if not pending:
+        return "every box checked; the finish phase is left"
+    if document.parallel:
+        next_by_partition = _next_task_by_partition(pending)
+        if next_by_partition is not None:
+            return "next per partition: " + ", ".join(
+                f"{partition} {task.id}" for partition, task in next_by_partition.items()
+            )
+    return f"next {pending[0].id}: {pending[0].title}"
+
+
+def _next_task_by_partition(pending: list[Task]) -> dict[str, Task] | None:
+    """Maps each partition of the first pending task's slice to its first pending task.
+
+    Returns None when fewer than two partitions remain or a pending task of that slice has no
+    partition, since a single next task then describes the resume point fully.
+    """
+    current_slice = [task for task in pending if task.slice == pending[0].slice]
+    if any(task.partition is None for task in current_slice):
+        return None
+    next_by_partition: dict[str, Task] = {}
+    for task in current_slice:
+        next_by_partition.setdefault(str(task.partition), task)
+    if len(next_by_partition) < 2:
+        return None
+    return dict(sorted(next_by_partition.items(), key=lambda item: _partition_number(item[0])))
+
+
+def _partition_number(partition: str) -> tuple[int, str]:
+    """Sorts ``P2`` before ``P10``; IDs without a number sort after numbered ones, by name."""
+    digits = partition.lstrip("Pp")
+    return (int(digits), partition) if digits.isdigit() else (sys.maxsize, partition)
+
+
 def feature_progress_context(root: Path) -> str | None:
     """Describes the features whose plan is approved and not done yet, with each one's next task.
 
@@ -79,9 +128,9 @@ def feature_progress_context(root: Path) -> str | None:
         if document.status.lower() != "approved" or not document.tasks:
             continue
         done = sum(task.done for task in document.tasks)
-        pending = next((task for task in document.tasks if not task.done), None)
-        step = f"next {pending.id}: {pending.title}" if pending else "every box checked; the finish phase is left"
-        lines.append(f"- specs/{tasks_file.parent.name}: {done} of {len(document.tasks)} tasks checked, {step}")
+        lines.append(
+            f"- specs/{tasks_file.parent.name}: {done} of {len(document.tasks)} tasks checked, {next_step(document)}"
+        )
     if not lines:
         return None
     shown = lines[:MAX_FEATURES_SHOWN] + (

@@ -137,7 +137,8 @@ de cada archivo (algunos son CRLF). -->
   - Verify: `... -k test_writing_plans_partitions_each_slice`
   - Depends on: T15
 
-- [ ] **T17** Al iniciar sesión, el hook muestra la siguiente tarea de cada partición durante una oleada en paralelo · `behavior` · Risk: low · Covers: R3.7
+- [x] **T17** Al iniciar sesión, el hook muestra la siguiente tarea de cada partición durante una oleada en paralelo · `behavior` · Risk: low · Covers: R3.7
+  - Rounds: spec 1 · code 1 · escalations 0
   - Test: `P/hooks/tests/test_session_doctor.py::test_names_each_partitions_next_task_when_they_run_in_parallel`
   - Files: `P/hooks/scripts/session_doctor.py` (modify)
   - Verify: `... -k test_names_each_partitions_next_task_when_they_run_in_parallel`
