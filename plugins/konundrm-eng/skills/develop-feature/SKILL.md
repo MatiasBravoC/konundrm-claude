@@ -57,9 +57,15 @@ runs this solved slightly more tasks than running everything at `high`, for less
 1. If `$ARGUMENTS` points to an existing `specs/<NNN-slug>/`, **resume**, in this order:
    - Read its files, skip stages whose documents are `Approved` and take the base commit from the
      `tasks.md` header.
-   - When the plan is `Approved` but `tasks.md` has no `- **Parallel:**` line yet (the session
-     stopped between the approval and recording the answer), ask the parallel question now, before
-     Phase 3, and record the answer as [Phase 2](#phase-2-plan) describes, instead of assuming `no`.
+   - When the plan is `Approved`, some slice has a wave of two or more partitions and `tasks.md`
+     has no `- **Parallel:**` line yet (the session stopped between the approval and recording the
+     answer), ask the parallel question now, before Phase 3, and record the answer as
+     [Phase 2](#phase-2-plan) describes, instead of assuming `no`.
+   - A plan whose slices have no `### Partitions` table (written by an earlier plugin version) is
+     built as before: its slices one after another, each slice's tasks in list order, in this
+     session through the Phase 3 task loop. It gets no parallel question, no partition sessions and
+     no worktrees. In a mixed plan, a slice without a `### Partitions` table counts as a single
+     partition.
    - A checked box only counts when `git log -E --grep '^Task: T<n>( |$)'` finds its commit
      (anchored, so T1 never matches T10); uncheck any box that has none.
    - In the main session, look for an unfinished wave before going on: run `git worktree list` and
@@ -134,6 +140,10 @@ changes to the subagent that was running. To build several features at once, run
 Git worktree and session (`claude --worktree`, or a new worktree session in the desktop app):
 the gates and the audit work per working tree. Pass `model` and `effort` only as
 [Model and effort](#model-and-effort) lists; fix rounds always run on `opus` at `high`.
+
+When the `tasks.md` header says `**Parallel:** yes`, build each wave of two or more partitions as
+[Parallel partitions](#parallel-partitions) says. Otherwise build each slice's tasks here, in list
+order.
 
 Keep a tally per task: spec review rounds, code review rounds and escalations. It goes into
 `tasks.md` at the gate. Also count the task's failed reviews in its todo item (a spec review FAIL,

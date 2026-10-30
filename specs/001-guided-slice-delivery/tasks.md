@@ -223,11 +223,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T21
   - Rounds: spec 4 · code 2 · escalations 0
 
-- [ ] **T24** Un plan sin tablas de particiones construye sus slices en orden, como antes · `behavior` · Risk: low · Covers: R2.6
+- [x] **T24** Un plan sin tablas de particiones construye sus slices en orden, como antes · `behavior` · Risk: low · Covers: R2.6
   - Test: `P/hooks/tests/contract/test_flows.py::test_plans_without_partitions_run_in_list_order`
   - Files: `P/skills/develop-feature/SKILL.md` (modify)
   - Verify: `... -k test_plans_without_partitions_run_in_list_order`
   - Depends on: T21
+  - Rounds: spec 2 · code 1 · escalations 0
 
 ## Slice S5: pausa por slice, decisiones y resumen de slice
 

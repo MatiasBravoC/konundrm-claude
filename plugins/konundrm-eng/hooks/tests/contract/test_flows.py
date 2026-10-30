@@ -896,6 +896,106 @@ def _resumed_wave_gaps(skill: Path) -> list[str]:
     return gaps
 
 
+# A plan without partitions (R2.6). These run on sentences (split by _STATEMENT_END, which keeps "Parallel: yes" whole)
+# of blocks from _blocks, so an unrelated sentence of the same paragraph cannot satisfy a rule.
+# "Partitions" in the plural, so "depend on no other partition of the wave" is not about a plan without partitions.
+_WITHOUT_PARTITIONS = re.compile(r"\b(?:no|without|lacks?|lacking)\b(?: \S+){0,3} (?:###\s*)?partitions\b")
+_IN_ORDER = re.compile(
+    r"\bone after (?:another|the other)\b|\bin (?:\w+ )?order\b|\bsequentially\b|\bin sequence\b|\bin turn\b"
+)
+# Each order is tied to its own noun within a few words, so "slices ... tasks in list order" cannot stand in for the
+# slices' order, nor "slices one after another, each slice's tasks" for the tasks' order.
+_SLICES_IN_SEQUENCE = re.compile(
+    r"\bslices\b\S*(?: \S+){0,3} (?:one after (?:another|the other)|in sequence|sequentially|in turn)\b"
+)
+_TASKS_IN_ORDER = re.compile(r"\btasks\b\S*(?: \S+){0,3} in (?:\w+ )?order\b")
+_IN_THIS_SESSION = re.compile(r"\b(?:this|the main|the same) session\b|\bhere\b")
+_PARALLEL_QUESTION = re.compile(r"\bparallel question\b|\bask\w*(?: \S+){0,6} parallel\b")
+_PARTITION_SESSIONS = re.compile(r"\bpartition sessions?\b")
+_WORKTREES = re.compile(r"\bworktrees?\b")
+_PARALLEL_YES = re.compile(r"\bparallel:(?:\*\*)? ?yes\b")
+_PARALLEL_PARTITIONS_LINK = "(#parallel-partitions)"
+_OTHERWISE = re.compile(r"\botherwise\b|\belse\b|\bparallel:(?:\*\*)? ?no\b")
+_SINGLE_PARTITION = re.compile(r"\b(?:single|one|lone) partition\b")
+
+
+def _sentences(block: str) -> list[str]:
+    """Return the sentences of a block from `_blocks`, split where a statement ends (not at a colon)."""
+    return _STATEMENT_END.split(block)
+
+
+def _in_one_sentence(block: str, *patterns: re.Pattern[str]) -> bool:
+    """Return whether one sentence of a block matches every pattern."""
+    return any(all(pattern.search(sentence) for pattern in patterns) for sentence in _sentences(block))
+
+
+# What develop-feature must say, each in one paragraph or list item about a plan whose slices have no `### Partitions`
+# table, so a plan written by an earlier plugin version is built as before.
+_PLAN_WITHOUT_PARTITIONS_RULES: dict[str, Callable[[str], bool]] = {
+    "building its slices one after another": lambda block: _in_one_sentence(block, _SLICES_IN_SEQUENCE),
+    "building each slice's tasks in list order": lambda block: _in_one_sentence(block, _TASKS_IN_ORDER),
+    "building them in this session, through the Phase 3 task loop": lambda block: _in_one_sentence(
+        block, _IN_THIS_SESSION, _TASK_LOOP
+    ),
+    "asking no parallel question": lambda block: _in_one_sentence(block, _NEGATION, _PARALLEL_QUESTION),
+    "starting no partition sessions and no worktrees": lambda block: _in_one_sentence(
+        block, _NEGATION, _PARTITION_SESSIONS, _WORKTREES
+    ),
+}
+
+
+def _is_about_a_plan_without_partitions(block: str) -> bool:
+    """Return whether one sentence of a block is about a plan (or its slices) that has no `### Partitions` table."""
+    return any(
+        _WITHOUT_PARTITIONS.search(sentence) is not None and ("plan" in sentence or "slice" in sentence)
+        for sentence in _sentences(block)
+    )
+
+
+def _treats_a_slice_without_partitions_as_one(block: str) -> bool:
+    """Return whether one sentence of a block treats a slice without a `### Partitions` table as a single partition."""
+    return any(
+        _WITHOUT_PARTITIONS.search(sentence) is not None
+        and "slice" in sentence
+        and _SINGLE_PARTITION.search(sentence) is not None
+        for sentence in _sentences(block)
+    )
+
+
+def _task_loop_points_to_parallel_partitions(block: str) -> bool:
+    """Return whether a block sends the `Parallel: yes` case to the `## Parallel partitions` section in one sentence,
+    and in another (or the same) builds otherwise in list order."""
+    return any(
+        _PARALLEL_YES.search(sentence) is not None and _PARALLEL_PARTITIONS_LINK in sentence
+        for sentence in _sentences(block)
+    ) and _in_one_sentence(block, _OTHERWISE, _IN_ORDER)
+
+
+def _plan_without_partitions_gaps(skill: Path) -> list[str]:
+    """Return one message per part of R2.6 that develop-feature's SKILL.md lacks."""
+    blocks = _blocks(skill)
+    about = [block for block in blocks if _is_about_a_plan_without_partitions(block)]
+    gaps = (
+        []
+        if about
+        else ["develop-feature: no paragraph or list item is about a plan whose slices have no ### Partitions table"]
+    )
+    gaps += [
+        f"develop-feature: no paragraph or list item about a plan without ### Partitions tables says {label}"
+        for label, says_it in _PLAN_WITHOUT_PARTITIONS_RULES.items()
+        if not any(says_it(block) for block in about)
+    ]
+    if not any(_treats_a_slice_without_partitions_as_one(block) for block in blocks):
+        gaps.append("develop-feature: no sentence treats a slice without a ### Partitions table as a single partition")
+    task_loop = _section_blocks(skill, "Phase 3: Task loop")
+    if not any(_task_loop_points_to_parallel_partitions(block) for block in task_loop):
+        gaps.append(
+            "develop-feature Phase 3: no paragraph or list item sends Parallel: yes to "
+            f"[Parallel partitions]{_PARALLEL_PARTITIONS_LINK} and otherwise builds in list order"
+        )
+    return gaps
+
+
 class DevelopFeatureFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -1006,6 +1106,16 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         session skips the approved plan's Phase 2, so Phase 0 itself asks the parallel question when the plan is
         Approved but tasks.md has no `- **Parallel:**` line yet (R3.6)."""
         gaps = _resumed_wave_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
+
+        self.assertEqual(gaps, [])
+
+    def test_plans_without_partitions_run_in_list_order(self) -> None:
+        """R2.6: a plan written by an earlier plugin version, whose slices have no `### Partitions` table, is built as
+        before: its slices one after another, each slice's tasks in list order, in this session through the Phase 3
+        task loop, with no parallel question, no partition sessions and no worktrees; a slice without a Partitions
+        table counts as a single partition, so a mixed plan still works; and the Phase 3 task loop sends the
+        `Parallel: yes` case to `## Parallel partitions`, otherwise building in list order."""
+        gaps = _plan_without_partitions_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
 
