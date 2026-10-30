@@ -442,5 +442,137 @@ class SlicePullRequestSummaryTest(unittest.TestCase):
         self.assertEqual(gaps, [], "\n".join(gaps))
 
 
+# R2.3: with stacked pull requests, `risk:high` goes only on the pull requests of slices that hold a high-risk task.
+_DELIVERY_RISK_HIGH_LABEL = re.compile(r"\brisk:high\b")
+_DELIVERY_SLICE = re.compile(r"\bslices?\b")
+_DELIVERY_HIGH_RISK_TASK = re.compile(r"\bhigh[- ]risk tasks?\b|\btasks?\b(?: \S+){0,3} (?:high risk|risk: high)\b")
+_DELIVERY_ONLY = re.compile(r"\b(?:only|solely|exclusively)\b")
+_DELIVERY_NOT_ONLY = re.compile(r"\bnot (?:only|solely|just)\b")
+# _NEGATION plus the forms it lacks ("doesn't", "isn't", "aren't", "none", "lacks"), so a negated condition counts as
+# negated however it is phrased.
+_DELIVERY_NEGATION = re.compile(rf"{_NEGATION.pattern}|\b\w+n['\u2019]t\b|\b(?:none|lacks?|lacking|absent|free of)\b")
+# A colon breaks a clause only before a space, so the one inside "risk:high" does not.
+_DELIVERY_CLAUSE_BREAK = re.compile(r"[,;()—]|:(?=\s|$)")
+# A condition longer than this, from its first word to its high-risk task, is not read as one condition.
+_DELIVERY_CONDITION_MAX_WORDS = 15
+# Lazy, so "every pull request whose slice …" matches "every pull request" and leaves "whose …" as its clause.
+_DELIVERY_EVERY_PULL_REQUEST = re.compile(r"\b(?:every|each|all)\b(?: \S+){0,3}? (?:pull requests?|prs?|slices?)\b")
+_DELIVERY_RESTRICTIVE_CLAUSE = re.compile(r" (?:whose|that|which|with|where|holding|when|if)\b")
+# A sentence about the single delivery, where one `risk:high` does cover every slice, not about stacked ones. "one pull
+# request" is not enough: the stacked delivery also says "each slice is one pull request".
+_DELIVERY_SINGLE_PULL_REQUEST = re.compile(r"\bsingle pull request\b")
+
+
+def _delivery_clause_before(sentence: str, index: int) -> str:
+    """Return the text of a sentence from the start of the clause holding `index` up to `index`."""
+    breaks = [match.end() for match in _DELIVERY_CLAUSE_BREAK.finditer(sentence, 0, index)]
+    return sentence[breaks[-1] if breaks else 0 : index]
+
+
+def _delivery_high_risk_condition(sentence: str, start: int) -> str | None:
+    """Return a sentence's text from `start` to the end of the first high-risk task after it, or None when none is.
+
+    The text is returned only when it states the high-risk task positively: at most `_DELIVERY_CONDITION_MAX_WORDS`
+    words and no negation anywhere in it ("does not hold", "doesn't hold", "never holds", "holds no", "is without").
+    """
+    task = _DELIVERY_HIGH_RISK_TASK.search(sentence, start)
+    if task is None:
+        return None
+    condition = sentence[start : task.end()]
+    if len(condition.split()) > _DELIVERY_CONDITION_MAX_WORDS or _DELIVERY_NEGATION.search(condition):
+        return None
+    return condition
+
+
+def _delivery_only_limits_to_high_risk_slice(sentence: str, only: re.Match[str]) -> bool:
+    """Return whether an "only" in a sentence limits it to a slice that holds a high-risk task.
+
+    The text from "only" to the high-risk task must be a positive condition (`_delivery_high_risk_condition`) that names
+    the slice, and nothing in the clause before "only" may negate it.
+    """
+    condition = _delivery_high_risk_condition(sentence, only.end())
+    return bool(
+        condition is not None
+        and _DELIVERY_SLICE.search(condition)
+        and not _DELIVERY_NEGATION.search(_delivery_clause_before(sentence, only.start()))
+    )
+
+
+def _delivery_labels_only_high_risk_slices(sentence: str) -> bool:
+    """Return whether a sentence limits `risk:high` to the pull requests of slices that hold a high-risk task.
+
+    The rule must be stated as exclusive and positive ("`risk:high` only when that slice holds a high-risk task"). A
+    sentence whose condition is negated in any form ("only when that slice does not hold / doesn't hold / never holds /
+    holds no / is without a high-risk task", "only a slice without a high-risk task") inverts the rule and is rejected,
+    as is one without "only" ("a slice without a high-risk task gets `risk:high`") or saying "not only".
+    """
+    if not _DELIVERY_RISK_HIGH_LABEL.search(sentence) or _DELIVERY_NOT_ONLY.search(sentence):
+        return False
+    return any(_delivery_only_limits_to_high_risk_slice(sentence, only) for only in _DELIVERY_ONLY.finditer(sentence))
+
+
+def _delivery_is_blanket(sentence: str, every: re.Match[str]) -> bool:
+    """Return whether an "every pull request" in a sentence applies to all of them, whatever their tasks' risk.
+
+    It does not when its own clause negates it ("never add `risk:high` to every pull request") or when a relative
+    clause right after it restricts it with a positive high-risk-task condition ("every pull request whose slice holds
+    a high-risk task"). Merely mentioning or negating a high-risk task elsewhere ("whether or not its slice holds a
+    high-risk task") restricts nothing.
+    """
+    if _DELIVERY_NEGATION.search(_delivery_clause_before(sentence, every.start())):
+        return False
+    return not (
+        _DELIVERY_RESTRICTIVE_CLAUSE.match(sentence, every.end())
+        and _delivery_high_risk_condition(sentence, every.end()) is not None
+    )
+
+
+def _delivery_labels_every_pull_request(sentence: str) -> bool:
+    """Return whether a sentence puts `risk:high` on every stacked pull request or slice, whatever its tasks' risk.
+
+    A sentence about a single pull request is ignored: there one label does cover every slice, and R2.3 is only about
+    the stacked delivery.
+    """
+    if not _DELIVERY_RISK_HIGH_LABEL.search(sentence) or _DELIVERY_SINGLE_PULL_REQUEST.search(sentence):
+        return False
+    return any(_delivery_is_blanket(sentence, every) for every in _DELIVERY_EVERY_PULL_REQUEST.finditer(sentence))
+
+
+def _delivery_stacked_label_gaps(blocks: list[str]) -> list[str]:
+    """Return what opening-pull-requests' blocks lack to label only the stacked slices with a high-risk task (R2.3)."""
+    sentences = [sentence for block in blocks for sentence in _sentences(block)]
+    gaps = []
+    if not any(_delivery_labels_only_high_risk_slices(sentence) for sentence in sentences):
+        gaps.append(
+            "no sentence limits `risk:high` to the pull requests of slices that hold a high-risk task (only those)"
+        )
+    gaps.extend(
+        f"puts `risk:high` on every pull request: {sentence.strip()!r}"
+        for sentence in sentences
+        if _delivery_labels_every_pull_request(sentence)
+    )
+    return gaps
+
+
+class StackedDeliveryRiskLabelTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_stacked_delivery_labels_only_high_risk_slices(self) -> None:
+        """R2.3: with stacked pull requests, `risk:high` goes only on the pull requests of high-risk slices.
+
+        opening-pull-requests/SKILL.md says, in one sentence with the `risk:high` label, that the label goes only on a
+        slice that holds a high-risk task: from "only" to the high-risk task the condition names the slice and has no
+        negation in any form, so a slice without one never gets it. And no sentence outside the single delivery puts
+        `risk:high` on every pull request or slice unless its clause negates that or a positive high-risk-task
+        condition right after it restricts it.
+        """
+        gaps = [
+            f"opening-pull-requests/SKILL.md: {gap}"
+            for gap in _delivery_stacked_label_gaps(_blocks(_DELIVERY_OPENING_PULL_REQUESTS))
+        ]
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
 if __name__ == "__main__":
     unittest.main()

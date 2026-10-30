@@ -304,11 +304,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T33
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T35** Con PRs apiladas, `risk:high` va solo en las de slices con tareas de riesgo alto · `behavior` · Risk: low · Covers: R2.3
+- [x] **T35** Con PRs apiladas, `risk:high` va solo en las de slices con tareas de riesgo alto · `behavior` · Risk: low · Covers: R2.3
   - Test: `P/hooks/tests/contract/test_skills.py::test_stacked_delivery_labels_only_high_risk_slices`
   - Files: `P/skills/opening-pull-requests/SKILL.md` (modify)
   - Verify: `... -k test_stacked_delivery_labels_only_high_risk_slices`
   - Depends on: T34
+  - Rounds: spec 3 · code 3 · escalations 0
 
 - [ ] **T36** Con una sola PR y tareas de riesgo alto, avisa antes y corre el mutation testing local · `behavior` · Risk: low · Covers: R2.4
   - Test: `P/hooks/tests/contract/test_skills.py::test_single_delivery_warns_about_risk_high`

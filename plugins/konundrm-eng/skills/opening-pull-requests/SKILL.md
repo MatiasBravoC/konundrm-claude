@@ -115,8 +115,9 @@ yes. Then, per slice in order:
   its own yes);
 - `gh pr create --base <base> --head <branch> --title "<title>" --body-file <file>`, with
   `--draft` when the user wants CI first;
-- `gh pr edit <number> --add-label risk:high` when the slice holds a high-risk task, so CI
-  repeats mutation testing on it. If the label does not exist, ask before creating it
+- `gh pr edit <number> --add-label risk:high` only when that slice holds a high-risk task, so CI
+  repeats mutation testing on it and reviewers of the other slices are not asked to treat them as
+  high risk. If the label does not exist, ask before creating it
   (`gh label create risk:high`): it changes the repository.
 
 ### 6. Report
