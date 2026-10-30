@@ -253,11 +253,12 @@ Agregadas el 2026-10-30 por la sesión principal con el permiso del usuario para
   - Depends on: T26
   - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T28** La plantilla de resumen de slice tiene todas las secciones que pide la spec · `behavior` · Risk: low · Covers: R6.1
+- [x] **T28** La plantilla de resumen de slice tiene todas las secciones que pide la spec · `behavior` · Risk: low · Covers: R6.1
   - Test: `P/hooks/tests/contract/test_templates.py::test_slice_summary_template_has_every_section` (qué cambió y por qué, requisitos cubiertos, tamaño, riesgos y tareas de riesgo alto, decisiones, rondas de revisión y replanteos, orden de lectura con archivos y rangos de líneas)
   - Files: `P/skills/develop-feature/templates/slice-summary.md` (new)
   - Verify: `... -k test_slice_summary_template_has_every_section`
   - Depends on: T1
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T29** Al terminar un slice, develop-feature escribe su resumen en un commit del slice y espera el visto bueno · `behavior` · Risk: low · Covers: R4.1, R6.1
   - Test: `P/hooks/tests/contract/test_flows.py::test_develop_feature_pauses_after_each_slice` (sección `## Slice checkpoint`: `specs/<slug>/summaries/S<k>.md`; commit `docs(...)` con la línea `Task:` de la última tarea del slice; muestra el orden de lectura; espera el visto bueno)

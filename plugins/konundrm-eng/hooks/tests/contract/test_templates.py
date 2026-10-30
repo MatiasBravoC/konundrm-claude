@@ -1,4 +1,4 @@
-"""Contract tests for the templates setup-project copies into a project (skills/setup-project/templates/)."""
+"""Contract tests for the plugin's templates: what setup-project copies and what develop-feature fills in."""
 
 from __future__ import annotations
 
@@ -7,9 +7,10 @@ import shlex
 import unittest
 from pathlib import Path
 
-from .plugin_files import SKILLS_DIR
+from .plugin_files import SKILLS_DIR, read_section
 
 CLAUDE_REVIEW_TEMPLATE = SKILLS_DIR / "setup-project" / "templates" / "claude-review.yml"
+SLICE_SUMMARY_TEMPLATE = SKILLS_DIR / "develop-feature" / "templates" / "slice-summary.md"
 
 # The header of a YAML literal block scalar under the `claude_args` key: `claude_args: |`, `|-` or `|+`.
 _CLAUDE_ARGS_HEADER = re.compile(r"(?P<indent> *)claude_args: *\|[-+]? *(?:#.*)?")
@@ -69,6 +70,58 @@ class ClaudeReviewTemplateTest(unittest.TestCase):
         }
 
         self.assertEqual(actual, {"claude_args blocks": 1, "--model": ["claude-opus-5-5"], "--effort": ["medium"]})
+
+
+# What R6.1 asks a slice summary to hold, each with the pattern a `## ` heading of the template must match.
+_SLICE_SUMMARY_SECTIONS = {
+    "what changed and why": re.compile(r"changed.*\bwhy\b|\bwhy\b.*changed", re.IGNORECASE),
+    "requirements covered": re.compile(r"\brequirements?\b", re.IGNORECASE),
+    "size (lines changed)": re.compile(r"\bsize\b|\blines\b", re.IGNORECASE),
+    "risks": re.compile(r"\brisks?\b", re.IGNORECASE),
+    "decisions": re.compile(r"\bdecisions?\b", re.IGNORECASE),
+    "review rounds": re.compile(r"\breview\b.*\brounds?\b|\brounds?\b.*\breview", re.IGNORECASE),
+    "rethinks": re.compile(r"\brethinks?\b", re.IGNORECASE),
+    "reading order": re.compile(r"\breading order\b", re.IGNORECASE),
+}
+
+# A file path and a line range inside backticks, such as `src/a.py:12-40` or `<path>:<first>\u2013<last>`.
+_RANGE_END = r"(?:\d+|<[^<>`]+>)"
+_FILE_WITH_LINE_RANGE = re.compile(rf"`[^`\s]+:{_RANGE_END}\s*[-\u2013]\s*{_RANGE_END}`")
+
+
+def _slice_summary_gaps(path: Path) -> list[str]:
+    """Return what R6.1 asks of a slice summary that the template at `path` lacks, or [] when it has it all."""
+    if not path.is_file():
+        return [f"{path}: the slice summary template does not exist"]
+    text = path.read_text(encoding="utf-8")
+    headings = [line[3:].strip() for line in text.splitlines() if line.startswith("## ")]
+    gaps = [
+        f"no '## ' heading for {label} (headings: {headings})"
+        for label, pattern in _SLICE_SUMMARY_SECTIONS.items()
+        if not any(pattern.search(heading) for heading in headings)
+    ]
+    if not re.search(r"high[- ]risk", text, re.IGNORECASE):
+        gaps.append("nothing about the slice's high-risk tasks")
+    reading_order_pattern = _SLICE_SUMMARY_SECTIONS["reading order"]
+    reading_order = next((heading for heading in headings if reading_order_pattern.search(heading)), None)
+    if reading_order is not None and not _FILE_WITH_LINE_RANGE.search(read_section(path, reading_order)):
+        gaps.append(f"'## {reading_order}' shows no file path with a line range such as `<path>:<first>-<last>`")
+    return gaps
+
+
+class SliceSummaryTemplateTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_slice_summary_template_has_every_section(self) -> None:
+        """R6.1: the slice summary template has a section for everything a finished slice must report.
+
+        Its `## ` headings name what changed and why, the requirements covered, the size in changed lines, the risks,
+        the decisions, the review rounds, the rethinks and the reading order; it mentions the high-risk tasks; and the
+        reading order shows a file path with a line range.
+        """
+        gaps = _slice_summary_gaps(SLICE_SUMMARY_TEMPLATE)
+
+        self.assertEqual(gaps, [])
 
 
 if __name__ == "__main__":
