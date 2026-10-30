@@ -300,6 +300,23 @@ class ReadTasksTest(unittest.TestCase):
                 self.path.write_text(f"- **Status:** Approved\n{header}\n- [ ] **T1** First\n", encoding="utf-8")
                 self.assertIs(read_tasks(self.path).parallel, expected)
 
+    def test_an_unfilled_parallel_line_reads_as_no(self) -> None:
+        # R3.6: only a line whose whole value is yes reads as parallel; the template placeholder, the
+        # choices left inside a comment, an empty value, or a word on the next line all read as no.
+        headers = {
+            "- **Parallel:** yes | no\n": False,
+            "- **Parallel:** <!-- yes | no -->\n": False,
+            "- **Parallel:**\n": False,
+            "- **Parallel:** <!-- yes | no -->\nyes, the next line is not the answer\n": False,
+            "- **Parallel:**\nyes\n": False,
+            "- **Parallel:** yes <!-- yes | no -->\n": True,
+            "- **Parallel:** Yes   \n": True,
+        }
+        for header, expected in headers.items():
+            with self.subTest(header=header):
+                self.path.write_text(f"- **Status:** Approved\n{header}\n- [ ] **T1** First\n", encoding="utf-8")
+                self.assertIs(read_tasks(self.path).parallel, expected)
+
 
 if __name__ == "__main__":
     unittest.main()

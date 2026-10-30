@@ -495,11 +495,12 @@ pedido de ser maximalista: las sugerencias de las revisiones de código que vale
   - Depends on: T55
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T62** Una línea `Parallel:` sin llenar, o con las opciones solo dentro de un comentario, se lee como no · `behavior` · Risk: low · Covers: R3.6
+- [x] **T62** Una línea `Parallel:` sin llenar, o con las opciones solo dentro de un comentario, se lee como no · `behavior` · Risk: low · Covers: R3.6
   - Test: `P/hooks/tests/test_tasks_document.py::test_an_unfilled_parallel_line_reads_as_no`
   - Files: `P/hooks/scripts/tasks_document.py` (modify)
   - Verify: `... -k test_an_unfilled_parallel_line_reads_as_no`
   - Depends on: T14
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T63** Al iniciar sesión, las particiones se listan por número (P2 antes que P10) y fuera de una oleada en paralelo se muestra una sola tarea · `behavior` · Risk: low · Covers: R3.7
   - Test: `P/hooks/tests/test_session_doctor.py::test_lists_partitions_by_number_and_falls_back_to_one_task`
