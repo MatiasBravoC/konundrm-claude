@@ -435,8 +435,9 @@ wave is integrated:
    starting the next slice. Never make those changes on the spot, outside the task loop.
 8. Once the pause is over (the summary committed and the improvement notes saved, and, with
    `Checkpoints: ask`, the user's go-ahead) and another slice or Phase 4 is left, continue the
-   feature in a new session that resumes from the plan and the repository, not in this one. When
-   the desktop app's session tools can open a session in an existing folder, open the new session
+   feature in a new session that resumes from the plan and the repository, not in this one. First
+   run `git status --porcelain`: if it lists uncommitted changes, stop with a `BLOCKED:` line that
+   names those files, without opening the new session or giving its command. When the desktop app's session tools can open a session in an existing folder, open the new session
    in this folder with the prompt `/konundrm-eng:develop-feature specs/<NNN-slug>` and stop working
    on the feature in this session; without such tools, or when the app refuses to open it, end
    with the exact command that resumes it in a new session:

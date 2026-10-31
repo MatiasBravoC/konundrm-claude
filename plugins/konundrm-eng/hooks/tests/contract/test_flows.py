@@ -3049,6 +3049,23 @@ _HANDOFF_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
     ),
 }
 
+# A dirty tree at the hand-off (R1.6): the new session resumes from the plan and the repository, so uncommitted files
+# stop the pause with a BLOCKED: line naming them instead of opening it. The second rule needs the dirty tree or the
+# BLOCKED: line too, since step 8 already says "without such tools ... open ... new session".
+_DIRTY_TREE = re.compile(r"\buncommitted\b|\bnot (?:yet )?committed\b|\bdirty (?:working )?tree\b|\bpending changes\b")
+_DIRTY_NAMES = re.compile(r"\b(?:nam|list)\w*")
+_DIRTY_OPEN = re.compile(r"\bopen\w*")
+_DIRTY_STOP = re.compile(_DIRTY_TREE.pattern + "|" + _BLOCKED_LINE.pattern)
+_DIRTY_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "(R1.6) uncommitted changes stop it with a BLOCKED: line naming the files": (
+        _DIRTY_TREE,
+        _BLOCKED_LINE,
+        _DIRTY_NAMES,
+        _FILES,
+    ),
+    "(R1.6) that stop opens no new session": (_DIRTY_STOP, _NEGATION, _DIRTY_OPEN, _HANDOFF_NEW_SESSION),
+}
+
 
 class SliceHandoffFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
@@ -3129,6 +3146,19 @@ class SliceHandoffFlowTest(unittest.TestCase):
             gaps.append("Slice checkpoint's Checkpoints: pre-approved sentence skips the new session (R1.1)")
         if not any(_in_one_sentence(block, _HANDOFF_NOTHING_NEXT, _HANDOFF_PHASE_4) for block in prepare):
             gaps.append("develop-feature Phase 0 does not send a session with next: none to Phase 4 (R1.1)")
+
+        self.assertEqual(gaps, [])
+
+    def test_handoff_stops_on_uncommitted_changes(self) -> None:
+        """R1.6: 002 develop-feature's Slice checkpoint, when uncommitted changes remain at the hand-off, stops with a
+        `BLOCKED:` line naming those files and opens no new session, which would resume without them."""
+        checkpoint = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Slice checkpoint")
+
+        gaps = [
+            f"Slice checkpoint lacks {rule}"
+            for rule, patterns in _DIRTY_RULES.items()
+            if not any(_in_one_sentence(block, *patterns) for block in checkpoint)
+        ]
 
         self.assertEqual(gaps, [])
 
