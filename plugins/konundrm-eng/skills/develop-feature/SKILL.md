@@ -152,6 +152,12 @@ Here, open decisions are the ones a `test-writer` or `implementer` returns as `S
 during the build ([Phase 3](#phase-3-task-loop)); choosing among the plan's own `- Decision:`
 options at plan approval does not approve the build's open decisions in advance.
 
+Record the `tasks.md` header line `- **Sessions:** single` when the user asked to build the whole
+feature in one session, in the request or when approving the plan, and `- **Sessions:** per-slice`
+otherwise; a `tasks.md` without that line reads as `per-slice`. When the user asks at a pause to
+finish the feature in this session, set that line to `- **Sessions:** single` there
+([Slice checkpoint](#slice-checkpoint), step 8).
+
 Then commit the three documents as `docs(<scope>): add spec and plan for <slug>`, so every
 later commit contains only its task. From here on, work autonomously until the feature is done or
 an escalation rule fires.
@@ -435,17 +441,23 @@ wave is integrated:
    starting the next slice. Never make those changes on the spot, outside the task loop.
 8. Once the pause is over (the summary committed and the improvement notes saved, and, with
    `Checkpoints: ask`, the user's go-ahead) and another slice or Phase 4 is left, continue the
-   feature in a new session that resumes from the plan and the repository, not in this one. First
-   run `git status --porcelain`: if it lists uncommitted changes, stop with a `BLOCKED:` line that
-   names those files, without opening the new session or giving its command. When the desktop app's session tools can open a session in an existing folder, open the new session
-   in this folder with the prompt `/konundrm-eng:develop-feature specs/<NNN-slug>` and stop working
+   feature in a new session that resumes from the plan and the repository, not in this one. With
+   `- **Sessions:** single` in the `tasks.md` header, build the next slice, or Phase 4, in this
+   session instead. When the user asks at the pause to finish the feature in this session, set that
+   header line to `- **Sessions:** single` and commit it alone as
+   `docs(<scope>): build <NNN-slug> in one session` carrying the `Task:` line of the slice's last
+   task, before going on. First run `git status --porcelain`: if it lists uncommitted changes, stop
+   with a `BLOCKED:` line that names those files, without opening the new session or giving its
+   command. When the desktop app's session tools can open a session in an existing folder, open
+   the new session in this folder with the prompt `/konundrm-eng:develop-feature specs/<NNN-slug>` and stop working
    on the feature in this session; without such tools, or when the app refuses to open it, end
    with the exact command that resumes it in a new session:
    `claude "/konundrm-eng:develop-feature specs/<NNN-slug>"`.
 
 With `Checkpoints: pre-approved` in the `tasks.md` header, still write the summary, run `close-slice`,
-commit both and save the improvement notes (steps 1 to 3), then hand the next slice to a new session
-(step 8) without stopping, asking questions or waiting.
+commit both and save the improvement notes (steps 1 to 3), then go on to the next slice as step 8
+says (in a new session, or here with `Sessions: single`) without stopping, asking questions or
+waiting.
 
 ## Phase 4: Finish
 

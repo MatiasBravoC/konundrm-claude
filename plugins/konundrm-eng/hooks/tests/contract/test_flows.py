@@ -3066,6 +3066,40 @@ _DIRTY_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
     "(R1.6) that stop opens no new session": (_DIRTY_STOP, _NEGATION, _DIRTY_OPEN, _HANDOFF_NEW_SESSION),
 }
 
+# One session for the whole feature (R1.7): the plan's `- **Sessions:**` line, `per-slice` by default, keeps the next
+# slice in the current session when it says `single`, whether the user asked in the request, the approval or a pause.
+_SESSIONS_SINGLE = re.compile(r"\bsessions:(?:\*\*)? ?single\b")
+_SESSIONS_PER_SLICE = re.compile(r"\bsessions:(?:\*\*)? ?per-slice\b")
+_SESSIONS_HERE = re.compile(r"\b(?:this|the same|the current) session\b")
+_SESSIONS_ONE = re.compile(r"\b(?:one|a single|the same) session\b")
+# Building the next slice, not any mention of a slice: "the slice's last task" in the pause's commit does not count.
+_SESSIONS_BUILDS_NEXT = re.compile(r"\b(?:build|continu|go(?:es)? on|proceed|mov)\w*(?: \S+){0,3} next slice\b")
+_SESSIONS_ASKED = re.compile(r"\b(?:request|approv)\w*")
+_SESSIONS_PAUSE = re.compile(r"\bpaus\w*")
+_SESSIONS_CHANGES = re.compile(r"\b(?:record|writ|set|chang|switch|updat|becom)\w*")
+_SESSIONS_READS_AS = re.compile(r"\b(?:reads?|counts?|means?|defaults?)(?: [^\s,;:.()]+){0,2}? (?:as |to )?per-slice\b")
+_SESSIONS_TEMPLATE_LINE = re.compile(r"^- \*\*sessions:\*\* per-slice\b")
+_SESSIONS_TEMPLATE_DECISIONS = re.compile(r"^- \*\*decisions:\*\*")
+_SESSIONS_RULES: dict[str, tuple[str, tuple[re.Pattern[str], ...]]] = {
+    "Slice checkpoint lacks (R1.7): with sessions: single, the next slice is built in this session": (
+        "checkpoint",
+        (_SESSIONS_SINGLE, _SESSIONS_HERE, _SESSIONS_BUILDS_NEXT),
+    ),
+    "Phase 2 lacks (R1.7): record sessions: single when the request or approval asked for one session": (
+        "plan",
+        (_RECORDS, _SESSIONS_SINGLE, _SESSIONS_ONE, _SESSIONS_ASKED),
+    ),
+    "Phase 2 lacks (R1.7): sessions: per-slice otherwise": ("plan", (_SESSIONS_PER_SLICE, _PREAPPROVED_OTHERWISE)),
+    "Phase 2 lacks (R1.7): a tasks.md without the line reads as per-slice": (
+        "plan",
+        (_DECISIONS_WITHOUT, _SESSIONS_READS_AS),
+    ),
+    "Slice checkpoint or Phase 2 lacks (R1.7): asked at a pause, the line becomes sessions: single": (
+        "both",
+        (_SESSIONS_PAUSE, _SESSIONS_CHANGES, _SESSIONS_SINGLE),
+    ),
+}
+
 
 class SliceHandoffFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
@@ -3159,6 +3193,28 @@ class SliceHandoffFlowTest(unittest.TestCase):
             for rule, patterns in _DIRTY_RULES.items()
             if not any(_in_one_sentence(block, *patterns) for block in checkpoint)
         ]
+
+        self.assertEqual(gaps, [])
+
+    def test_sessions_single_keeps_the_feature_in_one_session(self) -> None:
+        """R1.7: 002 develop-feature builds the next slice in the current session when the plan says
+        `- **Sessions:** single`, recorded in Phase 2 when the user asked for one session in the request or the plan's
+        approval, or at a pause; otherwise `per-slice`, which a plan without the line reads as; the tasks.md template's
+        header carries `- **Sessions:** per-slice` after its `- **Decisions:**` line."""
+        checkpoint = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Slice checkpoint")
+        plan = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Phase 2: Plan")
+        sections = {"checkpoint": checkpoint, "plan": plan, "both": checkpoint + plan}
+        header = (SKILLS_DIR / "writing-plans" / "templates" / "tasks.md").read_text(encoding="utf-8").split("\n## ")[0]
+        items = _split_blocks(header.splitlines())
+        decisions = next((i for i, item in enumerate(items) if _SESSIONS_TEMPLATE_DECISIONS.match(item)), len(items))
+
+        gaps = [
+            rule
+            for rule, (where, patterns) in _SESSIONS_RULES.items()
+            if not any(_in_one_sentence(block, *patterns) for block in sections[where])
+        ]
+        if not any(_SESSIONS_TEMPLATE_LINE.match(item) for item in items[decisions + 1 :]):
+            gaps.append("writing-plans tasks.md template lacks (R1.7): - **Sessions:** per-slice after Decisions")
 
         self.assertEqual(gaps, [])
 
