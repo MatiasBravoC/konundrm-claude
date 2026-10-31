@@ -172,11 +172,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: T9
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T15** El informe de impacto lee las rondas escritas por `close-slice` igual que las escritas por tarea · `behavior` · Risk: low · Covers: R2.9
+- [x] **T15** El informe de impacto lee las rondas escritas por `close-slice` igual que las escritas por tarea · `behavior` · Risk: low · Covers: R2.9
   - Test: `P/hooks/tests/test_metrics_report.py::test_reads_rounds_written_by_close_slice_and_per_task_alike`
   - Files: `P/hooks/scripts/metrics_report.py` (modify only if the test fails)
   - Verify: `... -k test_reads_rounds_written_by_close_slice_and_per_task_alike`
   - Depends on: T13
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 

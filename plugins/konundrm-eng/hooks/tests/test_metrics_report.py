@@ -15,6 +15,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import metrics_log
+import task_ledger
 from metrics_report import (
     build_report,
     delivery_section,
@@ -69,6 +70,60 @@ class MetricsReportTest(unittest.TestCase):
             "<!-- Example:\n- [x] **T9** done\n  - Rounds: spec 9 · code 9 · escalations 9\n-->\n"
         )
         self.assertIn("| 001-login | 2 | 3 | 4 | 1 |", rework_section(self.root))
+
+    def test_reads_rounds_written_by_close_slice_and_per_task_alike(self) -> None:
+        # R2.9: a plan whose Rounds lines close_slice wrote from the commits reports the same
+        # rework as one whose Rounds lines were written per task (develop-feature 0.6.0).
+        per_task = self.root / "specs" / "001-per-task" / "tasks.md"
+        per_task.parent.mkdir(parents=True)
+        per_task.write_text(
+            "## Slice S1: the ledger\n\n"
+            "- [x] **T1** a · `behavior` · Risk: low · Covers: R1.1\n"
+            "  - Decision: Option A (user) — where the rounds come from\n"
+            "    - Option A: the task's commit · pros: one source · cons: none\n"
+            "    - Recommendation: A.\n"
+            "  - Rounds: spec 2 · code 1 · escalations 0\n\n"
+            "- [x] **T2** b · `behavior` · Risk: low · Covers: R1.2\n"
+            "  - Rounds: spec 1 · code 3 · escalations 1\n\n"
+            "- [ ] **T3** c · `behavior` · Risk: low · Covers: R1.3\n",
+            encoding="utf-8",
+        )
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=self.root, check=True, capture_output=True, text=True
+        ).stdout.strip()
+        plan = self.root / "specs" / "002-per-slice" / "tasks.md"
+        plan.parent.mkdir(parents=True)
+        plan.write_text(
+            f"- **Base commit:** `{base}`\n\n"
+            "## Slice S1: the ledger\n\n"
+            "- [ ] **T1** a · `behavior` · Risk: low · Covers: R1.1\n"
+            "  - Decision: Option A (user) — where the rounds come from\n"
+            "    - Option A: the task's commit · pros: one source · cons: none\n"
+            "    - Recommendation: A.\n\n"
+            "- [ ] **T2** b · `behavior` · Risk: low · Covers: R1.2\n"
+            "  - Rounds: spec 0 · code 0 · escalations 0\n\n"
+            "- [ ] **T3** c · `behavior` · Risk: low · Covers: R1.3\n",
+            encoding="utf-8",
+        )
+        commit(
+            self.root,
+            "src/t1.py",
+            "1",
+            "feat(t1): add t1\n\nTask: T1 · Covers: R1.1\nRounds: spec 2 · code 1 · escalations 0",
+        )
+        commit(
+            self.root,
+            "src/t2.py",
+            "1",
+            "feat(t2): add t2\n\nTask: T2 · Covers: R1.2\nRounds: spec 1 · code 3 · escalations 1",
+        )
+
+        not_committed = task_ledger.close_slice(self.root, plan, "S1")
+        rows = rework_section(self.root)
+
+        self.assertEqual(not_committed, ["T3"])
+        self.assertIn("| 001-per-task | 2 | 3 | 4 | 1 |", rows)
+        self.assertIn("| 002-per-slice | 2 | 3 | 4 | 1 |", rows)
 
     def test_counts_gate_events_by_kind_and_reason(self) -> None:
         events = [{"kind": "commit_denied", "reason": "bypass"}, {"kind": "commit_denied", "reason": "bypass"}]
