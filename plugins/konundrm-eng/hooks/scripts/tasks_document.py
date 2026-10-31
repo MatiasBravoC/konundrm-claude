@@ -21,11 +21,14 @@ the template carries a commented example.
 Sections:
     Task, TasksDocument — what a tasks.md says.
     read_tasks()        — parses one file.
+    next_tasks()        — the task, or the task per partition, a feature resumes with.
 """
 
 from __future__ import annotations
 
 import re
+import sys
+from collections.abc import Set
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
@@ -228,6 +231,67 @@ def _slice_at(position: int, headings: list[re.Match[str]]) -> str | None:
             break
         current = heading.group("slice")
     return current
+
+
+def next_tasks(document: TasksDocument, built: Set[str]) -> tuple[Task, ...]:
+    """Picks the tasks a feature resumes with: its next task, or each partition's while they run in parallel.
+
+    Args:
+        document: The feature's parsed tasks.md.
+        built: IDs of the tasks already built, by whatever evidence the caller counts (checked
+            boxes, or task commits after the plan's base).
+
+    Returns:
+        The first unbuilt task of each partition of the wave in progress, in numeric partition
+        order (``P2`` before ``P10``), when the plan runs partitions in parallel, at least two
+        partitions of that wave have unbuilt tasks and every unbuilt task of its slice has a
+        partition. The wave in progress is the earliest wave of the first unbuilt task's slice
+        that still has unbuilt tasks; when an unbuilt task of that slice has no numeric wave, the
+        slice's waves are not filtered at all, since the order of its partitions is then unknown.
+        Otherwise just the first unbuilt task in plan order, or an empty tuple when every task is
+        built.
+    """
+    pending = [task for task in document.tasks if task.id not in built]
+    if not pending:
+        return ()
+    if document.parallel:
+        by_partition = _next_task_by_partition(pending)
+        if by_partition is not None:
+            return by_partition
+    return (pending[0],)
+
+
+def _next_task_by_partition(pending: list[Task]) -> tuple[Task, ...] | None:
+    """The first pending task of each partition of the wave in progress, in partition order.
+
+    Returns None when fewer than two partitions of that wave remain or a pending task of the
+    first pending task's slice has no partition, since a single next task then describes the
+    resume point fully.
+    """
+    current_slice = [task for task in pending if task.slice == pending[0].slice]
+    if any(task.partition is None for task in current_slice):
+        return None
+    next_by_partition: dict[str, Task] = {}
+    for task in _current_wave(current_slice):
+        next_by_partition.setdefault(str(task.partition), task)
+    if len(next_by_partition) < 2:
+        return None
+    return tuple(task for _, task in sorted(next_by_partition.items(), key=lambda item: _partition_number(item[0])))
+
+
+def _current_wave(slice_pending: list[Task]) -> list[Task]:
+    """Keeps the pending tasks of the slice's earliest wave, or all of them when a wave is unknown."""
+    waves = [task.wave for task in slice_pending]
+    if None in waves:
+        return slice_pending
+    earliest = min(wave for wave in waves if wave is not None)
+    return [task for task in slice_pending if task.wave == earliest]
+
+
+def _partition_number(partition: str) -> tuple[int, str]:
+    """Sorts ``P2`` before ``P10``; IDs without a number sort after numbered ones, by name."""
+    digits = partition.lstrip("Pp")
+    return (int(digits), partition) if digits.isdigit() else (sys.maxsize, partition)
 
 
 def read_tasks(path: Path) -> TasksDocument:

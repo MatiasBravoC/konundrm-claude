@@ -139,6 +139,61 @@ class StatusTest(unittest.TestCase):
             ],
         )
 
+    # R4.1, R1.9: with partitions in parallel, status names the first task without a commit of each
+    # partition of the wave in progress. Built means committed after the base (every box stays
+    # unchecked), and a later partition's task may land before an earlier one of another partition.
+    def test_status_names_the_next_task_of_each_partition_in_the_current_wave(self) -> None:
+        base = commit(self.root, "chore: start the feature branch\n")
+        plan = self.root / PLAN_PATH
+        plan.parent.mkdir(parents=True)
+
+        def write_plan(parallel: str) -> None:
+            tasks = "".join(f"- [ ] **T{n}** step {n} · `behavior` · Risk: low · Covers: R4.1\n" for n in range(1, 7))
+            plan.write_text(
+                "# Tasks: efficient feature flow\n"
+                "\n"
+                "- **Status:** Approved\n"
+                f"- **Base commit:** `{base}`\n"
+                f"- **Parallel:** {parallel}\n"
+                "\n"
+                "## Slice S1: the ledger\n"
+                "\n"
+                f"{tasks}"
+                "\n"
+                "### Partitions\n"
+                "\n"
+                "| Wave | Partition | Tasks | Depends on |\n"
+                "| --- | --- | --- | --- |\n"
+                "| 1 | P1 | T1, T2 | — |\n"
+                "| 1 | P2 | T3, T4 | — |\n"
+                "| 2 | P3 | T5 | P1 |\n"
+                "| 2 | P4 | T6 | P2 |\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+
+        write_plan("yes")
+        commit(self.root, "docs(specs): add spec and plan\n")
+
+        def build(task_id: str) -> None:
+            (self.root / f"{task_id}.txt").write_text(f"{task_id}\n", encoding="utf-8")
+            commit(self.root, f"feat: build {task_id}\n\nTask: {task_id} · Covers: R4.1\n")
+
+        build("T3")
+        first_wave = self.status()
+        for task_id in ("T1", "T2", "T4"):
+            build(task_id)
+        second_wave = self.status()
+        write_plan("no")
+        serial = self.status()
+
+        self.assertEqual(line_value(first_wave, "next per partition"), "P1 T1, P2 T4")
+        self.assertNotIn("next:", [line[:5] for line in first_wave.splitlines()])
+        self.assertEqual(line_value(second_wave, "next per partition"), "P3 T5, P4 T6")
+        self.assertNotIn("next:", [line[:5] for line in second_wave.splitlines()])
+        self.assertEqual(line_value(serial, "next"), "T5 step 5")
+        self.assertNotIn("next per partition", serial)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,7 +19,7 @@ from pathlib import Path
 from hook_io import emit_json, read_hook_input
 from project_paths import project_root
 from quality_check import find_check_command, gates_disabled
-from tasks_document import Task, TasksDocument, read_tasks
+from tasks_document import TasksDocument, next_tasks, read_tasks
 
 LEGACY_SKILLS = ("deployer", "documentator", "engineer", "mapper", "tdd", "tester")
 MAX_FEATURES_SHOWN = 3
@@ -75,59 +75,17 @@ def next_step(document: TasksDocument) -> str:
         document: The feature's parsed tasks.md.
 
     Returns:
-        ``next per partition: P1 T3, P2 T2`` when the plan runs partitions in parallel and at least
-        two partitions of the wave in progress, the earliest wave of the first unchecked task's
-        slice that still has unchecked tasks, have unchecked tasks, every pending task of that
-        slice having a partition; partitions are in numeric order, each with its first unchecked
-        task. Otherwise ``next T<n>: <title>`` for the first unchecked task, or
-        the finish-phase text when every box is checked.
+        ``next per partition: P1 T3, P2 T2`` when tasks_document.next_tasks, counting checked
+        boxes as built, returns one task per partition of the wave in progress; otherwise
+        ``next T<n>: <title>`` for the first unchecked task, or the finish-phase text when every
+        box is checked.
     """
-    pending = [task for task in document.tasks if not task.done]
-    if not pending:
+    resume_tasks = next_tasks(document, {task.id for task in document.tasks if task.done})
+    if not resume_tasks:
         return "every box checked; the finish phase is left"
-    if document.parallel:
-        next_by_partition = _next_task_by_partition(pending)
-        if next_by_partition is not None:
-            return "next per partition: " + ", ".join(
-                f"{partition} {task.id}" for partition, task in next_by_partition.items()
-            )
-    return f"next {pending[0].id}: {pending[0].title}"
-
-
-def _next_task_by_partition(pending: list[Task]) -> dict[str, Task] | None:
-    """Maps each partition of the wave in progress to its first pending task.
-
-    The wave in progress is the earliest wave of the first pending task's slice that still has
-    pending tasks. When a pending task of that slice has no numeric wave, the slice's waves are
-    not filtered at all, since the order of its partitions is then unknown.
-
-    Returns None when fewer than two partitions of that wave remain or a pending task of that
-    slice has no partition, since a single next task then describes the resume point fully.
-    """
-    current_slice = [task for task in pending if task.slice == pending[0].slice]
-    if any(task.partition is None for task in current_slice):
-        return None
-    next_by_partition: dict[str, Task] = {}
-    for task in _current_wave(current_slice):
-        next_by_partition.setdefault(str(task.partition), task)
-    if len(next_by_partition) < 2:
-        return None
-    return dict(sorted(next_by_partition.items(), key=lambda item: _partition_number(item[0])))
-
-
-def _current_wave(slice_pending: list[Task]) -> list[Task]:
-    """Keeps the pending tasks of the slice's earliest wave, or all of them when a wave is unknown."""
-    waves = [task.wave for task in slice_pending]
-    if None in waves:
-        return slice_pending
-    earliest = min(wave for wave in waves if wave is not None)
-    return [task for task in slice_pending if task.wave == earliest]
-
-
-def _partition_number(partition: str) -> tuple[int, str]:
-    """Sorts ``P2`` before ``P10``; IDs without a number sort after numbered ones, by name."""
-    digits = partition.lstrip("Pp")
-    return (int(digits), partition) if digits.isdigit() else (sys.maxsize, partition)
+    if len(resume_tasks) > 1:
+        return "next per partition: " + ", ".join(f"{task.partition} {task.id}" for task in resume_tasks)
+    return f"next {resume_tasks[0].id}: {resume_tasks[0].title}"
 
 
 def feature_progress_context(root: Path) -> str | None:

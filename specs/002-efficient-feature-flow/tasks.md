@@ -121,11 +121,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: T6, T7
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T9** `status` nombra la próxima tarea de cada partición de la ola en curso · `behavior` · Risk: low · Covers: R4.1
+- [x] **T9** `status` nombra la próxima tarea de cada partición de la ola en curso · `behavior` · Risk: low · Covers: R4.1
   - Test: `P/hooks/tests/test_task_ledger.py::test_status_names_the_next_task_of_each_partition_in_the_current_wave`
   - Files: `P/hooks/scripts/task_ledger.py`, `P/hooks/scripts/tasks_document.py` (receives the wave and partition logic now in `session_doctor.py`, as `next_tasks(document, built)`), `P/hooks/scripts/session_doctor.py` (uses it)
   - Verify: `... -k test_status_names_the_next_task_of_each_partition_in_the_current_wave`
   - Depends on: T8
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T10** Con un plan ilegible, `status` dice el archivo y la línea y sale con error sin cambiar nada · `behavior` · Risk: low · Covers: R4.6
   - Test: `P/hooks/tests/test_task_ledger.py::test_status_names_the_file_and_line_when_the_plan_cannot_be_read` (plan inexistente → exit 2 con la ruta; sin `Base commit` → exit 2 con `archivo:línea`)

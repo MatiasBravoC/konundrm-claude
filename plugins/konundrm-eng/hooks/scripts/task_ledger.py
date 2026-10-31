@@ -2,7 +2,9 @@
 
 The orchestrator runs it as ``sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py <subcommand>``.
 A task counts as built when a commit after the plan's base names it (task_commits), whatever its
-box in tasks.md says, so the next task is the first one in plan order without such a commit.
+box in tasks.md says, so the next task is the first one in plan order without such a commit, or,
+while a slice's partitions run in parallel, the first such task of each partition of the wave in
+progress (tasks_document.next_tasks).
 
 Sections:
     status_lines() — the ``key: value`` lines ``status`` prints.
@@ -19,7 +21,7 @@ from pathlib import Path
 from project_paths import project_root
 from quality_check import green_tree
 from task_commits import task_commits
-from tasks_document import read_tasks
+from tasks_document import Task, next_tasks, read_tasks
 from working_tree import head_tree, snapshot_tree
 
 
@@ -33,7 +35,9 @@ def status_lines(root: Path, plan: Path) -> list[str]:
     Returns:
         One ``key: value`` line each for ``feature``, ``plan``, ``base`` (or ``none``),
         ``committed`` (built task IDs in plan order, comma-separated, or ``none``), ``next``
-        (``T<n> <title>``, or ``none`` when every task is built), ``tree`` (``clean`` or
+        (``T<n> <title>``, or ``none`` when every task is built) or, in its place, ``next per
+        partition`` (``P1 T1, P2 T4``) when tasks_document.next_tasks returns one task per
+        partition of the wave in progress, ``tree`` (``clean`` or
         ``dirty``, untracked non-ignored files included) and ``check`` (``green for this tree``
         or ``not recorded``).
 
@@ -44,7 +48,6 @@ def status_lines(root: Path, plan: Path) -> list[str]:
     base = document.base_commit
     commits = task_commits(root, base) if base else {}
     built = [task.id for task in document.tasks if task.id in commits]
-    next_task = next((task for task in document.tasks if task.id not in commits), None)
     snapshot = snapshot_tree(root)
     is_clean = snapshot is not None and snapshot == head_tree(root)
     is_green = snapshot is not None and snapshot == green_tree(root)
@@ -53,10 +56,17 @@ def status_lines(root: Path, plan: Path) -> list[str]:
         f"plan: {plan.as_posix()}",
         f"base: {base or 'none'}",
         f"committed: {', '.join(built) or 'none'}",
-        f"next: {f'{next_task.id} {next_task.title}' if next_task else 'none'}",
+        _next_line(next_tasks(document, set(built))),
         f"tree: {'clean' if is_clean else 'dirty'}",
         f"check: {'green for this tree' if is_green else 'not recorded'}",
     ]
+
+
+def _next_line(resume_tasks: tuple[Task, ...]) -> str:
+    """The ``next per partition:`` line for several resume tasks, else the ``next:`` line."""
+    if len(resume_tasks) > 1:
+        return "next per partition: " + ", ".join(f"{task.partition} {task.id}" for task in resume_tasks)
+    return f"next: {f'{resume_tasks[0].id} {resume_tasks[0].title}' if resume_tasks else 'none'}"
 
 
 def main(argv: list[str] | None = None) -> int:
