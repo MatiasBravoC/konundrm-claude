@@ -271,7 +271,7 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: T8
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T25** El commit de cada tarea usa `message` y un `git commit -F` normal, sin tocar casillas ni rondas del plan · `behavior` · Risk: high · Covers: R2.7, R4.2, R4.3
+- [x] **T25** El commit de cada tarea usa `message` y un `git commit -F` normal, sin tocar casillas ni rondas del plan · `behavior` · Risk: high · Covers: R2.7, R4.2, R4.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_task_commit_goes_through_the_gate_with_its_message` (develop-feature paso 7 y la sesión de partición; el modo develop-feature de committing-changes)
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/committing-changes/SKILL.md` (modify)
   - Invariants: ningún paso del flujo commitea fuera de un `git commit` visible en la línea de comandos.
@@ -280,12 +280,14 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Evidence: en un repo de prueba, la línea `msg=$(… message …) && git add -A && git commit -F "$msg"` pasa por el gate real: con el check en rojo, denegada; en verde y con la huella del implementer, commitea sin volver a correr el check; en `evidence/T25.md`.
   - Verify: `... -k test_task_commit_goes_through_the_gate_with_its_message`
   - Depends on: T11, T24
+  - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T26** La reanudación usa `status`, que solo busca commits en `<base>..HEAD` · `behavior` · Risk: low · Covers: R1.8, R4.7
+- [x] **T26** La reanudación usa `status`, que solo busca commits en `<base>..HEAD` · `behavior` · Risk: low · Covers: R1.8, R4.7
   - Test: `P/hooks/tests/contract/test_flows.py::test_resume_uses_status_and_the_base_range` (actualiza la prueba de `test_skills.py` que exige la búsqueda exacta si fija el texto viejo de develop-feature)
   - Files: `P/skills/develop-feature/SKILL.md` (Phase 0)
   - Verify: `... -k test_resume_uses_status_and_the_base_range`
   - Depends on: T8
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
