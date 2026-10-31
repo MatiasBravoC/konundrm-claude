@@ -2657,6 +2657,35 @@ def _reviews_contradictions(where: str, blocks: list[str]) -> list[str]:
     return gaps
 
 
+# R3.2, R3.3: every finding goes to one fix round, and a review that runs again gets its findings and what changed.
+_ONE_FIX_ROUND = re.compile(r"\b(?:one|a single|the same)\b(?: \S+){0,3} fix[- ]rounds?\b")
+_FIX_ROUND_ROUTES = re.compile(r"\bfindings?\b.*\brout\w*|\brout\w*.*\bfindings?\b")  # also "routed the same way"
+_FIX_ROUND_AGAIN = re.compile(r"\breview\w* again\b|\brepeat\w*(?: from)? steps? 3\b")
+_PLACEHOLDER = re.compile(r"<[^<>]+>")
+_PREVIOUS_FINDINGS = re.compile(r"\b(?:previous|earlier|prior|last|own)\b(?: \S+){0,2} findings?\b")
+_CHANGED = re.compile(r"\bchang\w*")
+_FIX_ROUND_PHASE_3_RULES = {
+    "R3.2 sends every finding of the reviews to one fix round": (
+        re.compile(r"\b(?:all|every)\b"),
+        re.compile(r"\bfindings?\b"),
+        _ONE_FIX_ROUND,
+    ),
+    "R3.3 gives a review that runs again its previous findings and what changed": (_PREVIOUS_FINDINGS, _CHANGED),
+}
+_RE_REVIEW_PROMPT_RULES = {
+    "the review's previous findings": (_PLACEHOLDER, _PREVIOUS_FINDINGS),
+    "the fix round's report of each file changed and what changed in it": (
+        _PLACEHOLDER,
+        re.compile(r"\bfix[- ]round\b"),
+        re.compile(r"\bfiles?\b"),
+        _CHANGED,
+    ),
+    "the orchestrator's verification output after the fix round": (_PLACEHOLDER, re.compile(r"\bverif\w*")),
+    "rereading those files": (re.compile(r"\bre-?read\w*"), re.compile(r"\bfiles?\b")),
+    "reviewing what changed instead of the whole task": (_CHANGED, _NEGATION, re.compile(r"\bwhole task\b")),
+}
+
+
 class ReviewFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -2677,6 +2706,37 @@ class ReviewFlowTest(unittest.TestCase):
             gaps.append("audit_subagent_changes docstring lacks: R3.5 runs the writers one at a time")
         gaps += _reviews_contradictions("develop-feature Phase 3", phase_3)
         gaps += _reviews_contradictions("audit_subagent_changes docstring", audit)
+
+        self.assertEqual(gaps, [])
+
+    def test_findings_share_one_fix_round_and_re_reviews_get_what_changed(self) -> None:
+        """R3.2, R3.3: 002 develop-feature's Phase 3 sends every finding of the reviews to one fix round, routes no
+        review's findings to a fix round of its own before reviewing again, and gives a review that runs again its
+        previous findings and what changed; the `## re-review` prompt passes those findings, the fix round's report
+        of each changed file and the verification output, and asks to reread those files instead of the whole task."""
+        phase_3 = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Phase 3: Task loop")
+        prompts = DEVELOP_FEATURE_DIR / "reference" / "dispatch-prompts.md"
+        section = read_section(prompts, "re-review")
+        prompt = _split_blocks("\n".join(re.findall(r"```\w*\n(.*?)```", section, re.DOTALL)).splitlines())
+
+        gaps = [
+            f"develop-feature Phase 3 lacks: {rule}"
+            for rule, patterns in _FIX_ROUND_PHASE_3_RULES.items()
+            if not any(_in_one_sentence(block, *patterns) for block in phase_3)
+        ]
+        gaps += [
+            f"develop-feature Phase 3 routes one review's findings and reviews again, not one fix round: {block}"
+            for block in phase_3
+            if _FIX_ROUND_ROUTES.search(block) and _FIX_ROUND_AGAIN.search(block) and not _ONE_FIX_ROUND.search(block)
+        ]
+        gaps += [
+            f"dispatch-prompts.md re-review prompt lacks: {rule}"
+            for rule, patterns in _RE_REVIEW_PROMPT_RULES.items()
+            if not any(all(pattern.search(block) for pattern in patterns) for block in prompt)
+        ]
+        contents = read_section(prompts, "Contents").lower().splitlines()
+        if not any(line.lstrip().startswith(("-", "*")) and "re-review" in line for line in contents):
+            gaps.append("dispatch-prompts.md: the Contents list does not name the re-review prompt")
 
         self.assertEqual(gaps, [])
 

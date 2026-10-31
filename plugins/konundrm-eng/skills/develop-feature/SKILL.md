@@ -194,19 +194,23 @@ or a code or security review with a Critical finding no `finding-verifier` refut
 3. **Reviews.** Dispatch `spec-reviewer` and `code-reviewer` at the same time, in one message,
    each with the output of your verification runs. On `high` tasks, dispatch `security-reviewer`
    in the same message too, with the task's `Security:` line and the `Threats` table. Dispatch no
-   `test-writer` or `implementer` until every review of the batch is back. On a spec review FAIL,
-   route each finding: missing or wrong test → `test-writer`; missing or wrong behavior →
-   `implementer` (fix-round prompt). Then review again.
-4. **Code and security findings.** Record Suggestions for the final summary; do not loop on them.
-   Critical findings:
-   - On `high` tasks, and for any finding that looks doubtful, first dispatch one
+   `test-writer` or `implementer` until every review of the batch is back. Whatever the outcome,
+   record the reviews' Suggestions for the final summary; do not loop on them. When every review
+   passes with no Critical finding left, continue to step 5; otherwise go to step 4.
+4. **One fix round for the batch.**
+   - On `high` tasks, and for any Critical finding that looks doubtful, first dispatch one
      `finding-verifier` per finding, one after another. Drop REFUTED findings, keeping the
-     verifier's evidence for the summary.
-   - Route CONFIRMED and UNCERTAIN findings like spec-review findings: a test that does not test
-     what it claims → `test-writer`; everything else → `implementer` (fix-round prompt). Then
-     repeat steps 3–4.
-   - The security review's Critical findings go through a `finding-verifier` each and are routed
-     the same way; then repeat from step 3.
+     verifier's evidence for the summary. If no finding is left, skip the fix round and the
+     re-review and continue to step 5.
+   - Send every finding left (the spec review's FAIL findings and the CONFIRMED or UNCERTAIN
+     Critical findings of the code and security reviews) to one fix round, one writer at a time:
+     a missing or wrong test, or a test that does not test what it claims → `test-writer`;
+     everything else → `implementer` (fix-round prompt).
+   - After the fix round, rerun the verify command yourself (five times in a row as in step 2, once
+     for a `chore` task) and run the reviews of step 3 again, at once, with the re-review prompt:
+     each review gets its previous findings (or "none"), the fix round's reports (each file changed
+     and what changed in it) and the new verification output, and rereads those files instead of
+     reviewing the whole task.
 5. **Verify by risk** (Standards → Verification by risk), using the task's `Invariants`,
    `Mutation` and `Evidence` fields from `tasks.md`:
    - `medium` and `high`: every listed invariant has a property test. For each missing one,
@@ -350,7 +354,7 @@ slice's `### Partitions` table this way:
      `AGENTS.md` or the README says.
    - Run the check command after each partition. The history stays linear, one commit per task,
      so the pull request reads commit by commit.
-6. If the check is red after a partition, route the failure as in Phase 3 step 3 (a test problem
+6. If the check is red after a partition, route the failure as in Phase 3 step 4 (a test problem
    to the `test-writer`, everything else to the `implementer`'s fix round, with that partition's
    last task), have `code-reviewer` review the fix, run the check again, and commit the fix with
    `committing-changes`, carrying that task's `Task: T<n> · Covers: …` line and typed `feat` or

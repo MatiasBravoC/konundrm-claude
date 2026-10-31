@@ -14,6 +14,7 @@ where [Model and effort](../SKILL.md#model-and-effort) lists them.
 - spec-reviewer (whole feature)
 - code-reviewer
 - security-reviewer
+- re-review
 - finding-verifier
 - test-writer (surviving mutant)
 - test-writer (flaky test)
@@ -88,7 +89,7 @@ Acceptance criteria covered:
 Implementer's GREEN report (claims to verify, not facts):
 <GREEN report>
 
-Orchestrator's verification output (verify command, 5 runs): <output>
+Orchestrator's verification output (verify command: 5 runs, or 1 for a `chore` task): <output>
 
 Review the uncommitted changes (`git diff HEAD`, plus untracked files from
 `git status --porcelain`). Return your SPEC REVIEW.
@@ -112,7 +113,7 @@ Feature folder: specs/<NNN-slug>/ (design.md is the intended design)
 Task: <task ID and title>
 Check command: <command> — implementer's GREEN report says: <its Check line>
 (the orchestrator runs the full check at the gate)
-Orchestrator's verification output (verify command, 5 runs): <output>
+Orchestrator's verification output (verify command: 5 runs, or 1 for a `chore` task): <output>
 
 Review the uncommitted changes (`git diff HEAD`, plus untracked files from
 `git status --porcelain`). Return your CODE REVIEW.
@@ -125,11 +126,31 @@ Feature folder: specs/<NNN-slug>/ (design.md holds the Threats table)
 Task: <task ID and title> · Risk: high
 Security focus (the task's Security line, verbatim):
 <Security: …>
-Orchestrator's verification output (verify command, 5 runs): <output>
+Orchestrator's verification output (verify command: 5 runs, or 1 for a `chore` task): <output>
 
 Review the uncommitted changes (`git diff HEAD`, plus untracked files from
 `git status --porcelain`) as an attacker would. Check every Threats row this task covers. Return
 your SECURITY REVIEW.
+```
+
+## re-review
+
+For the spec, code or security reviewer after a fix round. Start from that reviewer's prompt above
+and keep its lines up to the task's criteria or Security line; replace the rest with:
+
+```
+Re-review after a fix round. Your previous findings on this task, verbatim (or "none"):
+<previous findings of this review>
+
+Fix round's reports (each file changed and what changed in it):
+<files changed and their changes, from the fix round's GREEN and RED reports>
+
+Orchestrator's verification output after the fix round (verify command: 5 runs, or 1 for a
+`chore` task): <output>
+
+Reread the files the fix round changed. Check that each previous finding is resolved and that the
+changes broke nothing. Review what changed, not the whole task. Return the same review report as
+before.
 ```
 
 ## finding-verifier

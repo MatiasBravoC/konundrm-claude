@@ -230,7 +230,7 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: —
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T21** Todos los hallazgos van a una sola ronda de arreglo, y la re-revisión recibe sus hallazgos previos y lo que cambió · `behavior` · Risk: low · Covers: R3.2, R3.3
+- [x] **T21** Todos los hallazgos van a una sola ronda de arreglo, y la re-revisión recibe sus hallazgos previos y lo que cambió · `behavior` · Risk: low · Covers: R3.2, R3.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_findings_share_one_fix_round_and_re_reviews_get_what_changed`
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/develop-feature/reference/dispatch-prompts.md` (re-review prompt)
   - Verify: `... -k test_findings_share_one_fix_round_and_re_reviews_get_what_changed`
@@ -239,6 +239,7 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
     - Option A: sus hallazgos previos y el informe de la ronda de arreglo (archivos y qué cambió en cada uno), y relee esos archivos · pros: simple, sin herramientas nuevas · cons: depende de que el informe nombre todo lo cambiado
     - Option B: sus hallazgos previos y un `git diff` contra una huella del árbol tomada antes del arreglo · pros: exacto aunque el informe omita algo · cons: el orquestador debe tomar y guardar la huella, y los archivos nuevos exigen `git add -N`
     - Recommendation: A; la revisión de spec de toda la feature (Phase 4) atrapa lo que se escape.
+  - Rounds: spec 2 · code 1 · escalations 0
 
 - [ ] **T22** Una tarea se commitea solo cuando sus revisiones pasaron con su código final · `behavior` · Risk: low · Covers: R3.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_task_commits_only_after_its_reviews_pass_on_its_final_code`
