@@ -116,6 +116,19 @@ _REVIEWER_RUN_SCOPE = {
         _MINIMAL_REPRODUCTION,
     ),
 }
+# R2.3 (002): the finding verifier runs only what its finding needs, never the check command.
+FINDING_VERIFIER = AGENTS_DIR / "finding-verifier.md"
+_FINDING_NEEDS = re.compile(r"\b(?:needs?|requires?)\b")
+_FINDING_VERIFIER_RUN_SCOPE = {
+    "it runs only the tests or reproductions its finding needs": (
+        _RUNS,
+        _ONLY,
+        _TESTS,
+        re.compile(r"\brepro\w*"),
+        _FINDING_NEEDS,
+    ),
+    "it never runs the project's check command": (_NEGATION, _RUNS, _CHECK_COMMAND),
+}
 
 
 def _plain_words(text: str) -> str:
@@ -409,6 +422,17 @@ class AgentRunScopeTest(unittest.TestCase):
             prompt = "\n".join(_fenced_blocks(read_section(DISPATCH_PROMPTS, heading))).lower()
             if not any(all(p.search(line) for p in _OUTPUT_FIELD) for line in prompt.splitlines()):
                 gaps.append(f"dispatch-prompts.md: ## {heading} prompt has no field for the orchestrator's output")
+
+        self.assertEqual(gaps, [])
+
+    def test_finding_verifier_runs_only_what_its_finding_needs(self) -> None:
+        """R2.3: 002 the `## Rules` section of agents/finding-verifier.md, where its other rules live, says, each part
+        in one sentence, that it runs only the tests or reproductions its finding needs and never runs the project's
+        check command ("only" already rules out the full suite).
+
+        Process step 4 ("run the existing tests") and the frontmatter description are outside this rule.
+        """
+        gaps = _section_rule_gaps(FINDING_VERIFIER, "Rules", _FINDING_VERIFIER_RUN_SCOPE)
 
         self.assertEqual(gaps, [])
 

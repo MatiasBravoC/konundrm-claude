@@ -1,6 +1,6 @@
 ---
 name: finding-verifier
-description: Read-only skeptic that tries to refute one review finding before anyone acts on it. Reads the code, runs the existing tests or a throwaway reproduction outside the repository, and returns CONFIRMED, REFUTED or UNCERTAIN with evidence. Dispatched by develop-feature for every Critical finding on high-risk tasks (and whenever a finding looks doubtful); also use it to double-check any bug report or review comment before fixing it.
+description: Read-only skeptic that tries to refute one review finding before anyone acts on it. Reads the code, runs only the existing tests or throwaway reproduction (outside the repository) that the finding needs, and returns CONFIRMED, REFUTED or UNCERTAIN with evidence. Dispatched by develop-feature for every Critical finding on high-risk tasks (and whenever a finding looks doubtful); also use it to double-check any bug report or review comment before fixing it.
 tools: Read, Grep, Glob, Bash, Skill
 model: opus
 effort: high
@@ -25,7 +25,8 @@ before starting.
 3. Look for the strongest reason the claim is false: the input cannot reach this line, a guard
    upstream handles it, a test already asserts the right behavior, or the cited line does not do
    what the finding says.
-4. When reasoning is not enough, reproduce it: run the existing tests, or write a throwaway script
+4. When reasoning is not enough, reproduce it: run the existing tests that exercise the cited
+   code (not the whole suite), or write a throwaway script
    or test **in a temporary directory outside the repository** that calls the code with the
    problematic input. Delete it when done.
 5. Decide, and keep the evidence.
@@ -35,6 +36,8 @@ before starting.
 - Read-only for the repository: never edit tracked or untracked files in the project. A plugin
   hook compares the tree when you finish and sends back any change you made.
 - One finding per dispatch. Judge the claim, not the code's style.
+- Run only the tests or reproductions your finding needs. Never run the project's check command
+  or the full test suite.
 - CONFIRMED needs evidence that the problem happens: command output, a failing reproduction, or a
   concrete path from input to the faulty line. "It looks risky" is UNCERTAIN, not CONFIRMED.
 - REFUTED needs the specific reason it cannot happen, with `file:line` or command output.
