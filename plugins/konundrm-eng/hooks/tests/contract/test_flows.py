@@ -3024,6 +3024,31 @@ _CLOSE_IN_TASK_COMMIT = re.compile(r"\b(?:box|rounds)\b.*\b(?:in|with) (?:the|it
 _CLOSE_CHECKS_BOX = re.compile(r"\b(?:check|mark|tick)\w*(?: \S+){0,3} box(?:es)?\b")
 _CLOSE_AT_PAUSE = re.compile(r"\bclose-slice\b|\bpause\b|\bsummarize slice\b|\bsummary commit\b|\bcheckpoint\b")
 
+# The hand-off after each pause (R1.1-R1.3): the feature goes on in a new session in the same folder, opened by the
+# app's session tools or left as the exact command; Phase 0 sends a session with nothing left to build to Phase 4.
+_HANDOFF_NEW_SESSION = re.compile(r"\bnew session\b")
+_HANDOFF_SLICE_LEFT = re.compile(r"\b(?:another|next|more|remaining) slice\b|\bslices? (?:is |are )?left\b")
+_HANDOFF_PHASE_4 = re.compile(r"\bphase 4\b")
+_HANDOFF_PAUSE_DONE = re.compile(r"\bsummary\b|\bnotes\b")
+_HANDOFF_FOLDER = re.compile(r"\b(?:same|this) (?:folder|directory)\b")
+_HANDOFF_PROMPT = re.compile(r"/konundrm-eng:develop-feature specs/<nnn-slug>(?!\s*--partition)")
+_HANDOFF_TOOLS = re.compile(r"\btools?\b")
+_HANDOFF_ENDS = re.compile(r"\b(?:stop|end|leave)\w*")
+_HANDOFF_NO_TOOLS = re.compile(r"\b(?:without|otherwise|no such)\b")
+_HANDOFF_COMMAND = re.compile(r'\bclaude "/konundrm-eng:develop-feature specs/<nnn-slug>"')
+_HANDOFF_NOTHING_NEXT = re.compile(r"\bnext: none\b|\bno next task\b|\bnames no (?:next )?task\b")
+_HANDOFF_CONTINUES = (_HANDOFF_NEW_SESSION, _HANDOFF_SLICE_LEFT, _HANDOFF_PHASE_4)
+_HANDOFF_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "(R1.1) a new session goes on while a slice or Phase 4 is left": _HANDOFF_CONTINUES,
+    "(R1.2) the app's session tools open it in the same folder with /konundrm-eng:develop-feature specs/<nnn-slug>,"
+    " and this session stops": (_HANDOFF_NEW_SESSION, _HANDOFF_TOOLS, _HANDOFF_FOLDER, _HANDOFF_PROMPT, _HANDOFF_ENDS),
+    '(R1.3) without the tools, the session ends with claude "/konundrm-eng:develop-feature specs/<nnn-slug>"': (
+        _HANDOFF_NO_TOOLS,
+        _HANDOFF_ENDS,
+        _HANDOFF_COMMAND,
+    ),
+}
+
 
 class SliceHandoffFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
@@ -3062,6 +3087,48 @@ class SliceHandoffFlowTest(unittest.TestCase):
         ]
         if not any(_in_one_sentence(block, _CLOSE_CHECKS_BOX, _CLOSE_AT_PAUSE) for block in template):
             gaps.append("tasks.md template does not say develop-feature checks the box at the slice's pause (R2.8)")
+
+        self.assertEqual(gaps, [])
+
+    def test_feature_continues_in_a_new_session_after_each_slice(self) -> None:
+        """R1.1, R1.2, R1.3: 002 develop-feature's Slice checkpoint hands the feature, once the pause ends and a slice
+        or Phase 4 is left, to a new session in the same folder: the app's session tools open it with the prompt that
+        resumes the feature, otherwise the session ends with the exact `claude` command; pre-approved pauses hand off
+        too, and Phase 0 sends a session whose `status` names no next task to Phase 4."""
+        checkpoint = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Slice checkpoint")
+        prepare = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Phase 0: Prepare")
+        handoff = [block for block in checkpoint if _in_one_sentence(block, *_HANDOFF_CONTINUES)]
+        number = _DELIVERY_LIST_NUMBER.match(handoff[0]) if handoff else None
+        go_aheads = [block for block in checkpoint if _CHECKPOINT_GO_AHEAD.search(block)]
+        go_ahead = _DELIVERY_LIST_NUMBER.match(go_aheads[0]) if go_aheads else None
+
+        gaps = [
+            f"Slice checkpoint lacks {rule}"
+            for rule, patterns in _HANDOFF_RULES.items()
+            if not any(_in_one_sentence(block, *patterns) for block in checkpoint)
+        ]
+        if not any(
+            _HANDOFF_NEW_SESSION.search(sentence)
+            and (
+                (_HANDOFF_PAUSE_DONE.search(sentence) and _CHECKPOINT_GO_AHEAD.search(sentence))
+                or (go_ahead and int(go_ahead.group(1)) in _notes_step_numbers(sentence))
+            )
+            for block in checkpoint
+            for sentence in _sentences(block)
+        ):
+            gaps.append("Slice checkpoint does not hand off once the summary, notes and go-ahead are done (R1.1)")
+        if not any(
+            _PREAPPROVED_LINE.search(sentence)
+            and (
+                _HANDOFF_NEW_SESSION.search(sentence)
+                or (number and int(number.group(1)) in _notes_step_numbers(sentence))
+            )
+            for block in checkpoint
+            for sentence in _sentences(block)
+        ):
+            gaps.append("Slice checkpoint's Checkpoints: pre-approved sentence skips the new session (R1.1)")
+        if not any(_in_one_sentence(block, _HANDOFF_NOTHING_NEXT, _HANDOFF_PHASE_4) for block in prepare):
+            gaps.append("develop-feature Phase 0 does not send a session with next: none to Phase 4 (R1.1)")
 
         self.assertEqual(gaps, [])
 

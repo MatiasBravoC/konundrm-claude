@@ -93,7 +93,8 @@ so the extra effort goes only to work that has shown it needs it.
      Look for that commit with `git log -E --grep '^docs\(.+\): summarize slice S<k>$'` (anchored,
      so S1 never matches S10).
    - Continue at the task `status` names as next (in a parallel wave, the main session still builds
-     only the wave's first partition).
+     only the wave's first partition). When it prints `next: none` (every task is built and every
+     slice has its summary commit), go on to [Phase 4](#phase-4-finish).
 2. Confirm the repository root and that the tree is clean. If unrelated changes are pending, ask
    the user to commit or stash them first; never mix them into feature commits.
 3. Get the check command from the plugin, the same one its hooks run: the session context names
@@ -432,10 +433,18 @@ wave is integrated:
 7. When the user asks for changes at the pause, turn the changes into new tasks in `tasks.md` or
    into a plan change to `design.md`/`tasks.md`, and wait for the user to approve them before
    starting the next slice. Never make those changes on the spot, outside the task loop.
+8. Once the pause is over (the summary committed and the improvement notes saved, and, with
+   `Checkpoints: ask`, the user's go-ahead) and another slice or Phase 4 is left, continue the
+   feature in a new session that resumes from the plan and the repository, not in this one. When
+   the desktop app's session tools can open a session in an existing folder, open the new session
+   in this folder with the prompt `/konundrm-eng:develop-feature specs/<NNN-slug>` and stop working
+   on the feature in this session; without such tools, or when the app refuses to open it, end
+   with the exact command that resumes it in a new session:
+   `claude "/konundrm-eng:develop-feature specs/<NNN-slug>"`.
 
 With `Checkpoints: pre-approved` in the `tasks.md` header, still write the summary, run `close-slice`,
-commit both and save the improvement notes (steps 1 to 3), then start the next slice without stopping,
-asking questions or waiting.
+commit both and save the improvement notes (steps 1 to 3), then hand the next slice to a new session
+(step 8) without stopping, asking questions or waiting.
 
 ## Phase 4: Finish
 
