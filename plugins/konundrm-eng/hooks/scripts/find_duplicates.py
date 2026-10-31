@@ -28,7 +28,6 @@ import argparse
 import os
 import re
 import stat
-import subprocess
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Container, Iterable, Iterator, Mapping, Sequence
@@ -39,12 +38,11 @@ from pathlib import Path, PurePosixPath
 
 from file_kinds import is_test_path, is_tool_artifact
 from project_paths import project_root, relative_path
-from working_tree import AddedLine, added_lines, head_tree, snapshot_tree
+from working_tree import AddedLine, added_lines, head_tree, run_git, snapshot_tree
 
 DEFAULT_MIN_LINES = 6
 MAX_FILE_BYTES = 512 * 1024
 READ_THREADS = 8
-GIT_TIMEOUT_SECONDS = 60
 
 SOURCE_SUFFIXES = frozenset(
     {".py", ".pyi", ".rb", ".php", ".sh", ".sql"}
@@ -386,14 +384,6 @@ def find_blocks(
     return sorted(found.values())
 
 
-def _git(args: list[str], root: Path) -> bytes | None:
-    try:
-        completed = subprocess.run(["git", *args], cwd=root, capture_output=True, timeout=GIT_TIMEOUT_SECONDS)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return completed.stdout if completed.returncode == 0 else None
-
-
 def list_candidates(root: Path, include_tests: bool = False) -> list[str] | None:
     """Lists the project's tracked and untracked, non-ignored files that is_candidate() accepts.
 
@@ -404,7 +394,7 @@ def list_candidates(root: Path, include_tests: bool = False) -> list[str] | None
     Returns:
         Paths relative to the root, sorted; None outside a Git repository.
     """
-    output = _git(["ls-files", "--cached", "--others", "--exclude-standard", "-z"], root)
+    output = run_git(["ls-files", "--cached", "--others", "--exclude-standard", "-z"], root)
     if output is None:
         return None
     paths = set(output.decode("utf-8", errors="replace").split("\0"))  # a conflicted file is listed per stage
@@ -418,7 +408,7 @@ class _UsageError(Exception):
 def _base_tree(root: Path, base: str) -> str | None:
     if base == "HEAD":
         return head_tree(root)  # the empty tree before the first commit
-    output = _git(["rev-parse", "--verify", "--quiet", f"{base}^{{tree}}"], root)
+    output = run_git(["rev-parse", "--verify", "--quiet", f"{base}^{{tree}}"], root)
     if output is None:
         return None
     return output.decode("ascii", errors="replace").strip() or None

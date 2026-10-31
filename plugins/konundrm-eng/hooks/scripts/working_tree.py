@@ -6,6 +6,7 @@ Taking one writes blob and tree objects into the repository's object database (a
 ``git stash create`` does) but never touches the real index, HEAD, refs or any file on disk.
 
 Sections:
+    run_git()        — runs one Git command with a timeout; the hooks' shared Git runner.
     snapshot_tree()  — the working tree's content as a tree SHA.
     head_tree()      — the last commit's tree, or the empty tree before the first commit.
     changed_paths()  — files added, modified or deleted between two snapshots.
@@ -28,7 +29,19 @@ GIT_TIMEOUT_SECONDS = 60
 HUNK_HEADER = re.compile(rb"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
-def _git(args: list[str], root: Path, env: dict[str, str] | None = None, stdin: bytes | None = None) -> bytes | None:
+def run_git(args: list[str], root: Path, env: dict[str, str] | None = None, stdin: bytes | None = None) -> bytes | None:
+    """Runs one Git command in a repository, with a timeout.
+
+    Args:
+        args: Git's arguments, without the leading ``git``; passed as an argument list, never
+            through a shell.
+        root: Directory Git runs in, inside the repository.
+        env: Environment for Git; None inherits this process's.
+        stdin: Bytes fed to Git's standard input; None feeds nothing.
+
+    Returns:
+        Git's standard output, or None when Git is missing, times out or exits with an error.
+    """
     try:
         completed = subprocess.run(
             ["git", *args], cwd=root, env=env, input=stdin, capture_output=True, timeout=GIT_TIMEOUT_SECONDS
@@ -50,7 +63,7 @@ def snapshot_tree(root: Path) -> str | None:
     Returns:
         The tree SHA, or None outside a Git repository or when Git fails.
     """
-    index_location = _git(["rev-parse", "--git-path", "index"], root)
+    index_location = run_git(["rev-parse", "--git-path", "index"], root)
     if index_location is None:
         return None
     real_index = Path(index_location.decode("utf-8", errors="replace").strip())
@@ -68,9 +81,9 @@ def snapshot_tree(root: Path) -> str | None:
         else:
             os.unlink(temporary_index)  # Git rejects an empty file but creates a missing index.
         env = {**os.environ, "GIT_INDEX_FILE": temporary_index}
-        if _git(["-c", "core.safecrlf=false", "add", "--all"], root, env) is None:
+        if run_git(["-c", "core.safecrlf=false", "add", "--all"], root, env) is None:
             return None
-        tree = _git(["write-tree"], root, env)
+        tree = run_git(["write-tree"], root, env)
         if tree is None:
             return None
         return tree.decode("ascii", errors="replace").strip() or None
@@ -92,9 +105,9 @@ def head_tree(root: Path) -> str | None:
         The tree SHA of HEAD; before the first commit, the empty tree (written to the object
         database, as Git does for an empty commit); None outside a Git repository.
     """
-    tree = _git(["rev-parse", "--verify", "--quiet", "HEAD^{tree}"], root)
+    tree = run_git(["rev-parse", "--verify", "--quiet", "HEAD^{tree}"], root)
     if tree is None:
-        tree = _git(["hash-object", "-t", "tree", "-w", "--stdin"], root, stdin=b"")
+        tree = run_git(["hash-object", "-t", "tree", "-w", "--stdin"], root, stdin=b"")
     if tree is None:
         return None
     return tree.decode("ascii", errors="replace").strip() or None
@@ -117,7 +130,7 @@ def changed_paths(root: Path, before: str, after: str) -> list[tuple[str, str]]:
         return []
     # --relative: when the project is a folder inside a larger repository (a monorepo package),
     # report only its files, relative to it, as the role rules and restore_paths expect.
-    output = _git(["diff-tree", "-r", "--relative", "--no-renames", "--name-status", "-z", before, after], root)
+    output = run_git(["diff-tree", "-r", "--relative", "--no-renames", "--name-status", "-z", before, after], root)
     if output is None:
         return []
     fields = output.decode("utf-8", errors="replace").split("\0")
@@ -168,7 +181,7 @@ def added_lines(root: Path, before: str, after: str) -> list[AddedLine]:
     if before == after:
         return []
     options = ["-r", "-p", "-U0", "--relative", "--no-renames", "--no-color", "--no-ext-diff"]
-    output = _git(["-c", "core.quotepath=false", "diff-tree", *options, before, after], root)
+    output = run_git(["-c", "core.quotepath=false", "diff-tree", *options, before, after], root)
     if output is None:
         return []
     lines: list[AddedLine] = []
@@ -218,6 +231,6 @@ def restore_paths(root: Path, tree: str, changes: list[tuple[str, str]]) -> list
             to_checkout.append(path)
     if to_checkout:
         pathspecs = [f":(literal){path}" for path in to_checkout]
-        if _git(["restore", f"--source={tree}", "--worktree", "--", *pathspecs], root) is None:
+        if run_git(["restore", f"--source={tree}", "--worktree", "--", *pathspecs], root) is None:
             failed.extend(to_checkout)
     return failed

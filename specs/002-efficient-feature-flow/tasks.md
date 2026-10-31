@@ -91,12 +91,13 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: —
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T6** Los commits de tarea se buscan solo en `<base>..HEAD`, con sus rondas · `behavior` · Risk: medium · Covers: R1.8, R1.9
+- [x] **T6** Los commits de tarea se buscan solo en `<base>..HEAD`, con sus rondas · `behavior` · Risk: medium · Covers: R1.8, R1.9
   - Test: `P/hooks/tests/test_task_commits.py::test_finds_task_commits_only_after_the_base_with_their_rounds` (repo temporal: `Task: T1` antes de la base y T1, T2 después, uno con `Rounds:`; T01 cuenta como T1; T1 no calza con T10)
   - Files: `P/hooks/scripts/task_commits.py` (new), `P/hooks/scripts/working_tree.py` (expose its Git runner), `P/hooks/scripts/metrics_report.py` (import the `Task:` trailer pattern from `task_commits`)
   - Invariants: un commit cuenta para una tarea solo si su línea `Task:` nombra ese número y está en el rango.
   - Verify: `... -k test_finds_task_commits_only_after_the_base_with_their_rounds`
   - Depends on: T5
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T7** Un check que pasa, corrido por Claude o por el gate, deja su huella junto al repositorio · `behavior` · Risk: low · Covers: R4.1
   - Test: `P/hooks/tests/test_record_check_result.py::test_a_passing_check_remembers_its_tree_beside_the_repository` (`quality_check.green_tree` devuelve la huella tras `record_check_result` y tras `run_check`; un check fallido no la escribe)

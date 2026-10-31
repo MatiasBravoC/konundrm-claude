@@ -34,11 +34,11 @@ from typing import Any
 
 from metrics_log import read_events
 from project_paths import project_root
+from task_commits import TASK_TRAILER
 from tasks_document import read_tasks
 
 # The optional leading token still counts commits written in the Gitmoji format used before 0.4.0.
 COMMIT_TYPE = re.compile(r"^(?:\S+\s+)?(feat|fix|refactor|test|docs|style|perf|chore|build|ci|revert)(?:\([^)]*\))?!?:")
-TASK_TRAILER = re.compile(r"(?m)^Task:\s*T\d+")
 ESCAPED_GATE_TRAILER = re.compile(r"(?mi)^Escaped-gate:\s*(?P<gate>[a-z0-9-]+)")
 ESCAPE_WINDOW = timedelta(days=30)
 FIELD, RECORD = "\x1f", "\x1e"
