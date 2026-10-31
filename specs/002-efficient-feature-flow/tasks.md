@@ -187,11 +187,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S5: cada rol corre solo lo que necesita
 
-- [ ] **T16** El test-writer corre solo los tests que escribió o cambió, nunca el check ni la suite completa · `behavior` · Risk: low · Covers: R2.1
+- [x] **T16** El test-writer corre solo los tests que escribió o cambió, nunca el check ni la suite completa · `behavior` · Risk: low · Covers: R2.1
   - Test: `P/hooks/tests/contract/test_agents.py::test_test_writer_runs_only_its_own_tests`
   - Files: `P/agents/test-writer.md` (modify)
   - Verify: `... -k test_test_writer_runs_only_its_own_tests`
   - Depends on: —
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T17** Los revisores de spec, código y seguridad usan la salida que les da el orquestador y no corren el check ni la suite completa · `behavior` · Risk: low · Covers: R2.2
   - Test: `P/hooks/tests/contract/test_agents.py::test_reviewers_rely_on_the_orchestrators_verification_output` (los tres agentes lo dicen; sus prompts en `reference/dispatch-prompts.md` traen un campo con esa salida)

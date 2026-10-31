@@ -35,6 +35,9 @@ context, load both with the Skill tool before doing anything else.
   else. If the test cannot be written without a production change (a missing seam, an
   unreachable dependency), describe it under "To make it pass" instead of making it.
 - One test per dispatch. Do not write tests for other tasks.
+- Run only the tests you wrote or changed: the new test, and an existing test you updated because
+  it pinned text the task changes. Never run the project's check command or the full test suite;
+  the implementer runs both after the green step.
 - Never focus or skip a test to shape a run (`.only`, `xit`, a skip without its reason): the
   plugin's gates reject them (Standards → Gate integrity).
 - When the dispatch reports a flaky test (it passed some of the five runs and failed others), find

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 import unittest
+from pathlib import Path
 
 from .plugin_files import AGENTS_DIR, read_frontmatter
+from .test_flows import _NEGATION, _in_one_sentence, _section_blocks
 
 RETHINKER = AGENTS_DIR / "rethinker.md"
 RETHINKER_FIELDS = {"name": "rethinker", "model": "opus", "effort": "max"}
@@ -14,7 +16,8 @@ PROCESS_REVIEWER_FIELDS = {"name": "process-reviewer", "model": "sonnet", "effor
 # The tools the role hook guards: the PreToolUse matcher in hooks/hooks.json.
 WRITING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 RETHINK_VERDICTS = ("NEW APPROACH", "ADJUST", "PLAN CHANGE")
-WRITERS = (AGENTS_DIR / "test-writer.md", AGENTS_DIR / "implementer.md")
+TEST_WRITER = AGENTS_DIR / "test-writer.md"
+WRITERS = (TEST_WRITER, AGENTS_DIR / "implementer.md")
 
 # R8.1's two questions, in plain words. They run on text from _plain_words, so a reworded or wrapped sentence counts.
 _WHY_ATTEMPTS_FAIL = re.compile(r"\b(?:why|reasons?|root[- ]causes?)\b[^.]{0,80}?\bfail(?:s|ed|ing|ures?)?\b")
@@ -79,6 +82,19 @@ _NOTE_PRIVACY_RULE = {
     "notes describe the problem in general terms instead": re.compile(
         r"\bgeneral(?:ly| terms)\b|\bgeneric(?:ally)?\b|\bin the abstract\b"
     ),
+}
+# R2.1 (002): which tests an agent runs, as keywords that must share one sentence of its `## Rules` section.
+_RUNS = re.compile(r"\b(?:run|runs|running|execute|executes|executing|invoke|invokes)\b")
+_ONLY = re.compile(r"\bonly\b")
+_TESTS = re.compile(r"\btests?\b")
+_IT_WROTE = re.compile(r"\b(?:wrote|written|writes)\b")
+_IT_CHANGED = re.compile(r"\b(?:chang(?:ed|es)|edit(?:ed|s)|updat(?:ed|es)|modifi(?:ed|es))\b")
+_CHECK_COMMAND = re.compile(r"\bcheck\b")
+_FULL_SUITE = re.compile(r"\b(?:full|whole|entire|complete)\b(?: \S+){0,3}? suites?\b")
+_TEST_WRITER_RUN_SCOPE = {
+    "it runs only the tests it wrote or changed": (_RUNS, _ONLY, _TESTS, _IT_WROTE, _IT_CHANGED),
+    "it never runs the project's check command": (_NEGATION, _RUNS, _CHECK_COMMAND),
+    "it never runs the full test suite": (_NEGATION, _RUNS, _FULL_SUITE),
 }
 
 
@@ -241,6 +257,20 @@ def _note_privacy_gaps(text: str) -> list[str]:
     ]
 
 
+def _section_rule_gaps(path: Path, heading: str, rules: dict[str, tuple[re.Pattern[str], ...]]) -> list[str]:
+    """Return `<file>: ## <heading> does not say <rule>` for each rule whose patterns share no sentence of the section.
+
+    Each rule maps its description to keyword patterns that must all match one sentence of one paragraph or list
+    item of the file's `## <heading>` section (lowercased, without backticks, wrapped lines joined).
+    """
+    blocks = _section_blocks(path, heading)
+    return [
+        f"{path.name}: ## {heading} does not say {rule}"
+        for rule, patterns in rules.items()
+        if not any(_in_one_sentence(block, *patterns) for block in blocks)
+    ]
+
+
 class AgentModelsTest(unittest.TestCase):
     def test_each_role_has_its_agreed_model_and_effort(self) -> None:
         """R1.1, R10.1: each role runs on its agreed model and effort."""
@@ -326,6 +356,22 @@ class WritersDecisionTest(unittest.TestCase):
         for agent in WRITERS:
             text = agent.read_text(encoding="utf-8")  # universal newlines, like read_frontmatter
             gaps += [f"{agent.name}: {gap}" for gap in _decision_report_gaps(text) + _decision_rule_gaps(text)]
+
+        self.assertEqual(gaps, [])
+
+
+class AgentRunScopeTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_test_writer_runs_only_its_own_tests(self) -> None:
+        """R2.1: 002 the `## Rules` section of agents/test-writer.md, where its other "never" rules live, says it runs
+        only the tests it wrote or changed (a new test and an existing one it changed), never the project's check
+        command and never the full test suite, each in one sentence.
+
+        Only that section is read: Process step 3 ("Run only that test") names only the new test, and the
+        test-driven-development skill the agent loads is outside this rule.
+        """
+        gaps = _section_rule_gaps(TEST_WRITER, "Rules", _TEST_WRITER_RUN_SCOPE)
 
         self.assertEqual(gaps, [])
 
