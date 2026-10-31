@@ -8,14 +8,19 @@ progress (tasks_document.next_tasks). A plan that cannot be read, has no usable 
 names a base Git cannot find is reported as ``<file>:<line>`` on stderr with exit code 2.
 ``message`` writes a task's commit message, ending in the ``Task:`` and ``Rounds:`` trailers that
 task_commits reads back, under the Git directory, so the flow can ``git commit -F`` it; it refuses,
-with exit code 1, a task the plan lacks or one already built.
+with exit code 1, a task the plan lacks or one already built. ``close-slice`` does a slice
+pause's bookkeeping: it checks the boxes of the slice's built tasks and writes their rounds from
+their commits, keeping every other byte of the plan; it refuses, with exit code 1, a slice the
+plan lacks.
 
 Sections:
     UnreadablePlanError — the plan cannot answer, and where.
     RefusedTaskError    — ``message`` will not write for this task, and why.
+    RefusedSliceError   — ``close-slice`` will not close this slice.
     status_lines()      — the ``key: value`` lines ``status`` prints.
     write_task_message() — writes a task's commit message under the Git directory.
-    main()              — CLI: ``status <tasks.md>`` and ``message <tasks.md> T<n> …``.
+    close_slice()       — checks a slice's built tasks and writes their rounds into the plan.
+    main()              — CLI: ``status``, ``message`` and ``close-slice``.
 """
 
 from __future__ import annotations
@@ -23,22 +28,27 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from project_paths import project_root
 from quality_check import green_tree
 from task_commits import GitError, TaskCommit, task_commits, task_key
-from tasks_document import Task, TasksDocument, next_tasks, read_tasks
+from tasks_document import HTML_COMMENT, ROUNDS, SLICE_HEADING, TASK, Task, TasksDocument, next_tasks, read_tasks
 from working_tree import git_path, head_tree, snapshot_tree
 
-REFUSED_TASK_EXIT = 1
-"""Exit code when ``message`` refuses a task the plan lacks or one already committed."""
+REFUSED_EXIT = 1
+"""Exit code when ``message`` refuses its task (not in the plan, or already committed) or
+``close-slice`` refuses its slice (not in the plan)."""
 
 UNREADABLE_PLAN_EXIT = 2
 """Exit code, for any subcommand, when the plan cannot be read or names no usable base commit."""
 
 TASK_MESSAGE_FILE = "KONUNDRM_TASK_MSG"
 """Name, under the Git directory, of the commit message ``message`` writes."""
+
+_OPEN_BOX = "- [ ] "
+_CHECKED_BOX = "- [x] "
 
 
 class UnreadablePlanError(Exception):
@@ -53,6 +63,10 @@ class RefusedTaskError(Exception):
 
     Its message starts with the task ID as given and names the plan's path or the commit's SHA.
     """
+
+
+class RefusedSliceError(Exception):
+    """No slice heading of the plan names the slice; its message starts with the slice ID as given."""
 
 
 def status_lines(root: Path, plan: Path) -> list[str]:
@@ -165,6 +179,144 @@ def write_task_message(root: Path, plan: Path, task_id: str, subject: str, round
     return path
 
 
+@dataclass(frozen=True)
+class _TaskBlock:
+    """Where one task sits in the plan's lines: its task line, its Rounds line and its last line.
+
+    The block is the task line plus the indented lines right below it; indices count from 0.
+    """
+
+    task_id: str
+    task_line: int
+    rounds_line: int | None
+    last_line: int
+
+
+def close_slice(root: Path, plan: Path, slice_id: str) -> list[str]:
+    """Checks the box and writes the rounds of every task of a slice that has its commit.
+
+    A task of the slice whose commit (task_commits) comes after the plan's base gets its ``- [ ]``
+    box checked (``[x]`` and ``[X]`` stay as written) and, when that commit has a ``Rounds:``
+    line, the same rounds as ``  - Rounds: spec <n> · code <n> · escalations <n>``: in place of
+    the block's indented Rounds line, or as the block's last line. Each line not changed comes
+    back byte-identical, its own ending included, and an added line takes the ending of the line
+    it follows, so CRLF, LF and mixed files keep their endings. When the block ends the file
+    without a line break, its last line gets the ending of the nearest line above that has one
+    (LF if none has) and the added Rounds line becomes the file's last line, still without a
+    break. HTML comments are not tasks.
+    Running it again changes nothing.
+
+    Args:
+        root: Project root inside the feature's Git repository.
+        plan: The feature's tasks.md, absolute or relative to the current directory.
+        slice_id: A slice of the plan as its ``## Slice`` heading names it, such as ``S2``.
+
+    Returns:
+        The IDs, as the plan writes them and in plan order, of the slice's tasks without a commit.
+
+    Raises:
+        UnreadablePlanError: As in status_lines(), or when the plan cannot be read as bytes.
+        RefusedSliceError: When no slice heading of the plan names ``slice_id``.
+
+    Side effects:
+        Rewrites the plan when a box or Rounds line changes; nothing is written when it raises.
+    """
+    _, commits = _plan_and_task_commits(root, plan)
+    try:
+        original = plan.read_bytes()
+    except OSError as error:
+        raise UnreadablePlanError(f"{plan.as_posix()}: cannot read the plan") from error
+    # surrogateescape gives back every byte as read, whatever the file holds.
+    text = original.decode("utf-8", errors="surrogateescape")
+    blocks = _slice_task_blocks(text, slice_id)
+    if blocks is None:
+        raise RefusedSliceError(f"{slice_id}: no such slice in {plan.as_posix()}")
+    lines = _lines_with_endings(text)
+    not_committed: list[str] = []
+    for block in reversed(blocks):  # bottom-up, so an added line never shifts a block still to close
+        commit = commits.get(task_key(block.task_id))
+        if commit is None:
+            not_committed.insert(0, block.task_id)
+        else:
+            _close_task(lines, block, commit.rounds)
+    closed = "".join(lines).encode("utf-8", errors="surrogateescape")
+    if closed != original:
+        plan.write_bytes(closed)
+    return not_committed
+
+
+def _lines_with_endings(text: str) -> list[str]:
+    """Splits text at line feeds only, each line keeping its ending: LF, CRLF, or none for the last."""
+    pieces = text.split("\n")
+    return [f"{piece}\n" for piece in pieces[:-1]] + ([pieces[-1]] if pieces[-1] else [])
+
+
+def _slice_task_blocks(text: str, slice_id: str) -> list[_TaskBlock] | None:
+    """Locates the task blocks of one slice, or returns None when no heading names the slice.
+
+    Lines are read with HTML comments blanked out the way tasks_document reads them, so a
+    commented example task is no task and line indices still match the file.
+    """
+    masked = HTML_COMMENT.sub(lambda comment: "\n" * comment.group().count("\n"), text).split("\n")
+    is_slice_found = False
+    current_slice = None
+    blocks: list[_TaskBlock] = []
+    for index, line in enumerate(masked):
+        heading = SLICE_HEADING.match(line)
+        if heading is not None:
+            current_slice = heading.group("slice")
+            is_slice_found = is_slice_found or current_slice == slice_id
+        task = TASK.match(line)
+        if task is not None and current_slice == slice_id:
+            blocks.append(_task_block(masked, index, task.group("id")))
+    return blocks if is_slice_found else None
+
+
+def _task_block(masked: list[str], task_line: int, task_id: str) -> _TaskBlock:
+    """The block of the task whose line is at ``task_line``: it and the indented lines below it."""
+    last_line = task_line
+    rounds_line = None
+    while last_line + 1 < len(masked) and masked[last_line + 1][:1] in (" ", "\t") and masked[last_line + 1].strip():
+        last_line += 1
+        if rounds_line is None and ROUNDS.match(masked[last_line].strip().removeprefix("- ")):
+            rounds_line = last_line
+    return _TaskBlock(task_id, task_line, rounds_line, last_line)
+
+
+def _close_task(lines: list[str], block: _TaskBlock, rounds: tuple[int, int, int] | None) -> None:
+    """Checks an open box and writes the commit's rounds into the block, editing ``lines`` in place."""
+    task_line = lines[block.task_line]
+    if task_line.startswith(_OPEN_BOX):
+        lines[block.task_line] = _CHECKED_BOX + task_line[len(_OPEN_BOX) :]
+    if rounds is None:
+        return
+    field = f"- Rounds: spec {rounds[0]} · code {rounds[1]} · escalations {rounds[2]}"
+    if block.rounds_line is not None:
+        old = lines[block.rounds_line]
+        indent = old[: len(old) - len(old.lstrip(" \t"))]
+        lines[block.rounds_line] = f"{indent}{field}{_line_ending(old)}"
+        return
+    previous = lines[block.last_line]
+    ending = _line_ending(previous)
+    if ending:
+        lines.insert(block.last_line + 1, f"  {field}{ending}")
+    else:  # the block ends the file without a line break: break it, and keep the file's last line bare
+        lines[block.last_line] = previous + _ending_above(lines, block.last_line)
+        lines.insert(block.last_line + 1, f"  {field}")
+
+
+def _ending_above(lines: list[str], line_index: int) -> str:
+    """The ending of the nearest line above ``line_index`` that has one, or LF when none has."""
+    return next((_line_ending(line) for line in reversed(lines[:line_index]) if _line_ending(line)), "\n")
+
+
+def _line_ending(line: str) -> str:
+    """The ending a line was written with: CRLF, LF, or an empty string for none."""
+    if line.endswith("\r\n"):
+        return "\r\n"
+    return "\n" if line.endswith("\n") else ""
+
+
 def main(argv: list[str] | None = None) -> int:
     """Runs one subcommand and prints its answer to stdout as UTF-8.
 
@@ -174,11 +326,14 @@ def main(argv: list[str] | None = None) -> int:
     Subcommands:
         ``status <tasks.md>`` prints status_lines(). ``message <tasks.md> T<n> --subject S
         --rounds R [--body B]`` runs write_task_message() and prints only the file's path.
-        Every line ends in a bare line feed, so ``msg=$(…)`` keeps no carriage return on Windows.
+        ``close-slice <tasks.md> S<k>`` runs close_slice() and prints ``not committed: <ids>``
+        (comma-separated, or ``none``). Every line ends in a bare line feed, so ``msg=$(…)``
+        keeps no carriage return on Windows.
 
     Returns:
-        0 on success; ``REFUSED_TASK_EXIT`` (1) with the reason on stderr when ``message`` refuses
-        an unknown or already committed task; ``UNREADABLE_PLAN_EXIT`` (2) with the plan's
+        0 on success; ``REFUSED_EXIT`` (1) with the reason on stderr when ``message`` refuses
+        an unknown or already committed task or ``close-slice`` an unknown slice;
+        ``UNREADABLE_PLAN_EXIT`` (2) with the plan's
         ``<file>:<line>`` on stderr when the plan cannot be read. On 1 or 2 nothing reaches stdout
         and nothing is written. argparse exits with 2 on a usage error.
     """
@@ -195,25 +350,34 @@ def main(argv: list[str] | None = None) -> int:
     message.add_argument("--subject", required=True, help="the commit's subject line")
     message.add_argument("--rounds", required=True, help='"spec <n> · code <n> · escalations <n>"')
     message.add_argument("--body", help="paragraphs between the subject and the trailers")
+    close = subcommands.add_parser("close-slice", help="check a slice's built tasks and write their rounds")
+    close.add_argument("plan", type=Path, help="the feature's tasks.md")
+    close.add_argument("slice_id", metavar="S<k>", help="the slice to close")
     arguments = parser.parse_args(argv)
     root = project_root({"cwd": os.getcwd()})
     try:
-        if arguments.subcommand == "message":
-            lines = [
-                write_task_message(
-                    root, arguments.plan, arguments.task_id, arguments.subject, arguments.rounds, arguments.body
-                ).as_posix()
-            ]
-        else:
-            lines = status_lines(root, arguments.plan)
+        lines = _run_subcommand(root, arguments)
     except UnreadablePlanError as error:
         sys.stderr.write(f"task_ledger.py: {error}\n")
         return UNREADABLE_PLAN_EXIT
-    except RefusedTaskError as error:
+    except (RefusedTaskError, RefusedSliceError) as error:
         sys.stderr.write(f"task_ledger.py: {error}\n")
-        return REFUSED_TASK_EXIT
+        return REFUSED_EXIT
     sys.stdout.write("".join(f"{line}\n" for line in lines))
     return 0
+
+
+def _run_subcommand(root: Path, arguments: argparse.Namespace) -> list[str]:
+    """Runs the parsed subcommand and gives the lines it prints."""
+    if arguments.subcommand == "message":
+        path = write_task_message(
+            root, arguments.plan, arguments.task_id, arguments.subject, arguments.rounds, arguments.body
+        )
+        return [path.as_posix()]
+    if arguments.subcommand == "close-slice":
+        not_committed = close_slice(root, arguments.plan, arguments.slice_id)
+        return [f"not committed: {', '.join(not_committed) or 'none'}"]
+    return status_lines(root, arguments.plan)
 
 
 if __name__ == "__main__":

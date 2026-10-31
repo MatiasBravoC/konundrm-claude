@@ -157,12 +157,13 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: T11
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T13** `close-slice` marca las casillas y escribe las rondas de las tareas commiteadas del slice, conservando los finales de línea · `behavior` · Risk: medium · Covers: R2.8, R4.5
+- [x] **T13** `close-slice` marca las casillas y escribe las rondas de las tareas commiteadas del slice, conservando los finales de línea · `behavior` · Risk: medium · Covers: R2.8, R4.5
   - Test: `P/hooks/tests/test_task_ledger.py::test_close_slice_checks_boxes_and_writes_rounds_from_the_commits` (CRLF y LF; una tarea sin commit queda sin marcar y se informa; una línea `Rounds:` existente se reemplaza)
   - Files: `P/hooks/scripts/task_ledger.py`
   - Invariants: correrlo dos veces deja el mismo archivo; solo cambian casillas y líneas `Rounds:` del slice.
   - Verify: `... -k test_close_slice_checks_boxes_and_writes_rounds_from_the_commits`
   - Depends on: T11
+  - Rounds: spec 2 · code 2 · escalations 0
 
 - [ ] **T14** Al iniciar sesión, las tareas con commit cuentan como hechas aunque su casilla siga sin marcar · `behavior` · Risk: low · Covers: R1.9
   - Test: `P/hooks/tests/test_session_doctor.py::test_counts_committed_tasks_as_done_and_names_the_first_without_a_commit`
