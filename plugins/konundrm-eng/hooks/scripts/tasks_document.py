@@ -3,8 +3,9 @@
 writing-plans creates the file from its template and develop-feature checks the boxes and adds a
 ``Rounds:`` line per task. The header's ``- **Base commit:** `<sha>``` line names the commit the
 feature branch started from; only a hex SHA, full or short, is read from it, since callers hand
-it to git as a revision. A task's covers come from the ``· Covers:`` field that ends its line, so
-a ``Covers:`` quoted in its title is not mistaken for it. The header's ``- **Parallel:** yes | no``
+it to git as a revision, and only from the first such line, whose number is kept so a caller can
+point at it. A task's covers come from the ``· Covers:`` field that ends its line, so a
+``Covers:`` quoted in its title is not mistaken for it. The header's ``- **Parallel:** yes | no``
 line says whether partitions run in parallel: only a whole value of ``yes`` does, so a missing or
 unfilled line means serial.
 Each slice ends with a ``### Partitions`` table (``| Wave | Partition | Tasks | Depends on |``)
@@ -36,7 +37,8 @@ from typing import NamedTuple
 STATUS = re.compile(r"(?mi)^-\s*\*\*Status:\*\*\s*(?P<status>[A-Za-z]+)")
 PARALLEL = re.compile(r"(?mi)^-\s*\*\*Parallel:\*\*[ \t]*(?P<parallel>[^\r\n]*)")
 TASK = re.compile(r"(?m)^- \[(?P<box>[ xX])\] \*\*(?P<id>T\d+)\*\*[ \t]*(?P<rest>[^\n]*)")
-BASE_COMMIT = re.compile(r"(?mi)^-\s*\*\*Base commit:\*\*[ \t]*`(?P<sha>[0-9a-f]{4,64})`")
+BASE_COMMIT_LINE = re.compile(r"(?mi)^-[ \t]*\*\*Base commit:\*\*[ \t]*(?P<value>[^\n]*)")
+BASE_COMMIT_SHA = re.compile(r"(?i)`(?P<sha>[0-9a-f]{4,64})`")
 COVERS = re.compile(r" · Covers:[ \t]*(?P<covers>[^·]*?)\s*$")
 RISK = re.compile(r"\bRisk:\s*(?P<risk>low|medium|high)\b", re.IGNORECASE)
 SLICE_HEADING = re.compile(r"(?m)^#{2,3}\s+Slice\s+(?P<slice>S\d+)\b")
@@ -103,13 +105,18 @@ class TasksDocument:
             parallel; False when the line says anything else, is unfilled or is missing.
         base_commit: The hex SHA, full or short, between backticks in the header's
             ``Base commit:`` line, or None when the line is missing or holds anything else, such
-            as the template's placeholder.
+            as the template's placeholder. Only the first ``Base commit:`` line is read.
+        base_commit_line: The 1-based number, in the file as written, of the first
+            ``Base commit:`` line whatever it holds, or None when there is none.
+        is_readable: False when the file could not be read, so the document is empty.
     """
 
     status: str
     tasks: tuple[Task, ...]
     parallel: bool = False
     base_commit: str | None = None
+    base_commit_line: int | None = None
+    is_readable: bool = True
 
 
 def _rounds(block: str) -> tuple[int, int, int] | None:
@@ -301,12 +308,15 @@ def read_tasks(path: Path) -> TasksDocument:
         path: The file to read.
 
     Returns:
-        Its header fields and tasks; an empty document when the file cannot be read.
+        Its header fields and tasks; an empty document with ``is_readable`` False when the file
+        cannot be read.
     """
     try:
-        text = HTML_COMMENT.sub("", path.read_text(encoding="utf-8", errors="replace"))
+        raw = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return TasksDocument(status="", tasks=())
+        return TasksDocument(status="", tasks=(), is_readable=False)
+    # A comment leaves its line breaks behind, so line numbers still match the file as written.
+    text = HTML_COMMENT.sub(lambda comment: "\n" * comment.group().count("\n"), raw)
     status = STATUS.search(text)
     headings = list(SLICE_HEADING.finditer(text))
     matches = list(TASK.finditer(text))
@@ -317,10 +327,12 @@ def read_tasks(path: Path) -> TasksDocument:
         for match, end in zip(matches, ends, strict=True)
     )
     parallel = PARALLEL.search(text)
-    base_commit = BASE_COMMIT.search(text)
+    base_line = BASE_COMMIT_LINE.search(text)
+    base_commit = BASE_COMMIT_SHA.match(base_line.group("value")) if base_line else None
     return TasksDocument(
         status=status.group("status") if status else "",
         tasks=tasks,
         parallel=parallel is not None and parallel.group("parallel").strip().lower() == "yes",
         base_commit=base_commit.group("sha") if base_commit else None,
+        base_commit_line=text.count("\n", 0, base_line.start()) + 1 if base_line else None,
     )

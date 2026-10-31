@@ -87,14 +87,17 @@ class StatusTest(unittest.TestCase):
         self.environment = {key: value for key, value in os.environ.items() if key.upper() not in dropped}
         self.environment |= {"PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0", "LC_ALL": "C"}
 
-    def status(self) -> str:
-        completed = subprocess.run(
+    def run_status(self) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
             [sys.executable, str(TASK_LEDGER), "status", PLAN_PATH],
             cwd=self.root,
             env=self.environment,
             capture_output=True,
             check=False,
         )
+
+    def status(self) -> str:
+        completed = self.run_status()
         stdout = completed.stdout.decode("utf-8")
         self.assertEqual(completed.returncode, 0, f"{stdout}\n{completed.stderr.decode('utf-8', 'replace')}")
         return stdout
@@ -193,6 +196,41 @@ class StatusTest(unittest.TestCase):
         self.assertNotIn("next:", [line[:5] for line in second_wave.splitlines()])
         self.assertEqual(line_value(serial, "next"), "T5 step 5")
         self.assertNotIn("next per partition", serial)
+
+    # R4.6: a plan that cannot be read (missing, without a usable Base commit, or naming a commit
+    # this repository lacks) ends with exit 2 (1 means "refused") and names the file and the line,
+    # as given on the command line, with no status lines on stdout and nothing changed.
+    def test_status_names_the_file_and_line_when_the_plan_cannot_be_read(self) -> None:
+        commit(self.root, "chore: start the feature branch\n")
+        plan = self.root / PLAN_PATH
+        plan.parent.mkdir(parents=True)
+        placeholder = plan_text("x").replace("`x`", "`<SHA the feature branch started from>`")
+        without_base = "".join(line for line in plan_text("x").splitlines(keepends=True) if "Base commit" not in line)
+        cases = {
+            "missing plan": (None, PLAN_PATH),
+            "no Base commit line": (without_base, f"{PLAN_PATH}:1"),
+            "template placeholder": (placeholder, f"{PLAN_PATH}:4"),
+            "unknown commit": (plan_text("deadbeef" * 5), f"{PLAN_PATH}:4"),
+        }
+        for case, (text, location) in cases.items():
+            with self.subTest(case):
+                if text is None:
+                    plan.unlink(missing_ok=True)
+                else:
+                    plan.write_text(text, encoding="utf-8", newline="\n")
+                plan_bytes = plan.read_bytes() if text is not None else None
+                porcelain = git(self.root, "status", "--porcelain")
+
+                completed = self.run_status()
+
+                stderr = completed.stderr.decode("utf-8", "replace")
+                self.assertEqual(completed.returncode, 2, stderr)
+                self.assertIn(location, stderr)
+                self.assertNotIn("Traceback", stderr)
+                self.assertEqual(completed.stdout.decode("utf-8", "replace"), "")
+                self.assertEqual(plan.exists(), text is not None)
+                self.assertEqual(plan.read_bytes() if text is not None else None, plan_bytes)
+                self.assertEqual(git(self.root, "status", "--porcelain"), porcelain)
 
 
 if __name__ == "__main__":

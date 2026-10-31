@@ -128,11 +128,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: T8
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T10** Con un plan ilegible, `status` dice el archivo y la línea y sale con error sin cambiar nada · `behavior` · Risk: low · Covers: R4.6
+- [x] **T10** Con un plan ilegible, `status` dice el archivo y la línea y sale con error sin cambiar nada · `behavior` · Risk: low · Covers: R4.6
   - Test: `P/hooks/tests/test_task_ledger.py::test_status_names_the_file_and_line_when_the_plan_cannot_be_read` (plan inexistente → exit 2 con la ruta; sin `Base commit` → exit 2 con `archivo:línea`)
   - Files: `P/hooks/scripts/task_ledger.py`
   - Verify: `... -k test_status_names_the_file_and_line_when_the_plan_cannot_be_read`
   - Depends on: T8
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
