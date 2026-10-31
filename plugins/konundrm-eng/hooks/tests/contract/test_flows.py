@@ -2872,6 +2872,33 @@ def _subsection_blocks(blocks: list[str], heading: str) -> list[str]:
     return blocks[start:end]
 
 
+# R1.8, R4.7: a resumed session asks `task_ledger.py status`, which counts only `Task:` commits in `<base>..HEAD`.
+_RESUME_RUNS = re.compile(r"\b(?:run|use|ask|call)\w*")
+_RESUME_BASE_RANGE = re.compile(r"<base>\.\.head\b|\b(?:after|since)\b(?: \S+){0,4} base\b")
+_RESUME_EARLIER_FEATURE = re.compile(r"\b(?:earlier|previous|other|another) feature")
+_RESUME_COMMIT = re.compile(r"\bcommit\w*")
+_RESUME_BOX = re.compile(r"\bbox(?:es)?\b")
+_RESUME_WHATEVER_BOX = re.compile(r"\bwhatever\b|\bregardless\b|\b(?:not|never|no)\b(?: \S+){0,4} box")
+_RESUME_BUILT = re.compile(r"\b(?:built|pending|done)\b")  # not the wave bullet's "never by boxes" about integration
+_RESUME_CONTINUES = re.compile(r"\b(?:continue|resume|go on|start)\w*")
+_RESUME_NEXT = re.compile(r"\bnext\b")
+_RESUME_STATUS_NAMES = re.compile(r"\bstatus\b")
+_RESUME_UNRANGED_LOOKUP = re.compile(r"\bgit log\b.*--grep '\^task:")
+_RESUME_RANGE = re.compile(r"\.\.head\b|<base>\.\.")
+_RESUME_RULES = {
+    "R4.7 runs task_ledger.py status": (_GATE_STATUS, _RESUME_RUNS),
+    "R1.8 counts only commits after the plan's base (<base>..HEAD)": (_RESUME_BASE_RANGE, _RESUME_COMMIT),
+    "R1.8 an earlier feature's Task: commits never count": (_RESUME_EARLIER_FEATURE, _NEGATION, _RESUME_COMMIT),
+    "R1.8 a task with its commit is built whatever its box says": (
+        _RESUME_BOX,
+        _RESUME_COMMIT,
+        _RESUME_WHATEVER_BOX,
+        _RESUME_BUILT,
+    ),
+    "R1.8 continues at the task status names as next": (_RESUME_CONTINUES, _RESUME_NEXT, _RESUME_STATUS_NAMES),
+}
+
+
 class GateFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -2950,6 +2977,35 @@ class GateFlowTest(unittest.TestCase):
             for block in fix_bug
             for sentence in _sentences(block)
             if _TASK_COMMIT_FIX_BUG_INHERITS.search(sentence)
+        ]
+
+        self.assertEqual(gaps, [])
+
+    def test_resume_uses_status_and_the_base_range(self) -> None:
+        """R1.8, R4.7: 002 develop-feature's Phase 0 resume runs `task_ledger.py status`, counts only commits in
+        `<base>..HEAD` (never an earlier feature's), treats a task with its commit as built whatever its box says and
+        continues at the task status names as next; no Phase 0 sentence looks a task's commit up with an unranged
+        `git log --grep '^Task: …'`."""
+        prepare = [
+            block
+            for block in _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Phase 0: Prepare")
+            if not block.startswith("**partition session")
+        ]
+        start = next((index for index, block in enumerate(prepare) if block.startswith("1. ")), len(prepare))
+        end = next((index for index in range(start + 1, len(prepare)) if prepare[index].startswith("2. ")), start)
+        resume = prepare[start + 1 : end]
+
+        gaps = [] if resume else ["develop-feature Phase 0 step 1 has no resume bullets"]
+        gaps += [
+            f"develop-feature Phase 0 resume lacks: {rule}"
+            for rule, patterns in _RESUME_RULES.items()
+            if not any(_in_one_sentence(block, *patterns) for block in resume)
+        ]
+        gaps += [
+            f"develop-feature Phase 0 looks a task's commit up outside <base>..HEAD: {sentence.strip()}"
+            for block in prepare
+            for sentence in _sentences(block)
+            if _RESUME_UNRANGED_LOOKUP.search(sentence) and not _RESUME_RANGE.search(sentence)
         ]
 
         self.assertEqual(gaps, [])

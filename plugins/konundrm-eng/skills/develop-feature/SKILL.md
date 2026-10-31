@@ -67,13 +67,16 @@ so the extra effort goes only to work that has shown it needs it.
      session through the Phase 3 task loop. It gets no parallel question, no partition sessions and
      no worktrees. In a mixed plan, a slice without a `### Partitions` table counts as a single
      partition.
-   - A checked box only counts when `git log -E --grep '^Task: T<n>( |$)'` finds its commit
-     (anchored, so T1 never matches T10); uncheck any box that has none.
+   - Run `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py status specs/<NNN-slug>/tasks.md`
+     to learn which tasks have a commit and which is next. `status` counts only commits after the
+     plan's base (`<base>..HEAD`), so an earlier feature's `Task:` commits never count. A task with
+     its commit counts as built whatever its box says: an unchecked box does not make it pending,
+     and a checked box with no commit does not make it built.
    - In the main session, look for an unfinished wave before going on: run `git worktree list` and
      `git branch --list 'wave/*'`. A worktree or branch named `wave/<NNN-slug>-p<k>` means its wave
      is unfinished, so finish that wave first, before any other task. Finish or abort a cherry-pick
-     in progress, then judge what is integrated by each task's `Task:` commit (the
-     `git log -E --grep` above), never by boxes, SHAs or branch names: a task committed here is
+     in progress, then judge what is integrated by each task's `Task:` commit (`status` for
+     commits here), never by boxes, SHAs or branch names: a task committed here is
      integrated; one committed only on its partition's branch is still to integrate; one with no
      commit is still being built. When the wave's first partition is built and every other
      partition is integrated (each of its tasks has its commit here and its `evidence/P<k>.md` is
@@ -89,8 +92,8 @@ so the extra effort goes only to work that has shown it needs it.
      the [Slice checkpoint](#slice-checkpoint) for that slice before the next slice's first task.
      Look for that commit with `git log -E --grep '^docs\(.+\): summarize slice S<k>$'` (anchored,
      so S1 never matches S10).
-   - Continue at the first task without a commit among the tasks this session builds (in a
-     parallel wave, the main session builds only the wave's first partition).
+   - Continue at the task `status` names as next (in a parallel wave, the main session still builds
+     only the wave's first partition).
 2. Confirm the repository root and that the tree is clean. If unrelated changes are pending, ask
    the user to commit or stash them first; never mix them into feature commits.
 3. Get the check command from the plugin, the same one its hooks run: the session context names
