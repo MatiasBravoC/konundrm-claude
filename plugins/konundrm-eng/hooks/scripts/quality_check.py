@@ -9,6 +9,7 @@ Sections:
     find_check_command()   — discovers the command.
     is_check_invocation()  — tells whether a shell command line runs exactly that command.
     run_command()          — runs a shell command and keeps the end of its output.
+    remember_green_tree(), green_tree() — keep the last green tree beside the repository.
     CheckResult, run_check() — runs the check unless the same tree content already passed.
     main()                 — CLI: prints the check command.
 """
@@ -26,6 +27,7 @@ from pathlib import Path
 
 from hook_state import SessionState
 from project_paths import project_root
+from working_tree import run_git
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -34,6 +36,7 @@ CHECK_TIMEOUT_SECONDS = 600
 OUTPUT_TAIL_LINES = 60
 CD_PREFIX = re.compile(r"""^cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*(?:&&|;)\s*(.+)$""")
 MSYS_DRIVE_PATH = re.compile(r"^/([A-Za-z])(/.*)?$")
+GREEN_TREE_FILE = "konundrm-eng-green"
 
 
 def gates_disabled() -> bool:
@@ -188,6 +191,61 @@ def run_command(command: str, cwd: Path, timeout: int = CHECK_TIMEOUT_SECONDS) -
     return completed.returncode, "\n".join(output.splitlines()[-OUTPUT_TAIL_LINES:])
 
 
+def _green_tree_path(root: Path) -> Path | None:
+    output = run_git(["rev-parse", "--git-path", GREEN_TREE_FILE], root)
+    if output is None:
+        return None
+    # Git answers relative to the directory it ran in, or absolute (linked worktrees).
+    return root / output.decode("utf-8", errors="replace").strip()
+
+
+def remember_green_tree(root: Path, tree: str | None) -> None:
+    """Records, under the repository's Git directory, the tree whose check just passed.
+
+    The file lives beside the repository rather than in CLAUDE_PLUGIN_DATA so that any shell,
+    including a Git hook, can read it back with green_tree().
+
+    Args:
+        root: Project root inside a Git repository; nothing happens outside one.
+        tree: Tree object that passed (working_tree.snapshot_tree), or None when the snapshot is
+            unknown. None deletes the record, so an older tree is never mistaken for this one.
+
+    Side effects:
+        Writes or deletes ``<git-path konundrm-eng-green>``. A filesystem error is ignored: a
+        missing record only costs one more run of the check.
+    """
+    path = _green_tree_path(root)
+    if path is None:
+        return
+    try:
+        if tree is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(f"{tree}\n", encoding="utf-8")
+    except OSError:
+        return  # The record is an optimisation; losing it only means the check runs again.
+
+
+def green_tree(root: Path) -> str | None:
+    """Reads the tree whose check last passed in this repository, without CLAUDE_PLUGIN_DATA.
+
+    Args:
+        root: Project root.
+
+    Returns:
+        The tree object's SHA, or None when no check has passed yet, the record is unreadable
+        or ``root`` is not inside a Git repository.
+    """
+    path = _green_tree_path(root)
+    if path is None:
+        return None
+    try:
+        tree = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return tree or None
+
+
 @dataclass(frozen=True)
 class CheckResult:
     """Outcome of one quality-gate run, or of reusing an earlier green run."""
@@ -209,6 +267,9 @@ def run_check(root: Path, check: str, state: SessionState, fingerprint: str | No
 
     Returns:
         The result; ``cached`` is True when an earlier green run was reused.
+
+    Side effects:
+        A fresh pass also records ``fingerprint`` beside the repository (remember_green_tree).
     """
     if fingerprint is not None and fingerprint == state.green_fingerprint:
         state.mark_green(fingerprint)
@@ -218,6 +279,7 @@ def run_check(root: Path, check: str, state: SessionState, fingerprint: str | No
     if exit_code == 0:
         state.mark_green(fingerprint)
         state.save()
+        remember_green_tree(root, fingerprint)
     return CheckResult(passed=exit_code == 0, exit_code=exit_code, output_tail=output_tail, cached=False)
 
 

@@ -2,6 +2,8 @@
 
 When Claude (or a subagent) runs the check command itself and it succeeds, the commit gate and the
 stop gate reuse that result for the same tree content instead of running the whole check again.
+The passing tree is also written beside the repository (quality_check.remember_green_tree), where
+shells without CLAUDE_PLUGIN_DATA can read it.
 Claude Code reports failing commands as PostToolUseFailure, which this hook never receives; as a
 second guard it also ignores interrupted and background runs and any reported non-zero exit code.
 """
@@ -44,16 +46,18 @@ def main() -> int:
         return 0
     from hook_state import SessionState
     from project_paths import project_root
-    from quality_check import find_check_command, is_check_invocation
+    from quality_check import find_check_command, is_check_invocation, remember_green_tree
     from working_tree import snapshot_tree
 
     root = project_root(event)
     check = find_check_command(root)
     if check is None or not is_check_invocation(command, check, root, Path(event.get("cwd") or root)):
         return 0
+    tree = snapshot_tree(root)
     state = SessionState(event.get("session_id"))
-    state.mark_green(snapshot_tree(root))
+    state.mark_green(tree)
     state.save()
+    remember_green_tree(root, tree)
     return 0
 
 

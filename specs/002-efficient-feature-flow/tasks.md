@@ -99,11 +99,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: T5
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T7** Un check que pasa, corrido por Claude o por el gate, deja su huella junto al repositorio · `behavior` · Risk: low · Covers: R4.1
+- [x] **T7** Un check que pasa, corrido por Claude o por el gate, deja su huella junto al repositorio · `behavior` · Risk: low · Covers: R4.1
   - Test: `P/hooks/tests/test_record_check_result.py::test_a_passing_check_remembers_its_tree_beside_the_repository` (`quality_check.green_tree` devuelve la huella tras `record_check_result` y tras `run_check`; un check fallido no la escribe)
   - Files: `P/hooks/scripts/quality_check.py`, `P/hooks/scripts/record_check_result.py` (modify)
   - Verify: `... -k test_a_passing_check_remembers_its_tree_beside_the_repository`
   - Depends on: —
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
