@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import unittest
 from collections.abc import Callable
 from pathlib import Path
 
-from .plugin_files import SKILLS_DIR, read_frontmatter, read_section
+from .plugin_files import PLUGIN_ROOT, SKILLS_DIR, read_frontmatter, read_section
 
 DEVELOP_FEATURE_DIR = SKILLS_DIR / "develop-feature"
 MODEL_AND_EFFORT_LINK_TARGET = "../develop-feature/SKILL.md#model-and-effort"
@@ -2609,6 +2610,73 @@ class FeatureDeliveryFlowTest(unittest.TestCase):
         opening_pull_requests = SKILLS_DIR / "opening-pull-requests" / "SKILL.md"
 
         gaps = _delivery_naming_gaps(develop_feature, opening_pull_requests)
+
+        self.assertEqual(gaps, [])
+
+
+# R3.1, R3.5: after verification the reviews launch at once, and only the writers run one at a time.
+_REVIEWS_AUDIT_SCRIPT = PLUGIN_ROOT / "hooks" / "scripts" / "audit_subagent_changes.py"
+_REVIEWS_DISPATCH = re.compile(r"\b(?:dispatch|launch|start|run)\w*")
+_REVIEWS_SPEC = re.compile(r"\bspec[- ]review|\bspec(?:,| and) code\b")
+_REVIEWS_CODE = re.compile(r"\bcode(?: and security)?[- ]review")  # also "code-reviewer"
+_REVIEWS_SECURITY = re.compile(r"\bsecurity[- ]review")
+_REVIEWS_HIGH = re.compile(r"\bhigh\b")
+_REVIEWS_TOGETHER = re.compile(_AT_THE_SAME_TIME.pattern + r"|\bin parallel\b|\bin (?:one|the same|a single) message\b")
+_REVIEWS_WRITER = re.compile(r"\b(?:test-writers?|implementers?|writers?)\b")
+_REVIEWS_WHILE = re.compile(r"\b(?:while|during|until)\b")
+_REVIEWS_ONE_AT_A_TIME = re.compile(r"\bone\b(?: \S+){0,6} at a time\b|\bone after (?:another|the other)\b")
+_REVIEWS_SUBAGENTS = re.compile(r"\bsubagents?\b")
+_REVIEWS_WAITS_FOR_CODE = re.compile(r"\b(?:once|after|wait\w*)\b(?: \S+){0,2} code[- ]review")
+_REVIEWS_PHASE_3_RULES = {
+    "R3.1 dispatches the spec and code reviews at the same time": (
+        _REVIEWS_DISPATCH,
+        _REVIEWS_SPEC,
+        _REVIEWS_CODE,
+        _REVIEWS_TOGETHER,
+    ),
+    "R3.1 launches the security review with them on high tasks": (_REVIEWS_SECURITY, _REVIEWS_HIGH, _REVIEWS_TOGETHER),
+    "R3.5 runs no test-writer or implementer while a reviewer runs": (
+        _NEGATION,
+        _REVIEWS_WRITER,
+        _REVIEWED,
+        _REVIEWS_WHILE,
+    ),
+    "R3.5 runs the writers one at a time": (_REVIEWS_WRITER, _REVIEWS_ONE_AT_A_TIME),
+}
+
+
+def _reviews_contradictions(where: str, blocks: list[str]) -> list[str]:
+    """Return the sentences that run every subagent one at a time or make the security review wait for code review."""
+    gaps = []
+    for sentence in (sentence.strip() for block in blocks for sentence in _sentences(block)):
+        sequential = _REVIEWS_SUBAGENTS.search(sentence) and _REVIEWS_ONE_AT_A_TIME.search(sentence)
+        if sequential and not _REVIEWS_WRITER.search(sentence):
+            gaps.append(f"{where} runs every subagent one at a time, not only the writers: {sentence}")
+        if _REVIEWS_SECURITY.search(sentence) and _REVIEWS_WAITS_FOR_CODE.search(sentence):
+            gaps.append(f"{where} makes the security review wait for the code review: {sentence}")
+    return gaps
+
+
+class ReviewFlowTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_reviews_launch_at_once_with_no_writer_running(self) -> None:
+        """R3.1, R3.5: 002 develop-feature's Phase 3 dispatches the spec and code reviews (and, on high tasks, the
+        security review) at the same time, runs no writer while a reviewer runs, and runs only the writers one at a
+        time, as the audit hook's docstring also says; neither makes every subagent sequential."""
+        phase_3 = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Phase 3: Task loop")
+        docstring = ast.get_docstring(ast.parse(_REVIEWS_AUDIT_SCRIPT.read_text(encoding="utf-8"))) or ""
+        audit = _split_blocks(docstring.splitlines())
+
+        gaps = [
+            f"develop-feature Phase 3 lacks: {rule}"
+            for rule, patterns in _REVIEWS_PHASE_3_RULES.items()
+            if not any(_in_one_sentence(block, *patterns) for block in phase_3)
+        ]
+        if not any(_in_one_sentence(block, _REVIEWS_WRITER, _REVIEWS_ONE_AT_A_TIME) for block in audit):
+            gaps.append("audit_subagent_changes docstring lacks: R3.5 runs the writers one at a time")
+        gaps += _reviews_contradictions("develop-feature Phase 3", phase_3)
+        gaps += _reviews_contradictions("audit_subagent_changes docstring", audit)
 
         self.assertEqual(gaps, [])
 

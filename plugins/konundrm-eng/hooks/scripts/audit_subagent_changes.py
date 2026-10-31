@@ -12,8 +12,10 @@ that shares the repository's objects with the main checkout, so comparing one ch
 other's snapshot would see every difference between them as the subagent's change and restore or
 delete files in the wrong tree.
 
-Changes are attributed to a subagent by time, so konundrm-eng subagents must run one at a time on
-a working tree; develop-feature already works that way.
+Changes are attributed to a subagent by time, so the writers (test-writer, implementer) must run
+one at a time on a working tree, and never while a reviewer runs. Read-only reviewers may run
+together: any change during their runs breaks a reviewer's role whichever of them made it, so the
+audit restores it either way. develop-feature already works that way.
 """
 
 from __future__ import annotations

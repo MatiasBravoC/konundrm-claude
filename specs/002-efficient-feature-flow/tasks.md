@@ -223,11 +223,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S6: revisiones en paralelo
 
-- [ ] **T20** Tras la verificación, las revisiones de spec y de código (y la de seguridad en riesgo alto) se lanzan a la vez, sin ningún escritor corriendo · `behavior` · Risk: low · Covers: R3.1, R3.5
+- [x] **T20** Tras la verificación, las revisiones de spec y de código (y la de seguridad en riesgo alto) se lanzan a la vez, sin ningún escritor corriendo · `behavior` · Risk: low · Covers: R3.1, R3.5
   - Test: `P/hooks/tests/contract/test_flows.py::test_reviews_launch_at_once_with_no_writer_running`
   - Files: `P/skills/develop-feature/SKILL.md` (Phase 3 steps 3–4 and the "one at a time" paragraph), `P/hooks/scripts/audit_subagent_changes.py` (docstring: one writer at a time)
   - Verify: `... -k test_reviews_launch_at_once_with_no_writer_running`
   - Depends on: —
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T21** Todos los hallazgos van a una sola ronda de arreglo, y la re-revisión recibe sus hallazgos previos y lo que cambió · `behavior` · Risk: low · Covers: R3.2, R3.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_findings_share_one_fix_round_and_re_reviews_get_what_changed`
