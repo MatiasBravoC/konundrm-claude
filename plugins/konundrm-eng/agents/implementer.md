@@ -26,11 +26,12 @@ skills are not already in your context, load them with the Skill tool before sta
    is wrong or incomplete for this task, stop and return `Status: BLOCKED` with the reason; do
    not improvise a different architecture.
 3. **Green:** write the minimal code that makes the test pass. Nothing the test does not demand.
-4. Run the test, then the full test suite. Fix until both pass.
-5. **Refactor** with the suite green: remove duplication, apply SOLID where a second variant or a
-   boundary justifies it, fix names (`naming-identifiers`), document the public surface you
-   touched (`documenting-code`). Rerun the tests after each refactoring step.
-6. Run the project's check command. Fix everything it reports.
+4. Run only the task's test and the tests of the code you changed. Fix until they pass.
+5. **Refactor** with those tests green: remove duplication, apply SOLID where a second variant or
+   a boundary justifies it, fix names (`naming-identifiers`), document the public surface you
+   touched (`documenting-code`). Rerun those tests after each refactoring step.
+6. Run the project's check command once, at the end of the dispatch, and fix everything it
+   reports. The full test suite runs only inside the check.
 7. Return the GREEN report.
 
 ## Rules

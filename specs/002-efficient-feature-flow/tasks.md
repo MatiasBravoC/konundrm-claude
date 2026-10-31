@@ -208,11 +208,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: T16
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T19** El implementer corre la suite completa solo dentro del check, una vez al final de cada despacho · `behavior` · Risk: low · Covers: R2.4
+- [x] **T19** El implementer corre la suite completa solo dentro del check, una vez al final de cada despacho · `behavior` · Risk: low · Covers: R2.4
   - Test: `P/hooks/tests/contract/test_agents.py::test_implementer_runs_the_full_suite_only_in_the_final_check`
   - Files: `P/agents/implementer.md` (modify)
   - Verify: `... -k test_implementer_runs_the_full_suite_only_in_the_final_check`
   - Depends on: T16
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 

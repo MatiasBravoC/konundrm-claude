@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from .plugin_files import AGENTS_DIR, SKILLS_DIR, read_frontmatter, read_section
-from .test_flows import _NEGATION, _in_one_sentence, _section_blocks
+from .test_flows import _NEGATION, _in_one_sentence, _section_blocks, _sentences
 
 RETHINKER = AGENTS_DIR / "rethinker.md"
 RETHINKER_FIELDS = {"name": "rethinker", "model": "opus", "effort": "max"}
@@ -128,6 +128,27 @@ _FINDING_VERIFIER_RUN_SCOPE = {
         _FINDING_NEEDS,
     ),
     "it never runs the project's check command": (_NEGATION, _RUNS, _CHECK_COMMAND),
+}
+# R2.4 (002): the implementer runs the full suite only in the check, once at the end; before, its test and nearby tests.
+IMPLEMENTER = AGENTS_DIR / "implementer.md"
+_RUNS_OR_RERUNS = re.compile(r"\b(?:re)?(?:run|runs|running|execute|executes|executing|invoke|invokes)\b")
+_SUITE = re.compile(r"\bsuites?\b")
+_CODE_IT_CHANGES = re.compile(r"\b(?:chang|edit|touch|modif)\w*")
+_IMPLEMENTER_RUN_SCOPE = {
+    "it runs the full test suite only inside the check command": (_RUNS, _FULL_SUITE, _ONLY, _CHECK_COMMAND),
+    "it runs the check once, at the end of each dispatch": (
+        _RUNS,
+        _CHECK_COMMAND,
+        re.compile(r"\bonce\b"),
+        re.compile(r"\b(?:end|last|final(?:ly)?)\b"),
+    ),
+    "before that it runs only the task's test and the tests of the code it changes": (
+        _RUNS,
+        _ONLY,
+        re.compile(r"\btask'?s?\b"),
+        _TESTS,
+        _CODE_IT_CHANGES,
+    ),
 }
 
 
@@ -433,6 +454,26 @@ class AgentRunScopeTest(unittest.TestCase):
         Process step 4 ("run the existing tests") and the frontmatter description are outside this rule.
         """
         gaps = _section_rule_gaps(FINDING_VERIFIER, "Rules", _FINDING_VERIFIER_RUN_SCOPE)
+
+        self.assertEqual(gaps, [])
+
+    def test_implementer_runs_the_full_suite_only_in_the_final_check(self) -> None:
+        """R2.4: 002 the `## Process` section of agents/implementer.md, whose steps run the tests and the check, says,
+        each part in one sentence, that it runs the full test suite only inside the project's check command, runs the
+        check once at the end of each dispatch, and before that runs only the task's test and the tests of the code it
+        changes; and no sentence of `## Process` or `## Rules` that runs or reruns a suite leaves out the check.
+
+        Step order, not keywords, places the check after the other runs. Step 5's "Rerun the tests" names no suite, so
+        only the "only" rule narrows it; the GREEN report's `Check:` line is the report format, not an instruction.
+        """
+        gaps = _section_rule_gaps(IMPLEMENTER, "Process", _IMPLEMENTER_RUN_SCOPE)
+        for heading in ("Process", "Rules"):
+            gaps += [
+                f"implementer.md: ## {heading} runs a suite outside the check: {sentence.strip()}"
+                for block in _section_blocks(IMPLEMENTER, heading)
+                for sentence in _sentences(block)
+                if _RUNS_OR_RERUNS.search(sentence) and _SUITE.search(sentence) and not _CHECK_COMMAND.search(sentence)
+            ]
 
         self.assertEqual(gaps, [])
 
