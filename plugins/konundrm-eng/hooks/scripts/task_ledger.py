@@ -7,10 +7,12 @@ while a slice's partitions run in parallel, the first such task of each partitio
 progress (tasks_document.next_tasks). A plan that cannot be read, has no usable base commit or
 names a base Git cannot find is reported as ``<file>:<line>`` on stderr with exit code 2.
 ``message`` writes a task's commit message, ending in the ``Task:`` and ``Rounds:`` trailers that
-task_commits reads back, under the Git directory, so the flow can ``git commit -F`` it.
+task_commits reads back, under the Git directory, so the flow can ``git commit -F`` it; it refuses,
+with exit code 1, a task the plan lacks or one already built.
 
 Sections:
     UnreadablePlanError — the plan cannot answer, and where.
+    RefusedTaskError    — ``message`` will not write for this task, and why.
     status_lines()      — the ``key: value`` lines ``status`` prints.
     write_task_message() — writes a task's commit message under the Git directory.
     main()              — CLI: ``status <tasks.md>`` and ``message <tasks.md> T<n> …``.
@@ -25,12 +27,15 @@ from pathlib import Path
 
 from project_paths import project_root
 from quality_check import green_tree
-from task_commits import GitError, task_commits
-from tasks_document import Task, next_tasks, read_tasks
+from task_commits import GitError, TaskCommit, task_commits, task_key
+from tasks_document import Task, TasksDocument, next_tasks, read_tasks
 from working_tree import git_path, head_tree, snapshot_tree
 
+REFUSED_TASK_EXIT = 1
+"""Exit code when ``message`` refuses a task the plan lacks or one already committed."""
+
 UNREADABLE_PLAN_EXIT = 2
-"""Exit code for a plan ``status`` cannot read; 1 stays for a refused request."""
+"""Exit code, for any subcommand, when the plan cannot be read or names no usable base commit."""
 
 TASK_MESSAGE_FILE = "KONUNDRM_TASK_MSG"
 """Name, under the Git directory, of the commit message ``message`` writes."""
@@ -40,6 +45,13 @@ class UnreadablePlanError(Exception):
     """The plan cannot be read or does not name a usable base commit.
 
     Its message starts with the place to fix: the plan's path, or ``<path>:<line>``.
+    """
+
+
+class RefusedTaskError(Exception):
+    """The task is not in the plan, or a commit after the plan's base already built it.
+
+    Its message starts with the task ID as given and names the plan's path or the commit's SHA.
     """
 
 
@@ -64,6 +76,28 @@ def status_lines(root: Path, plan: Path) -> list[str]:
             at line 1), holds no hex SHA on it, or names a base Git cannot list commits after
             (both reported at that line). Nothing is changed before it is raised.
     """
+    document, commits = _plan_and_task_commits(root, plan)
+    built = [task.id for task in document.tasks if task_key(task.id) in commits]
+    snapshot = snapshot_tree(root)
+    is_clean = snapshot is not None and snapshot == head_tree(root)
+    is_green = snapshot is not None and snapshot == green_tree(root)
+    return [
+        f"feature: {plan.parent.name}",
+        f"plan: {plan.as_posix()}",
+        f"base: {document.base_commit}",
+        f"committed: {', '.join(built) or 'none'}",
+        _next_line(next_tasks(document, set(built))),
+        f"tree: {'clean' if is_clean else 'dirty'}",
+        f"check: {'green for this tree' if is_green else 'not recorded'}",
+    ]
+
+
+def _plan_and_task_commits(root: Path, plan: Path) -> tuple[TasksDocument, dict[str, TaskCommit]]:
+    """Reads the plan and lists the task commits after its base, keyed by task_key().
+
+    Raises:
+        UnreadablePlanError: As documented in status_lines().
+    """
     document = read_tasks(plan)
     if not document.is_readable:
         raise UnreadablePlanError(f"{plan.as_posix()}: cannot read the plan")
@@ -73,22 +107,9 @@ def status_lines(root: Path, plan: Path) -> list[str]:
         problem = "no Base commit line" if document.base_commit_line is None else "Base commit is not a hex SHA"
         raise UnreadablePlanError(f"{base_location}: {problem}")
     try:
-        commits = task_commits(root, base)
+        return document, task_commits(root, base)
     except GitError as error:
         raise UnreadablePlanError(f"{base_location}: base commit {base} is not in this repository") from error
-    built = [task.id for task in document.tasks if task.id in commits]
-    snapshot = snapshot_tree(root)
-    is_clean = snapshot is not None and snapshot == head_tree(root)
-    is_green = snapshot is not None and snapshot == green_tree(root)
-    return [
-        f"feature: {plan.parent.name}",
-        f"plan: {plan.as_posix()}",
-        f"base: {base}",
-        f"committed: {', '.join(built) or 'none'}",
-        _next_line(next_tasks(document, set(built))),
-        f"tree: {'clean' if is_clean else 'dirty'}",
-        f"check: {'green for this tree' if is_green else 'not recorded'}",
-    ]
 
 
 def _next_line(resume_tasks: tuple[Task, ...]) -> str:
@@ -108,7 +129,7 @@ def write_task_message(root: Path, plan: Path, task_id: str, subject: str, round
     Args:
         root: Project root inside the feature's Git repository.
         plan: The feature's tasks.md, absolute or relative to the current directory.
-        task_id: ID of a task in the plan, such as ``T3``.
+        task_id: ID of a task in the plan, such as ``T3``, matched by number (``T03`` is ``T3``).
         subject: The commit's subject line.
         rounds: The Rounds trailer's value, ``spec <n> · code <n> · escalations <n>``.
         body: Paragraphs between the subject and the trailers, or None for none.
@@ -117,16 +138,22 @@ def write_task_message(root: Path, plan: Path, task_id: str, subject: str, round
         The message file's path, ``<git-path KONUNDRM_TASK_MSG>``.
 
     Raises:
-        UnreadablePlanError: When the plan cannot be read or ``root`` is not in a Git repository.
+        UnreadablePlanError: When the plan cannot be read or names no usable base commit (as in
+            status_lines()), or ``root`` is not in a Git repository.
+        RefusedTaskError: When the plan has no such task, or a commit in ``<base>..HEAD``
+            already names it.
 
     Side effects:
-        Overwrites the message file, as UTF-8 with bare line feeds whatever the platform; nothing
+        Unless it raises, overwrites the message file, as UTF-8 with bare line feeds whatever the platform; nothing
         in the working tree changes.
     """
-    document = read_tasks(plan)
-    if not document.is_readable:
-        raise UnreadablePlanError(f"{plan.as_posix()}: cannot read the plan")
-    task = next(task for task in document.tasks if task.id == task_id)
+    document, commits = _plan_and_task_commits(root, plan)
+    key = task_key(task_id)
+    task = next((task for task in document.tasks if task_key(task.id) == key), None)
+    if task is None:
+        raise RefusedTaskError(f"{task_id}: no such task in {plan.as_posix()}")
+    if key in commits:
+        raise RefusedTaskError(f"{task_id}: already committed in {commits[key].sha}")
     path = git_path(root, TASK_MESSAGE_FILE)
     if path is None:
         raise UnreadablePlanError(f"{plan.as_posix()}: not inside a Git repository")
@@ -150,8 +177,10 @@ def main(argv: list[str] | None = None) -> int:
         Every line ends in a bare line feed, so ``msg=$(…)`` keeps no carriage return on Windows.
 
     Returns:
-        0 on success, or ``UNREADABLE_PLAN_EXIT`` (2) with the plan's ``<file>:<line>`` on stderr
-        and nothing on stdout when the plan cannot be read; argparse exits with 2 on a usage error.
+        0 on success; ``REFUSED_TASK_EXIT`` (1) with the reason on stderr when ``message`` refuses
+        an unknown or already committed task; ``UNREADABLE_PLAN_EXIT`` (2) with the plan's
+        ``<file>:<line>`` on stderr when the plan cannot be read. On 1 or 2 nothing reaches stdout
+        and nothing is written. argparse exits with 2 on a usage error.
     """
     for stream in (sys.stdout, sys.stderr):  # Claude Code reads UTF-8; Windows pipes default to a code page
         if hasattr(stream, "reconfigure"):
@@ -180,6 +209,9 @@ def main(argv: list[str] | None = None) -> int:
     except UnreadablePlanError as error:
         sys.stderr.write(f"task_ledger.py: {error}\n")
         return UNREADABLE_PLAN_EXIT
+    except RefusedTaskError as error:
+        sys.stderr.write(f"task_ledger.py: {error}\n")
+        return REFUSED_TASK_EXIT
     sys.stdout.write("".join(f"{line}\n" for line in lines))
     return 0
 

@@ -12,6 +12,7 @@ Sections:
     TASK_TRAILER       — the ``Task: T<n>`` line, shared with the impact report.
     GitError           — Git could not list the range.
     TaskCommit         — one task's commit and its review rounds.
+    task_key()         — the unpadded ID a plan's task is looked up by.
     task_commits()     — every task's commit in ``<base>..HEAD``.
 """
 
@@ -24,6 +25,7 @@ from pathlib import Path
 from working_tree import run_git
 
 TASK_TRAILER = re.compile(r"(?m)^Task: T0*(?P<number>\d+)(?= |$)")
+_TASK_ID = re.compile(r"T0*(?P<number>\d+)")
 ROUNDS_TRAILER = re.compile(r"(?m)^Rounds: spec (?P<spec>\d+) · code (?P<code>\d+) · escalations (?P<escalations>\d+)")
 
 
@@ -45,6 +47,20 @@ class TaskCommit:
     task_id: str
     sha: str
     rounds: tuple[int, int, int] | None
+
+
+def task_key(task_id: str) -> str:
+    """Gives the key task_commits() files a task under, so a plan's ``T02`` finds a ``Task: T2`` commit.
+
+    Args:
+        task_id: A task ID as written in a plan or typed by a person, such as ``T02``.
+
+    Returns:
+        ``T<n>`` without zero padding (``"T2"``), or ``task_id`` unchanged when it is not ``T``
+        followed by digits, so it matches no commit.
+    """
+    match = _TASK_ID.fullmatch(task_id)
+    return f"T{int(match['number'])}" if match else task_id
 
 
 def task_commits(root: Path, base: str) -> dict[str, TaskCommit]:
@@ -72,7 +88,7 @@ def task_commits(root: Path, base: str) -> dict[str, TaskCommit]:
         task_line = TASK_TRAILER.search(message)
         if task_line is None:
             continue
-        task_id = f"T{int(task_line['number'])}"
+        task_id = task_key(f"T{task_line['number']}")
         if task_id not in found:
             found[task_id] = TaskCommit(task_id, sha, _rounds(message))
     return found

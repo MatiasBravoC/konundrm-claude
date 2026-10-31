@@ -150,11 +150,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: T8
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T12** `message` rechaza una tarea que no existe o que ya tiene commit, sin escribir nada · `behavior` · Risk: low · Covers: R4.4
+- [x] **T12** `message` rechaza una tarea que no existe o que ya tiene commit, sin escribir nada · `behavior` · Risk: low · Covers: R4.4
   - Test: `P/hooks/tests/test_task_ledger.py::test_message_refuses_an_unknown_or_already_committed_task`
   - Files: `P/hooks/scripts/task_ledger.py`
   - Verify: `... -k test_message_refuses_an_unknown_or_already_committed_task`
   - Depends on: T11
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T13** `close-slice` marca las casillas y escribe las rondas de las tareas commiteadas del slice, conservando los finales de línea · `behavior` · Risk: medium · Covers: R2.8, R4.5
   - Test: `P/hooks/tests/test_task_ledger.py::test_close_slice_checks_boxes_and_writes_rounds_from_the_commits` (CRLF y LF; una tarea sin commit queda sin marcar y se informa; una línea `Rounds:` existente se reemplaza)

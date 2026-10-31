@@ -344,6 +344,90 @@ class MessageTest(LedgerRepositoryTest):
             {"T2": (first_sha, (1, 2, 0)), "T3": (second_sha, (1, 2, 0))},
         )
 
+    def run_message(self, *args: str) -> subprocess.CompletedProcess[bytes]:
+        """Run `message` from the repository root without asserting how it ended."""
+        return subprocess.run(
+            [sys.executable, str(TASK_LEDGER), "message", PLAN_PATH, *args],
+            cwd=self.root,
+            env=self.environment,
+            capture_output=True,
+            check=False,
+        )
+
+    # R4.4: a task the plan lacks, or one a commit after the base already names (matched by number,
+    # so `**T02**` is the `Task: T2` commit, as status counts it), is refused with exit 1, nothing on
+    # stdout for `msg=$(…)`, a reason naming the task and the plan or the commit, and nothing
+    # changed: no message file created or rewritten, the working tree as it was. A `Task:` commit
+    # before the base is an earlier feature's and does not count.
+    def test_message_refuses_an_unknown_or_already_committed_task(self) -> None:
+        (self.root / "README.md").write_text("previous feature\n", encoding="utf-8")
+        commit(self.root, "feat: an earlier feature's task\n\nTask: T1 · Covers: R9.9\n")
+        base = commit(self.root, "chore: start the feature branch\n")
+        plan = self.root / PLAN_PATH
+        plan.parent.mkdir(parents=True)
+        plan.write_text(
+            "# Tasks: efficient feature flow\n"
+            "\n"
+            "- **Status:** Approved\n"
+            f"- **Base commit:** `{base}`\n"
+            "\n"
+            "## Slice S4: the commit message\n"
+            "\n"
+            "- [ ] **T1** status reads the plan · `behavior` · Risk: low · Covers: R4.1\n"
+            "- [ ] **T02** message refuses a committed task · `behavior` · Risk: low · Covers: R4.4\n"
+            "- [ ] **T3** status reads the check · `behavior` · Risk: low · Covers: R4.1\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        commit(self.root, "docs(specs): add spec and plan\n")
+        (self.root / "T2.txt").write_text("T2\n", encoding="utf-8")
+        committed_sha = commit(self.root, "feat: build T2\n\nTask: T2 · Covers: R4.4\n")
+        (self.root / "work_in_progress.py").write_text("# the next task's change\n", encoding="utf-8")
+        message_file = (self.root / git(self.root, "rev-parse", "--git-path", "KONUNDRM_TASK_MSG")).resolve()
+        rounds = ("--subject", "feat(hooks): a task", "--rounds", "spec 1 · code 1 · escalations 0")
+        refusals = {
+            "unknown task": ("T9", PLAN_PATH),
+            "committed after the base, written T02": ("T02", committed_sha[:7]),
+        }
+
+        def assert_refused(task_id: str, named: str) -> None:
+            before = (plan.read_bytes(), git(self.root, "status", "--porcelain"), snapshot_tree(self.root))
+            file_before = message_file.read_bytes() if message_file.exists() else None
+
+            completed = self.run_message(task_id, *rounds)
+
+            stderr = completed.stderr.decode("utf-8", "replace")
+            self.assertEqual(completed.returncode, 1, stderr)
+            self.assertNotIn("Traceback", stderr)
+            self.assertEqual(completed.stdout.decode("utf-8", "replace"), "")
+            self.assertIn(task_id, stderr)
+            self.assertIn(named, stderr)
+            self.assertEqual(message_file.read_bytes() if message_file.exists() else None, file_before)
+            after = (plan.read_bytes(), git(self.root, "status", "--porcelain"), snapshot_tree(self.root))
+            self.assertEqual(after, before)
+
+        for case, (task_id, named) in refusals.items():
+            with self.subTest(f"{case}, no message file yet"):
+                assert_refused(task_id, named)
+                self.assertFalse(message_file.exists())
+        with self.subTest("committed before the base only: accepted"):
+            accepted = self.message_leaving_the_tree_alone("T1", *rounds)
+            self.assertEqual(Path(self.root, accepted).resolve(), message_file)
+        for case, (task_id, named) in refusals.items():
+            with self.subTest(f"{case}, after an accepted call wrote the file"):
+                assert_refused(task_id, named)
+        with self.subTest("status counts T02 as committed too"):
+            status = subprocess.run(
+                [sys.executable, str(TASK_LEDGER), "status", PLAN_PATH],
+                cwd=self.root,
+                env=self.environment,
+                capture_output=True,
+                check=False,
+            )
+            stdout = status.stdout.decode("utf-8", "replace")
+            self.assertEqual(status.returncode, 0, status.stderr.decode("utf-8", "replace"))
+            self.assertEqual(line_value(stdout, "committed").replace(",", " ").split(), ["T02"])
+
 
 if __name__ == "__main__":
     unittest.main()
