@@ -248,12 +248,13 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: T21
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T23** La auditoría restaura el cambio de un revisor con otros revisores corriendo, terminen en el orden que terminen · `behavior` · Risk: medium · Covers: R3.6
+- [x] **T23** La auditoría restaura el cambio de un revisor con otros revisores corriendo, terminen en el orden que terminen · `behavior` · Risk: medium · Covers: R3.6
   - Test: `P/hooks/tests/test_audit_subagent_changes.py::test_restores_a_reviewers_change_whatever_order_concurrent_reviewers_stop`
   - Files: `P/hooks/scripts/audit_subagent_changes.py` (modify only if the test fails)
   - Invariants: con dos revisores iniciados antes del cambio, el archivo vuelve a su estado inicial en los dos órdenes de término.
   - Verify: `... -k test_restores_a_reviewers_change_whatever_order_concurrent_reviewers_stop`
   - Depends on: T20
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 

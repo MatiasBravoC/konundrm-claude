@@ -7,11 +7,13 @@ import io
 import json
 import os
 import random
+import shlex
 import subprocess
 import sys
 import tempfile
 import unittest
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -23,6 +25,16 @@ from hook_state import SubagentRecord
 from working_tree import snapshot_tree
 
 IMPLEMENTER = "konundrm-eng:implementer"
+SPEC_REVIEWER = "konundrm-eng:spec-reviewer"
+CODE_REVIEWER = "konundrm-eng:code-reviewer"
+SECURITY_REVIEWER = "konundrm-eng:security-reviewer"
+REVIEWER_TYPES = (SPEC_REVIEWER, CODE_REVIEWER, SECURITY_REVIEWER)
+SEED_FILES = {
+    "README.md": b"seed\n",
+    "src/app.py": b"VALUE = 1\n",
+    "src/util.py": b"def helper():\n    return 1\n",
+    "tests/test_app.py": b"def test_app():\n    pass\n",
+}
 CHANGE_KINDS = ("none", "violation", "allowed")
 OTHER_CHECKOUT = {"main": "worktree", "worktree": "main"}
 
@@ -129,6 +141,234 @@ class AuditRootTest(unittest.TestCase):
                 self.assertEqual(_file_contents(main), before_main)
                 self.assertEqual(_file_contents(worktree), before_worktree)
                 self.assertIsNone(SubagentRecord("session-t70", "agent-0").role)
+
+
+class ConcurrentReviewersTest(unittest.TestCase):
+    def test_restores_a_reviewers_change_whatever_order_concurrent_reviewers_stop(self) -> None:
+        # R3.6: two reviewers start before one of them changes a file. Whichever stops first sees
+        # the change and is blocked; once it stops again the hook restores the file, so the tree
+        # ends as it was before both started, in either order of stopping.
+        with _reviewer_repository() as (root, _):
+            for number, (change, changer_stops_first) in enumerate(
+                [("modify", True), ("modify", False), ("create", True), ("create", False)]
+            ):
+                with self.subTest(change=change, changer_stops_first=changer_stops_first):
+                    changer = (f"agent-spec-{number}", SPEC_REVIEWER)
+                    other = (f"agent-code-{number}", CODE_REVIEWER)
+                    before = _file_contents(root)
+                    for agent_id, agent_type in (changer, other):
+                        _run_hook(on_start, _reviewer_event("SubagentStart", agent_id, agent_type, root))
+                    _make_reviewer_change(root, change, number)
+
+                    stop_order = [changer, other] if changer_stops_first else [other, changer]
+                    first_stops = [
+                        _stop_until_allowed(agent_id, agent_type, root) for agent_id, agent_type in stop_order
+                    ]
+
+                    self.assertTrue(first_stops[0])  # the first stop saw the change and was blocked
+                    self.assertEqual(_file_contents(root), before)
+                    for agent_id, _ in (changer, other):
+                        self.assertIsNone(SubagentRecord("session-t70", agent_id).role)
+
+    def test_concurrent_reviewers_leave_the_tree_as_it_started_in_any_stop_order(self) -> None:
+        # R3.6, T23 invariant: whatever reviewers run together, whichever of them makes the changes
+        # (modify, create or delete, anywhere in the tree) and whatever order they stop in, every
+        # file ends as it was before they started and no reviewer's record is left behind. The
+        # generator makes every change before the first stop and retries a blocked stop at once;
+        # the explicit tests below cover the shapes it leaves out.
+        with _reviewer_repository() as (root, git_env):
+            for seed in range(6):  # about 0.6 s per seed; this suite runs in every check
+                scenario = _generate_reviewer_scenario(seed)
+                with self.subTest(seed=seed, scenario=scenario):
+                    if _file_contents(root) != SEED_FILES:  # an earlier failed seed left changes behind
+                        _git(["checkout", "--", "."], root, git_env)
+                        _git(["clean", "-fdq"], root, git_env)
+                    before = _file_contents(root)
+                    for agent_id, agent_type in scenario.reviewers:
+                        _run_hook(on_start, _reviewer_event("SubagentStart", agent_id, agent_type, root))
+                    for _, kind, path in scenario.changes:
+                        _apply_change(root, kind, path)
+
+                    first_stops = [_stop_until_allowed(*scenario.reviewers[index], root) for index in scenario.stops]
+
+                    self.assertTrue(first_stops[0])  # every scenario makes at least one change
+                    self.assertEqual(_file_contents(root), before)
+                    for agent_id, _ in scenario.reviewers:
+                        self.assertIsNone(SubagentRecord("session-t70", agent_id).role)
+
+    def test_a_blocked_reviewer_that_follows_the_restore_instructions_is_not_blocked_again(self) -> None:
+        # R3.6, shape the T23 generator leaves out: the blocked reviewer runs the commands the
+        # block message lists instead of leaving the restore to the hook, while another reviewer
+        # is still running. Its next stop and the other reviewer's stop pass without a block.
+        with _reviewer_repository() as (root, git_env):
+            changer, other = ("agent-follows", SPEC_REVIEWER), ("agent-other", SECURITY_REVIEWER)
+            before = _file_contents(root)
+            for agent_id, agent_type in (changer, other):
+                _run_hook(on_start, _reviewer_event("SubagentStart", agent_id, agent_type, root))
+            _apply_change(root, "modify", "src/app.py")
+            _apply_change(root, "create", "tests/test_note.py")
+            _apply_change(root, "delete", "README.md")
+
+            blocked = _run_hook(on_stop, _reviewer_event("SubagentStop", *changer, root))
+            _follow_restore_instructions(root, git_env, blocked["reason"])
+            retry = _run_hook(on_stop, _reviewer_event("SubagentStop", *changer, root))
+            other_stop = _run_hook(on_stop, _reviewer_event("SubagentStop", *other, root))
+
+            self.assertEqual(blocked["decision"], "block")
+            self.assertEqual((retry, other_stop), ({}, {}))
+            self.assertEqual(_file_contents(root), before)
+            for agent_id, _ in (changer, other):
+                self.assertIsNone(SubagentRecord("session-t70", agent_id).role)
+
+    def test_restores_a_change_made_after_another_concurrent_reviewer_already_stopped(self) -> None:
+        # R3.6, shape the T23 generator leaves out: one of three reviewers stops cleanly, then a
+        # second one changes files while the third still runs. The next stop is blocked and the
+        # tree ends as it started.
+        with _reviewer_repository() as (root, _):
+            early, changer, late = (
+                ("agent-early", CODE_REVIEWER),
+                ("agent-changer", SPEC_REVIEWER),
+                ("agent-late", SECURITY_REVIEWER),
+            )
+            before = _file_contents(root)
+            for agent_id, agent_type in (early, changer, late):
+                _run_hook(on_start, _reviewer_event("SubagentStart", agent_id, agent_type, root))
+            early_blocked = _stop_until_allowed(*early, root)
+            _apply_change(root, "modify", "tests/test_app.py")
+            _apply_change(root, "create", "notes.md")
+
+            first_stops = [_stop_until_allowed(*late, root), _stop_until_allowed(*changer, root)]
+
+            self.assertFalse(early_blocked)
+            self.assertEqual(first_stops, [True, False])
+            self.assertEqual(_file_contents(root), before)
+            for agent_id, _ in (early, changer, late):
+                self.assertIsNone(SubagentRecord("session-t70", agent_id).role)
+
+    def test_restores_when_another_reviewer_stops_between_a_blocked_stop_and_its_retry(self) -> None:
+        # R3.6, shape the T23 generator leaves out: the blocked reviewer does not stop again at
+        # once; the other reviewer stops first and is blocked by the same change. Both retries
+        # pass and the tree ends as it started.
+        with _reviewer_repository() as (root, _):
+            changer, other = ("agent-changer", CODE_REVIEWER), ("agent-other", SPEC_REVIEWER)
+            before = _file_contents(root)
+            for agent_id, agent_type in (changer, other):
+                _run_hook(on_start, _reviewer_event("SubagentStart", agent_id, agent_type, root))
+            _apply_change(root, "delete", "src/util.py")
+
+            first = [_run_hook(on_stop, _reviewer_event("SubagentStop", *agent, root)) for agent in (changer, other)]
+            _run_hook(on_stop, _reviewer_event("SubagentStop", *changer, root))
+            _run_hook(on_stop, _reviewer_event("SubagentStop", *other, root))
+
+            self.assertEqual([output.get("decision") for output in first], ["block", "block"])
+            self.assertEqual(_file_contents(root), before)
+            for agent_id, _ in (changer, other):
+                self.assertIsNone(SubagentRecord("session-t70", agent_id).role)
+
+
+@dataclass(frozen=True)
+class ReviewerScenario:
+    """One generated T23 case: the reviewers, the changes (reviewer index, kind, path) and the stop order."""
+
+    reviewers: list[tuple[str, str]]
+    changes: list[tuple[int, str, str]]
+    stops: list[int]
+
+
+def _generate_reviewer_scenario(seed: int) -> ReviewerScenario:
+    """Draws 2-3 reviewers that all start before 1-3 changes, then a random order for their stops."""
+    rng = random.Random(seed)  # noqa: S311 - seeded for reproducible test data, not cryptography
+    count = rng.randint(2, 3)
+    reviewers = [(f"agent-s{seed}-r{index}", rng.choice(REVIEWER_TYPES)) for index in range(count)]
+    present = sorted(SEED_FILES)
+    changes = []
+    for number in range(rng.randint(1, 3)):
+        kind, directory = rng.choice(("modify", "create", "delete")), rng.choice(("src", "tests", ""))
+        tracked = [path for path in present if path.rpartition("/")[0] == directory]
+        if kind == "create" or not tracked:
+            kind, path = "create", f"{directory}/created_{seed}_{number}.py".lstrip("/")
+        else:
+            path = rng.choice(tracked)
+            if kind == "delete":
+                present.remove(path)
+        changes.append((rng.randrange(count), kind, path))
+    return ReviewerScenario(reviewers, changes, rng.sample(range(count), count))
+
+
+def _apply_change(root: Path, kind: str, path: str) -> None:
+    """Makes one reviewer change: appends to a tracked file, creates a new one or deletes a tracked one."""
+    target = root / path
+    if kind == "modify":
+        with target.open("ab") as changed:
+            changed.write(b"# edited by a reviewer\n")
+    elif kind == "create":
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"CREATED = True\n")
+    else:
+        target.unlink()
+
+
+def _follow_restore_instructions(root: Path, git_env: dict[str, str], reason: str) -> None:
+    """Runs each `git restore` and `rm` command a block message lists, as an obedient subagent would."""
+    for line in reason.splitlines():
+        command = shlex.split(line)
+        if command[:2] == ["git", "restore"]:
+            _git(command[1:], root, git_env)
+        elif command[:1] == ["rm"]:
+            (root / command[-1]).unlink()
+
+
+@contextlib.contextmanager
+def _reviewer_repository() -> Iterator[tuple[Path, dict[str, str]]]:
+    """Yields a committed repository and its Git environment, with hook state isolated in a temporary directory."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp).resolve() / "repo"
+        git_env = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(root.parent / "no-global-gitconfig")}
+        _make_repository(root, git_env)
+        hook_env = {**git_env, "CLAUDE_PLUGIN_DATA": str(root.parent / "plugin-data")}
+        with mock.patch.dict(os.environ, hook_env):
+            os.environ.pop("CLAUDE_PROJECT_DIR", None)  # each event's cwd resolves the repository
+            yield root, git_env
+
+
+def _reviewer_event(name: str, agent_id: str, agent_type: str, cwd: Path) -> dict[str, Any]:
+    """Builds a SubagentStart or SubagentStop event for one reviewer subagent."""
+    return {
+        "hook_event_name": name,
+        "session_id": "session-t70",
+        "agent_id": agent_id,
+        "agent_type": agent_type,
+        "cwd": str(cwd),
+    }
+
+
+def _stop_until_allowed(agent_id: str, agent_type: str, root: Path) -> bool:
+    """Stops a reviewer, and stops it again when the first stop is blocked; returns whether it was blocked."""
+    first = _run_hook(on_stop, _reviewer_event("SubagentStop", agent_id, agent_type, root))
+    was_blocked = first.get("decision") == "block"
+    if was_blocked:
+        _run_hook(on_stop, _reviewer_event("SubagentStop", agent_id, agent_type, root))
+    return was_blocked
+
+
+def _make_reviewer_change(root: Path, change: str, number: int) -> None:
+    """Changes the checkout as a misbehaving reviewer would: edits a tracked file or creates a new one."""
+    if change == "modify":
+        with (root / "src" / "app.py").open("ab") as app:
+            app.write(f"# edited by reviewer {number}\n".encode())
+    else:
+        (root / "src" / f"reviewer_note_{number}.py").write_bytes(f"NOTE = {number}\n".encode())
+
+
+def _make_repository(root: Path, env: dict[str, str]) -> None:
+    """Creates a repository at root with one commit of SEED_FILES: root, production and test files."""
+    root.mkdir()
+    _git(["init", "-q", "-b", "main"], root, env)
+    for relative, content in SEED_FILES.items():
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_bytes(content)
+    _git(["add", "--all"], root, env)
+    _git(["commit", "-q", "-m", "seed"], root, env)
 
 
 def _event(name: str, number: int, cwd: Path) -> dict[str, Any]:
