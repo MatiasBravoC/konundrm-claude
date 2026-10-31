@@ -297,29 +297,33 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S8: la pausa cierra el slice y la feature sigue en una sesión nueva
 
-- [ ] **T27** La pausa del slice corre `close-slice` y lleva su resultado en el commit del resumen · `behavior` · Risk: low · Covers: R2.8, R4.5
+- [x] **T27** La pausa del slice corre `close-slice` y lleva su resultado en el commit del resumen · `behavior` · Risk: low · Covers: R2.8, R4.5
   - Test: `P/hooks/tests/contract/test_flows.py::test_slice_checkpoint_closes_the_slice_in_the_summary_commit`
   - Files: `P/skills/develop-feature/SKILL.md` (Slice checkpoint)
   - Verify: `... -k test_slice_checkpoint_closes_the_slice_in_the_summary_commit`
   - Depends on: T13
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T28** Al terminar la pausa, la feature sigue en una sesión nueva: la app la abre; si no, queda el comando exacto · `behavior` · Risk: low · Covers: R1.1, R1.2, R1.3
+- [x] **T28** Al terminar la pausa, la feature sigue en una sesión nueva: la app la abre; si no, queda el comando exacto · `behavior` · Risk: low · Covers: R1.1, R1.2, R1.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_feature_continues_in_a_new_session_after_each_slice`
   - Files: `P/skills/develop-feature/SKILL.md` (Slice checkpoint, Phase 4 handoff)
   - Verify: `... -k test_feature_continues_in_a_new_session_after_each_slice`
   - Depends on: T27
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T29** Con cambios sin commitear, la pausa se detiene con `BLOCKED:` nombrando los archivos, sin abrir la sesión nueva · `behavior` · Risk: low · Covers: R1.6
+- [x] **T29** Con cambios sin commitear, la pausa se detiene con `BLOCKED:` nombrando los archivos, sin abrir la sesión nueva · `behavior` · Risk: low · Covers: R1.6
   - Test: `P/hooks/tests/contract/test_flows.py::test_handoff_stops_on_uncommitted_changes`
   - Files: `P/skills/develop-feature/SKILL.md`
   - Verify: `... -k test_handoff_stops_on_uncommitted_changes`
   - Depends on: T28
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T30** Con `Sessions: single` la feature sigue en la misma sesión, y la plantilla del plan trae esa línea · `behavior` · Risk: low · Covers: R1.7
+- [x] **T30** Con `Sessions: single` la feature sigue en la misma sesión, y la plantilla del plan trae esa línea · `behavior` · Risk: low · Covers: R1.7
   - Test: `P/hooks/tests/contract/test_flows.py::test_sessions_single_keeps_the_feature_in_one_session`
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/writing-plans/templates/tasks.md` (modify)
   - Verify: `... -k test_sessions_single_keeps_the_feature_in_one_session`
   - Depends on: T28
+  - Rounds: spec 2 · code 2 · escalations 0
 
 ### Partitions
 
