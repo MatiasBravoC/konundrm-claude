@@ -143,11 +143,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S4: mensaje del commit de tarea, contabilidad de la pausa y arranque de sesión por commits
 
-- [ ] **T11** `message` arma el mensaje con el asunto, `Task: T<n> · Covers: …` del plan y `Rounds:`, lo escribe bajo el directorio de Git e imprime su ruta · `behavior` · Risk: low · Covers: R4.2, R2.7
+- [x] **T11** `message` arma el mensaje con el asunto, `Task: T<n> · Covers: …` del plan y `Rounds:`, lo escribe bajo el directorio de Git e imprime su ruta · `behavior` · Risk: low · Covers: R4.2, R2.7
   - Test: `P/hooks/tests/test_task_ledger.py::test_message_builds_the_task_commit_message_from_the_plan`
   - Files: `P/hooks/scripts/task_ledger.py`
   - Verify: `... -k test_message_builds_the_task_commit_message_from_the_plan`
   - Depends on: T8
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T12** `message` rechaza una tarea que no existe o que ya tiene commit, sin escribir nada · `behavior` · Risk: low · Covers: R4.4
   - Test: `P/hooks/tests/test_task_ledger.py::test_message_refuses_an_unknown_or_already_committed_task`

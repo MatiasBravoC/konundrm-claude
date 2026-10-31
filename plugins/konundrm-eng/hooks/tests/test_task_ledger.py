@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import quality_check
+from task_commits import task_commits
 from working_tree import snapshot_tree
 
 TASK_LEDGER = Path(__file__).resolve().parents[1] / "scripts" / "task_ledger.py"
@@ -66,7 +67,9 @@ def line_value(output: str, key: str) -> str:
 
 
 @unittest.skipIf(shutil.which("git") is None, "Git is not installed")
-class StatusTest(unittest.TestCase):
+class LedgerRepositoryTest(unittest.TestCase):
+    """A temporary repository and the environment every task_ledger.py call runs under."""
+
     def setUp(self) -> None:
         repository = tempfile.TemporaryDirectory()
         self.addCleanup(repository.cleanup)
@@ -87,6 +90,8 @@ class StatusTest(unittest.TestCase):
         self.environment = {key: value for key, value in os.environ.items() if key.upper() not in dropped}
         self.environment |= {"PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0", "LC_ALL": "C"}
 
+
+class StatusTest(LedgerRepositoryTest):
     def run_status(self) -> subprocess.CompletedProcess[bytes]:
         return subprocess.run(
             [sys.executable, str(TASK_LEDGER), "status", PLAN_PATH],
@@ -231,6 +236,113 @@ class StatusTest(unittest.TestCase):
                 self.assertEqual(plan.exists(), text is not None)
                 self.assertEqual(plan.read_bytes() if text is not None else None, plan_bytes)
                 self.assertEqual(git(self.root, "status", "--porcelain"), porcelain)
+
+
+class MessageTest(LedgerRepositoryTest):
+    def message(self, *args: str) -> str:
+        """Run `message` from the repository root and return the path it prints, as `msg=$(…)` takes it."""
+        completed = subprocess.run(
+            [sys.executable, str(TASK_LEDGER), "message", PLAN_PATH, *args],
+            cwd=self.root,
+            env=self.environment,
+            capture_output=True,
+            check=False,
+        )
+        stdout = completed.stdout.decode("utf-8", "replace")
+        self.assertEqual(completed.returncode, 0, f"{stdout}\n{completed.stderr.decode('utf-8', 'replace')}")
+        printed = stdout.removesuffix("\n")
+        self.assertTrue(printed, "message printed no path")
+        self.assertNotIn("\n", printed, f"stdout must be exactly one line: {stdout!r}")
+        self.assertNotIn("\r", printed, f"stdout must be exactly one line: {stdout!r}")
+        return printed
+
+    def message_leaving_the_tree_alone(self, *args: str) -> str:
+        """Run `message` and check it changed nothing in the working tree (R2.7: not even the plan)."""
+        plan = self.root / PLAN_PATH
+        before = (plan.read_bytes(), git(self.root, "status", "--porcelain"), snapshot_tree(self.root))
+        printed = self.message(*args)
+        after = (plan.read_bytes(), git(self.root, "status", "--porcelain"), snapshot_tree(self.root))
+        self.assertEqual(after, before)
+        return printed
+
+    def commit_with(self, printed: str) -> str:
+        """Commit as the orchestrator does (add everything, then commit -F the printed path) from the root."""
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-q", "-F", printed)
+        return git(self.root, "rev-parse", "HEAD")
+
+    # R4.2, R2.7: one call builds the task's commit message (subject, optional body, then a final
+    # paragraph that is Git's trailer block: the Task line with the covers that end the plan's line,
+    # and the Rounds line), writes it under the Git directory as UTF-8 and prints only its path.
+    # A second call overwrites the file, and neither call touches the working tree.
+    def test_message_builds_the_task_commit_message_from_the_plan(self) -> None:
+        base = commit(self.root, "chore: start the feature branch\n")
+        plan = self.root / PLAN_PATH
+        plan.parent.mkdir(parents=True)
+        plan.write_text(
+            "# Tasks: efficient feature flow\n"
+            "\n"
+            "- **Status:** Approved\n"
+            f"- **Base commit:** `{base}`\n"
+            "\n"
+            "## Slice S4: the commit message\n"
+            "\n"
+            "- [ ] **T1** status reads the plan · `behavior` · Risk: low · Covers: R4.1\n"
+            # The title quotes a Task line itself, as this feature's real T11 does: the covers must
+            # come from the field that ends the line.
+            "- [ ] **T2** `message` arma el mensaje con el asunto, `Task: T<n> · Covers: …` del plan y "
+            "`Rounds:`, lo escribe bajo el directorio de Git e imprime su ruta · `behavior` · Risk: low · "
+            "Covers: R4.2, R2.7\n"
+            "- [ ] **T3** status reads the check · `behavior` · Risk: low · Covers: R4.1\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        commit(self.root, "docs(specs): add spec and plan\n")
+        rounds = "spec 1 · code 2 · escalations 0"
+        expected_with_body = (
+            "feat(hooks): build the task commit message\n"
+            "\n"
+            "Reads the covers from the plan.\n"
+            "Writes the message under the Git directory.\n"
+            "\n"
+            "Task: T2 · Covers: R4.2, R2.7\n"
+            "Rounds: spec 1 · code 2 · escalations 0"
+        )
+        expected_without_body = (
+            "feat(hooks): read the check in status\n\nTask: T3 · Covers: R4.1\nRounds: spec 1 · code 2 · escalations 0"
+        )
+        message_file = (self.root / git(self.root, "rev-parse", "--git-path", "KONUNDRM_TASK_MSG")).resolve()
+
+        (self.root / "T2.txt").write_text("T2\n", encoding="utf-8")
+        first_path = self.message_leaving_the_tree_alone(
+            "T2",
+            "--subject",
+            "feat(hooks): build the task commit message",
+            "--rounds",
+            rounds,
+            "--body",
+            "Reads the covers from the plan.\nWrites the message under the Git directory.",
+        )
+        first_text = Path(self.root, first_path).read_bytes().decode("utf-8")
+        first_sha = self.commit_with(first_path)
+        (self.root / "T3.txt").write_text("T3\n", encoding="utf-8")
+        second_path = self.message_leaving_the_tree_alone(
+            "T3", "--subject", "feat(hooks): read the check in status", "--rounds", rounds
+        )
+        second_text = Path(self.root, second_path).read_bytes().decode("utf-8")
+        second_sha = self.commit_with(second_path)
+
+        self.assertEqual(Path(self.root, first_path).resolve(), message_file)
+        self.assertEqual(Path(self.root, second_path).resolve(), message_file)
+        self.assertEqual(first_text.removesuffix("\n"), expected_with_body)
+        self.assertEqual(second_text.removesuffix("\n"), expected_without_body)
+        self.assertEqual(git(self.root, "log", "-1", "--format=%B", first_sha), expected_with_body)
+        self.assertEqual(git(self.root, "log", "-1", "--format=%B", second_sha), expected_without_body)
+        found = task_commits(self.root, base)
+        self.assertEqual(
+            {task_id: (found[task_id].sha, found[task_id].rounds) for task_id in found},
+            {"T2": (first_sha, (1, 2, 0)), "T3": (second_sha, (1, 2, 0))},
+        )
 
 
 if __name__ == "__main__":

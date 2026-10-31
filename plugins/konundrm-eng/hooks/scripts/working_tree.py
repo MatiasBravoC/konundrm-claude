@@ -7,6 +7,7 @@ Taking one writes blob and tree objects into the repository's object database (a
 
 Sections:
     run_git()        — runs one Git command with a timeout; the hooks' shared Git runner.
+    git_path()       — where a file under the repository's Git directory lives.
     snapshot_tree()  — the working tree's content as a tree SHA.
     head_tree()      — the last commit's tree, or the empty tree before the first commit.
     changed_paths()  — files added, modified or deleted between two snapshots.
@@ -51,6 +52,23 @@ def run_git(args: list[str], root: Path, env: dict[str, str] | None = None, stdi
     return completed.stdout if completed.returncode == 0 else None
 
 
+def git_path(root: Path, name: str) -> Path | None:
+    """Locates a file under the repository's Git directory, as ``git rev-parse --git-path`` does.
+
+    Args:
+        root: Directory inside the repository; a relative answer from Git is joined to it.
+        name: Path inside the Git directory, such as ``index``.
+
+    Returns:
+        The file's path (it need not exist), or None outside a Git repository or when Git fails.
+    """
+    output = run_git(["rev-parse", "--git-path", name], root)
+    if output is None:
+        return None
+    # Git answers relative to the directory it ran in, or absolute (linked worktrees).
+    return root / output.decode("utf-8", errors="replace").strip()
+
+
 def snapshot_tree(root: Path) -> str | None:
     """Records the working tree's current content as a Git tree object.
 
@@ -63,12 +81,9 @@ def snapshot_tree(root: Path) -> str | None:
     Returns:
         The tree SHA, or None outside a Git repository or when Git fails.
     """
-    index_location = run_git(["rev-parse", "--git-path", "index"], root)
-    if index_location is None:
+    real_index = git_path(root, "index")
+    if real_index is None:
         return None
-    real_index = Path(index_location.decode("utf-8", errors="replace").strip())
-    if not real_index.is_absolute():
-        real_index = root / real_index
 
     handle, temporary_index = tempfile.mkstemp(prefix="konundrm-index-")
     os.close(handle)

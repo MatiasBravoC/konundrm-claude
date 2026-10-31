@@ -27,7 +27,7 @@ from pathlib import Path
 
 from hook_state import SessionState
 from project_paths import project_root
-from working_tree import run_git
+from working_tree import git_path
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -191,14 +191,6 @@ def run_command(command: str, cwd: Path, timeout: int = CHECK_TIMEOUT_SECONDS) -
     return completed.returncode, "\n".join(output.splitlines()[-OUTPUT_TAIL_LINES:])
 
 
-def _green_tree_path(root: Path) -> Path | None:
-    output = run_git(["rev-parse", "--git-path", GREEN_TREE_FILE], root)
-    if output is None:
-        return None
-    # Git answers relative to the directory it ran in, or absolute (linked worktrees).
-    return root / output.decode("utf-8", errors="replace").strip()
-
-
 def remember_green_tree(root: Path, tree: str | None) -> None:
     """Records, under the repository's Git directory, the tree whose check just passed.
 
@@ -214,7 +206,7 @@ def remember_green_tree(root: Path, tree: str | None) -> None:
         Writes or deletes ``<git-path konundrm-eng-green>``. A filesystem error is ignored: a
         missing record only costs one more run of the check.
     """
-    path = _green_tree_path(root)
+    path = git_path(root, GREEN_TREE_FILE)
     if path is None:
         return
     try:
@@ -236,7 +228,7 @@ def green_tree(root: Path) -> str | None:
         The tree object's SHA, or None when no check has passed yet, the record is unreadable
         or ``root`` is not inside a Git repository.
     """
-    path = _green_tree_path(root)
+    path = git_path(root, GREEN_TREE_FILE)
     if path is None:
         return None
     try:
