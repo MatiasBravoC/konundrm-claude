@@ -103,10 +103,11 @@ started you in a Git worktree of your own to build one partition of a parallel w
 ([Parallel partitions](#parallel-partitions)). Resume as in
 step 1, then run Phase 3 for only that partition's tasks, in the order the `### Partitions`
 table of the slice that holds `P<k>` lists them, and skip Phases 1, 2 and 4. Never edit `design.md`, `requirements.md` or another
-partition's tasks: in `tasks.md` you check only your own tasks' boxes and write only their Rounds
-lines. After the last task's commit, write a short report as `specs/<NNN-slug>/evidence/P<k>.md`
-with what the main session needs to integrate you: your branch, each task's commit SHA and subject,
-each task's Rounds line and the Suggestions not applied. Commit it as
+partition's tasks, and check no box nor write any Rounds line in `tasks.md`: commit each of your
+tasks as step 7 does, with `task_ledger.py message`. After the last task's commit, write a short
+report as `specs/<NNN-slug>/evidence/P<k>.md` with what the main session needs to integrate you:
+your branch, each task's commit SHA and subject, each task's rounds (from its commit) and the
+Suggestions not applied. Commit it as
 `docs(<scope>): report partition P<k>` with the last task's `Task:` line, then stop with that
 report. Never push nor open pull requests: the main session integrates your branch. A partition
 session never runs the [Slice checkpoint](#slice-checkpoint): the main session runs it once the
@@ -170,11 +171,11 @@ When the `tasks.md` header says `**Parallel:** yes`, build each wave of two or m
 [Parallel partitions](#parallel-partitions) says. Otherwise build each slice's tasks here, in list
 order.
 
-Keep a tally per task: spec review rounds, code review rounds and escalations. It goes into
-`tasks.md` at the gate. Also count the task's failed reviews in its todo item (a spec review FAIL,
-or a code or security review with a Critical finding no `finding-verifier` refuted), for example
-`T12 · failed: spec 1, code 2`: the fifth, or a third failure of the same review, sends the task to
-[Rethink](#rethink) instead of another fix round.
+Keep a tally per task: spec review rounds, code review rounds and escalations. It goes into the
+task's commit message as `--rounds` at step 7, never into `tasks.md`. Also count the task's failed
+reviews in its todo item (a spec review FAIL, or a code or security review with a Critical finding
+no `finding-verifier` refuted), for example `T12 · failed: spec 1, code 2`: the fifth, or a third
+failure of the same review, sends the task to [Rethink](#rethink) instead of another fix round.
 
 1. **Red** (`behavior` and `property` tasks). Dispatch `test-writer`. Then run the task's verify
    command yourself.
@@ -227,8 +228,7 @@ or a code or security review with a Critical finding no `finding-verifier` refut
      `specs/<NNN-slug>/evidence/T<n>.md`.
    - Any change made in this step (a test added, a fix or an exclusion mark) goes through the
      reviews again as after step 4's fix round (re-review prompt), so nothing lands unreviewed.
-6. **Gate.** In `tasks.md`, check the task's box and add `  - Rounds: spec <n> · code <n> ·
-   escalations <n>` under it. Then run
+6. **Gate.** Run
    `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py status specs/<NNN-slug>/tasks.md` to
    learn whether the check is green for the current tree (a passing check recorded on exactly
    these files, whoever ran it). When `status` shows `check: green for this tree`, go to step 7
@@ -238,10 +238,18 @@ or a code or security review with a Critical finding no `finding-verifier` refut
    and the reviews as after step 4's fix round, take the task through step 5 (verify by risk)
    again, then repeat this step.
 7. **Commit.** Run the `committing-changes` skill in its develop-feature mode: the task's code,
-   tests, evidence and `tasks.md` update land as **one** commit with `Task: T<n> · Covers: R…` in
-   the body, without rerunning the check and without asking about pushing yet. A task is
-   committed only when its spec review and code review, and on `high` tasks its security review,
-   passed on its final code.
+   tests and evidence land as **one** commit, without rerunning the check and without asking
+   about pushing yet. A task is committed only when its spec review and code review, and on
+   `high` tasks its security review, passed on its final code. Commit it in one call, with the
+   task's tally as `--rounds` and the session's co-author trailer as `--trailer`, quoted as
+   `committing-changes` says:
+   `msg=$(sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py message specs/<NNN-slug>/tasks.md T<n> --subject "<type>(<scope>): <summary>" --rounds "spec <n> · code <n> · escalations <n>") && git add -A && git commit -F "$msg" --trailer "Co-Authored-By: …"`.
+   `message` writes the subject, the optional `--body` and the trailers
+   `Task: T<n> · Covers: R…` and `Rounds: …` to a file under the Git directory and prints its
+   path; it commits nothing. The commit is a plain `git commit`, so it goes through the commit
+   gate like any other commit: the hook reuses the green result step 6 left for this tree and
+   denies the commit on red. This commit checks no box and writes no Rounds line in `tasks.md`:
+   the task's rounds live in its commit message.
 
 When the task was the slice's last task and the slice is built here without a parallel wave, run
 the [Slice checkpoint](#slice-checkpoint) before the next slice's first task; a parallel slice runs

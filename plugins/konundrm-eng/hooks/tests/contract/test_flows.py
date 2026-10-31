@@ -2815,6 +2815,62 @@ _GATE_RULES = {
 # Running the check with no condition: "then run the check command", "run the check again", "the full check runs".
 _GATE_RUNS_CHECK = re.compile(r"\b(?:re)?run\w*(?: (?:the|full))* check\b|\bcheck (?:command )?runs?\b")
 
+# R2.7, R4.2, R4.3: a task commits as `git commit -F` of what `task_ledger.py message` writes, never editing tasks.md.
+_TASK_COMMIT_LINE = re.compile(r"\bmsg=\$\(.*\btask_ledger\.py message\b.*--rounds\b.*&& git commit -f \"?\$msg\b")
+_TASK_COMMIT_NAMES = {
+    "task_ledger.py message": re.compile(r"\btask_ledger\.py message\b"),
+    "--rounds": re.compile(r"--rounds\b"),
+    "git commit -F": re.compile(r"\bgit commit -f\b"),
+}
+_TASK_COMMIT_WORD = re.compile(r"\bcommit\w*")
+_TASK_COMMIT_TO_MESSAGE = re.compile(r"\bmessage\b|--rounds\b")
+_TASK_COMMIT_BOX = re.compile(r"\bbox(?:es)?\b")
+_TASK_COMMIT_ROUNDS = re.compile(r"(?<!-)\brounds\b")
+_TASK_COMMIT_GATE = re.compile(r"\bcommit (?:gate|hook)\b")
+_TASK_COMMIT_LIKE_ANY = re.compile(r"\b(?:any|every) other commit\b|\bscript\b")
+_TASK_COMMIT_AS_STEP_7 = re.compile(r"\btask_ledger\.py message\b|\bstep 7\b")
+_TASK_COMMIT_CO_AUTHOR = re.compile(r"\bco-author\w*|\battribution\b")
+_TASK_COMMIT_TRAILER = re.compile(r"--trailer\b")
+_TASK_COMMIT_BODY = re.compile(r"--body\b")
+# Checking a box, writing a Rounds line, or committing (or sending the tally to) a tasks.md update.
+_TASK_COMMIT_LEDGER_EDIT = re.compile(
+    r"\b(?:check|tick|mark)(?:s|ed|ing)?\b(?: \S+){0,4} box(?:es)?\b"
+    r"|\b(?:add|writ|record|put|append)\w*(?: \S+){0,4} rounds(?: lines?\b|:)"
+    r"|\btasks\.md update\b|\bupdat\w*(?: \S+){0,3} tasks\.md\b|\b(?:go|goes|lands?|written) (?:in|into|to) tasks\.md\b"
+)
+_TASK_COMMIT_CLAUSE_BREAK = re.compile(r"[,;:()]")
+# Single quotes keep the shell from expanding the subject and body only when they hold no apostrophe, which would close
+# the quote and leave a backtick span after it to run inside `msg=$(…)`; a quoted heredoc expands nothing either.
+_TASK_COMMIT_SINGLE_QUOTES = re.compile(r"\bsingle[- ]quot")
+_TASK_COMMIT_NO_APOSTROPHE = re.compile(r"\b(?:no|without|never)\b(?: \S+){0,3} (?:'|apostrophes?\b)")
+_TASK_COMMIT_QUOTED_HEREDOC = re.compile(r"<<-? ?'\w+'")
+_TASK_COMMIT_FIX_BUG_INHERITS = re.compile(r"\btask_ledger\b|\bsame as (?:(?:inside|in) )?develop-feature\b")
+# (where, the rule, the patterns one of its sentences must all match). Where: develop-feature's step 7, Phase 3 tally
+# paragraph or Phase 0 partition session paragraph, or committing-changes' `### Inside develop-feature`.
+_TASK_COMMIT_RULES = [
+    ("step 7", 'R4.2 msg=$(task_ledger.py message … --rounds …) && git commit -F "$msg"', (_TASK_COMMIT_LINE,)),
+    ("tally", "R2.7 the rounds go to the task's commit message", (_TASK_COMMIT_WORD, _TASK_COMMIT_TO_MESSAGE)),
+    ("step 7", "R2.7 checks no box, writes no Rounds line", (_NEGATION, _TASK_COMMIT_BOX, _TASK_COMMIT_ROUNDS)),
+    ("step 7", "R4.3 goes through the commit gate like any other commit", (_TASK_COMMIT_GATE, _TASK_COMMIT_LIKE_ANY)),
+    ("partition", "commits its tasks as step 7 or task_ledger.py message", (_TASK_COMMIT_WORD, _TASK_COMMIT_AS_STEP_7)),
+    ("committing-changes", "co-author trailers go on with --trailer", (_TASK_COMMIT_CO_AUTHOR, _TASK_COMMIT_TRAILER)),
+]
+
+
+def _unnegated(sentence: str, pattern: re.Pattern[str]) -> bool:
+    """Return whether a sentence matches a pattern with no negation in the match or earlier in its clause."""
+    return any(
+        not _NEGATION.search(_TASK_COMMIT_CLAUSE_BREAK.split(sentence[: match.start()])[-1] + match.group())
+        for match in pattern.finditer(sentence)
+    )
+
+
+def _subsection_blocks(blocks: list[str], heading: str) -> list[str]:
+    """Return the blocks after a `### ` heading block up to the next `### ` heading, or [] when there is none."""
+    start = blocks.index(heading) + 1 if heading in blocks else len(blocks)
+    end = next((index for index in range(start, len(blocks)) if blocks[index].startswith("### ")), len(blocks))
+    return blocks[start:end]
+
 
 class GateFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
@@ -2841,6 +2897,59 @@ class GateFlowTest(unittest.TestCase):
                 _GATE_RUNS_CHECK.search(clause) and not _NEGATION.search(clause)
                 for clause in _CLAUSE_BREAK.split(sentence)
             )
+        ]
+
+        self.assertEqual(gaps, [])
+
+    def test_task_commit_goes_through_the_gate_with_its_message(self) -> None:
+        """R2.7, R4.2, R4.3: 002 develop-feature's step 7 and partition session commit a task with `task_ledger.py
+        message` and a plain `git commit -F`, through the commit gate, its rounds in the message and no box or Rounds
+        line in tasks.md; committing-changes' develop-feature mode says so too, attribution in `--trailer`, single
+        quotes only with no apostrophe in them (or a quoted heredoc), and its fix-bug mode does not inherit
+        `message`."""
+        skill = DEVELOP_FEATURE_DIR / "SKILL.md"
+        phase_3 = _section_blocks(skill, "Phase 3: Task loop")
+        step_7 = [block for block in phase_3 if block.startswith("7. **commit.**")]
+        tally = [block for block in phase_3 if block.startswith("keep a tally per task")]
+        partition = [b for b in _section_blocks(skill, "Phase 0: Prepare") if b.startswith("**partition session.**")]
+        workflow = _section_blocks(SKILLS_DIR / "committing-changes" / "SKILL.md", "Workflow")
+        inside = _subsection_blocks(workflow, "### inside develop-feature")
+        fix_bug = _subsection_blocks(workflow, "### inside fix-bug")
+        where = {"step 7": step_7, "tally": tally, "partition": partition, "committing-changes": inside}
+
+        gaps = [
+            f"{name} lacks: {rule}"
+            for name, rule, patterns in _TASK_COMMIT_RULES
+            if not any(_in_one_sentence(block, *patterns) for block in where[name])
+        ]
+        missing = [name for name, pattern in _TASK_COMMIT_NAMES.items() if not pattern.search(" ".join(inside))]
+        if missing:
+            gaps.append(f"committing-changes does not name (R4.2, R4.3): {missing}")
+        gaps += [
+            f"{name} edits tasks.md with the task's commit (R2.7): {sentence.strip()}"
+            for name, blocks in (("Phase 3", phase_3), ("partition", partition), ("committing-changes", inside))
+            for block in blocks
+            for sentence in _sentences(block)
+            if _unnegated(sentence, _TASK_COMMIT_LEDGER_EDIT)
+        ]
+        gaps += [
+            f"committing-changes puts attribution in --body: {sentence.strip()}"
+            for block in inside
+            for sentence in _sentences(block)
+            if _TASK_COMMIT_CO_AUTHOR.search(sentence) and _unnegated(sentence, _TASK_COMMIT_BODY)
+        ]
+        gaps += [
+            f"committing-changes offers single quotes without excluding ' from them: {sentence.strip()}"
+            for block in inside
+            for sentence in _sentences(block)
+            if _TASK_COMMIT_SINGLE_QUOTES.search(sentence) and not _TASK_COMMIT_NO_APOSTROPHE.search(sentence)
+            if not any(_TASK_COMMIT_QUOTED_HEREDOC.search(other) for other in inside)
+        ]
+        gaps += [
+            f"committing-changes ### Inside fix-bug inherits task_ledger.py message: {sentence.strip()}"
+            for block in fix_bug
+            for sentence in _sentences(block)
+            if _TASK_COMMIT_FIX_BUG_INHERITS.search(sentence)
         ]
 
         self.assertEqual(gaps, [])

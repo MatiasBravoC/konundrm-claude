@@ -66,7 +66,9 @@ at most 72 characters, **always in English**, whatever the conversation language
 release notes and future contributors read it. The header starts with the type: no emoji or
 other prefix.
 Add a body (blank line, 1–3 sentences) when the summary does not explain *why*. Inside
-`develop-feature`, mention the task and requirement IDs in the body (`Task: T3 · Covers: R1.2`).
+`develop-feature`, mention the task and requirement IDs in the body (`Task: T3 · Covers: R1.2`),
+except in a task's own commit, where `message` writes that line
+([Inside develop-feature](#inside-develop-feature)).
 
 | Type | Use for |
 | --- | --- |
@@ -95,15 +97,35 @@ pull request, hand over to the `opening-pull-requests` skill.
 ### Inside develop-feature
 
 The orchestrator calls this skill once per task, with the task already one logical change and
-the check just run on these exact files. In that mode: skip step 1 (the commit hook reuses that
-green result), make exactly **one** commit with `Task: T<n> · Covers: R…` in the body, and do not
-ask about pushing; the orchestrator asks once, when the whole feature is done.
+the check green for these exact files. In that mode: skip step 1 (the commit hook reuses that
+green result), make exactly **one** commit, and do not ask about pushing; the orchestrator asks
+once, when the whole feature is done.
+
+Build a task's message with `task_ledger.py message` and commit it with a plain `git commit -F`,
+in one call:
+`msg=$(sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py message specs/<NNN-slug>/tasks.md T<n> --subject "<type>(<scope>): <summary>" --rounds "spec <n> · code <n> · escalations <n>") && git add -A && git commit -F "$msg" --trailer "Co-Authored-By: …"`.
+`message` writes the subject, the optional `--body "<why>"` and a last paragraph with
+`Task: T<n> · Covers: R…` and `Rounds: …`, which Git reads as the trailer block, to a file under
+the Git directory and prints only its path. It never commits nor changes the working tree, and it
+refuses a task the plan lacks or one already committed. The `git commit` goes through the commit
+gate like any other commit. Write the subject and the body inside double quotes with no backtick,
+`$`, `"` or `\` in them, or inside single quotes with no `'` in them, so the shell expands nothing:
+a backtick would run a command before the commit. Add the session's co-author and attribution trailers to the
+`git commit` with `--trailer`, never in `--body`, where they would land before `Task:` and stop
+being trailers. Do not check the task's box nor write its Rounds line in `tasks.md` in this commit.
+
+The other commits develop-feature makes in this mode (a slice summary, a partition report, an
+integration fix) are not a task's own commit, and `message` refuses a task that already has one:
+write their message by hand, with the `Task:` line develop-feature names for them in the body.
 
 ### Inside fix-bug
 
-Same as inside develop-feature, but the one commit is a `fix` whose body gives the root cause and
-ends with the trailers `Fixes: <issue>` (when there is one), `Covers: B1` (or the requirement ID)
-and `Escaped-gate: <spec | property | review | e2e | none>` (Standards → Git and pull requests).
+The `fix-bug` skill calls this skill once, with the fix already one logical change and the check
+green for these exact files. In that mode: skip step 1 (the commit hook reuses that green
+result), make exactly **one** `fix` commit whose body gives the root cause and ends with the
+trailers `Fixes: <issue>` (when there is one), `Covers: B1` (or the requirement ID) and
+`Escaped-gate: <spec | property | review | e2e | none>` (Standards → Git and pull requests), and
+do not ask about pushing; fix-bug asks once it has reported.
 
 ## Ground rules
 

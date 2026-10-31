@@ -431,6 +431,55 @@ class MessageTest(LedgerRepositoryTest):
             self.assertEqual(status.returncode, 0, status.stderr.decode("utf-8", "replace"))
             self.assertEqual(line_value(stdout, "committed").replace(",", " ").split(), ["T02"])
 
+    # T25 invariant (R4.3, design.md Threats row 2): whatever its input, `message` never commits nor changes the
+    # repository (working tree, index, refs, objects) but its own message file, and a refusal changes nothing at all.
+    def test_message_never_commits_or_changes_the_repository_whatever_its_input(self) -> None:
+        base = commit(self.root, "chore: start the feature branch\n")
+        plan = self.root / PLAN_PATH
+        plan.parent.mkdir(parents=True)
+        plan.write_text(plan_text(base), encoding="utf-8", newline="\n")
+        commit(self.root, "feat: build T1\n\nTask: T1 · Covers: R4.1\n")
+        (self.root / "work_in_progress.py").write_text("# the next task's change\n", encoding="utf-8")
+        message_file = (self.root / ".git" / task_ledger.TASK_MESSAGE_FILE).relative_to(self.root).as_posix()
+        planned = {"T2": ("T2", "R1.8"), "T02": ("T2", "R1.8"), "T3": ("T3", "R4.1")}
+        alphabet = "ab Zé·$()`\"';&|><\\*?-:"
+        rng = random.Random(25)  # noqa: S311 - seeded for reproducible test data, not cryptography
+        shapes: set[str] = set()
+
+        def text(extra: str = "") -> str:
+            return "".join(rng.choice(alphabet + extra) for _ in range(rng.randint(1, 30)))
+
+        def files() -> dict[str, bytes]:  # plain file reads: no Git command can refresh the index meanwhile
+            paths = (path for path in self.root.rglob("*") if path.is_file())
+            return {path.relative_to(self.root).as_posix(): path.read_bytes() for path in paths}
+
+        for case in range(16):
+            task_id = rng.choice([*planned, "T1", "T9"])
+            subject = text()
+            body = rng.choice([None, "", text("\n\n")])
+            rounds = rng.choice([f"spec {rng.randint(0, 9)} · code {rng.randint(0, 9)} · escalations 0", text()])
+            with self.subTest(case=case, task_id=task_id, subject=subject, body=body, rounds=rounds):
+                before = files()
+                try:
+                    task_ledger.write_task_message(self.root, plan, task_id, subject, rounds, body)
+                except task_ledger.RefusedTaskError:
+                    self.assertNotIn(task_id, planned)
+                    self.assertEqual(files(), before)
+                    shapes.add(f"refused {task_id}")
+                    continue
+                shapes |= {"written", "with a body" if body else "without a body"}
+                after = files()
+                written = after.pop(message_file).decode("utf-8")
+                before.pop(message_file, None)
+                self.assertEqual(after, before)
+                planned_id, covers = planned[task_id]
+                self.assertTrue(written.startswith(f"{subject}\n\n"), written)
+                if body:
+                    self.assertIn(f"\n\n{body}\n\n", written)
+                self.assertTrue(written.endswith(f"\n\nTask: {planned_id} · Covers: {covers}\nRounds: {rounds}\n"))
+        # The seed reaches every shape, so the property is not vacuous.
+        self.assertEqual(shapes, {"refused T1", "refused T9", "written", "with a body", "without a body"})
+
 
 def two_slice_plan(base: str, s2_tasks: str) -> str:
     """A plan laid out as this feature's tasks.md, with slice S2's task blocks given."""
