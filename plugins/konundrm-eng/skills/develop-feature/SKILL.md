@@ -405,7 +405,11 @@ wave is integrated:
 1. Write the slice's summary from `templates/slice-summary.md` to
    `specs/<NNN-slug>/summaries/S<k>.md`, filling each of its sections from `tasks.md`, the
    evidence and the slice's commits.
-2. Commit it with the `committing-changes` skill in its develop-feature mode, as
+2. Run `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py close-slice specs/<NNN-slug>/tasks.md S<k>`,
+   which checks the box of each of the slice's tasks that has its commit and writes the rounds from
+   that commit; it should print `not committed: none`, and a task it names is not built yet, so
+   build it first. Commit the summary and that `tasks.md` change together with the
+   `committing-changes` skill in its develop-feature mode, as
    `docs(<scope>): summarize slice S<k>` carrying the `Task:` line of the slice's last task, so the
    summary stays inside that slice's pull request.
 3. Dispatch `konundrm-eng:process-reviewer` over the slice's flow record (its prompt is in
@@ -429,8 +433,8 @@ wave is integrated:
    into a plan change to `design.md`/`tasks.md`, and wait for the user to approve them before
    starting the next slice. Never make those changes on the spot, outside the task loop.
 
-With `Checkpoints: pre-approved` in the `tasks.md` header, still write and commit the summary
-and save the improvement notes (steps 1 to 3), then start the next slice without stopping,
+With `Checkpoints: pre-approved` in the `tasks.md` header, still write the summary, run `close-slice`,
+commit both and save the improvement notes (steps 1 to 3), then start the next slice without stopping,
 asking questions or waiting.
 
 ## Phase 4: Finish

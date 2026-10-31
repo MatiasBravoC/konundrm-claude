@@ -12,8 +12,8 @@ between slices in advance (in the request or when approving the plan) -->
 in advance (in the request or when approving the plan), apart from the pauses -->
 
 <!-- One task = one red-green-refactor cycle = one commit. develop-feature checks the box and adds
-a "Rounds" line (review rounds and escalations, read by the impact report) in the task's own
-commit, so a checked box without a "Task: T<n>" commit means that commit failed.
+a "Rounds" line (review rounds and escalations, read by the impact report) at the slice's pause
+(`task_ledger.py close-slice`, in the slice's summary commit), from the task's "Task: T<n>" commit.
 Types: behavior (needs a failing test first), property (a property test for an invariant) or
 chore (no test; verify only). Risk: low | medium | high (Standards → Verification by risk)
 decides the extra verification each task gets.

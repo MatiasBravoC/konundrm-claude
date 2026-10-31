@@ -3011,5 +3011,60 @@ class GateFlowTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
 
+# The slice's pause and its ledger (R2.8, R4.5): close-slice checks the boxes and writes the rounds of the slice's
+# committed tasks, and its result lands in the summary commit.
+_CLOSE_RUN_SH = re.compile(r"\bhooks/run\.sh\b")
+_CLOSE_COMMAND = re.compile(r"\btask_ledger\.py close-slice\b")
+_CLOSE_PLAN = re.compile(r"\bspecs/<[^>\s]+>/tasks\.md\b")
+_CLOSE_SLICE_ID = re.compile(r"\bs<k>")
+_CLOSE_RUNS = (_CLOSE_RUN_SH, _CLOSE_COMMAND, _CLOSE_PLAN, _CLOSE_SLICE_ID)
+_CLOSE_NAMED = re.compile(r"\bclose-slice\b")
+_CLOSE_LEDGER = re.compile(r"\bclose-slice\b|\btasks\.md\b")
+_CLOSE_IN_TASK_COMMIT = re.compile(r"\b(?:box|rounds)\b.*\b(?:in|with) (?:the|its) task's (?:own )?commit\b")
+_CLOSE_CHECKS_BOX = re.compile(r"\b(?:check|mark|tick)\w*(?: \S+){0,3} box(?:es)?\b")
+_CLOSE_AT_PAUSE = re.compile(r"\bclose-slice\b|\bpause\b|\bsummarize slice\b|\bsummary commit\b|\bcheckpoint\b")
+
+
+class SliceHandoffFlowTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_slice_checkpoint_closes_the_slice_in_the_summary_commit(self) -> None:
+        """R2.8, R4.5: 002 develop-feature's Slice checkpoint runs `task_ledger.py close-slice` through run.sh before
+        committing the summary, so the plan's boxes and rounds land in `docs(<scope>): summarize slice S<k>`, also
+        with pre-approved pauses; the tasks.md template says the box is checked at the pause, not in the task's own
+        commit."""
+        checkpoint = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Slice checkpoint")
+        template = _blocks(SKILLS_DIR / "writing-plans" / "templates" / "tasks.md")
+        text = " ".join(checkpoint)
+        runs = [block for block in checkpoint if _CLOSE_COMMAND.search(block)]
+        number = _DELIVERY_LIST_NUMBER.match(runs[0]) if runs else None
+        close_at, commit_at = _CLOSE_COMMAND.search(text), _CHECKPOINT_SUMMARY_COMMIT.search(text)
+
+        gaps = []
+        if not any(_in_one_sentence(b, *_CLOSE_RUNS) for b in checkpoint):
+            gaps.append("Slice checkpoint lacks (R4.5): sh run.sh task_ledger.py close-slice specs/<...>/tasks.md S<k>")
+        if not any(_in_one_sentence(b, _CLOSE_LEDGER, _CHECKPOINT_SUMMARY_COMMIT) for b in checkpoint):
+            gaps.append("Slice checkpoint lacks (R2.8): close-slice's tasks.md in docs(<scope>): summarize slice S<k>")
+        if not (close_at and commit_at and close_at.start() < commit_at.start()):
+            gaps.append("Slice checkpoint does not run close-slice before committing the summary (R2.8)")
+        if not any(
+            _PREAPPROVED_LINE.search(sentence)
+            and (_CLOSE_NAMED.search(sentence) or (number and int(number.group(1)) in _notes_step_numbers(sentence)))
+            for block in checkpoint
+            for sentence in _sentences(block)
+        ):
+            gaps.append("Slice checkpoint's Checkpoints: pre-approved sentence skips close-slice (R2.8)")
+        gaps += [
+            f"tasks.md template checks the box in the task's own commit (R2.8): {sentence.strip()}"
+            for block in template
+            for sentence in _sentences(block)
+            if (match := _CLOSE_IN_TASK_COMMIT.search(sentence)) and not _NEGATION.search(sentence[: match.start()])
+        ]
+        if not any(_in_one_sentence(block, _CLOSE_CHECKS_BOX, _CLOSE_AT_PAUSE) for block in template):
+            gaps.append("tasks.md template does not say develop-feature checks the box at the slice's pause (R2.8)")
+
+        self.assertEqual(gaps, [])
+
+
 if __name__ == "__main__":
     unittest.main()
