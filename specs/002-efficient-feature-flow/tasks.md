@@ -264,11 +264,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S7: gate y commit sin check repetido, y reanudación por rango
 
-- [ ] **T24** En el gate, el orquestador corre el check solo si `status` no lo muestra verde para el árbol actual · `behavior` · Risk: low · Covers: R2.5, R2.6, R4.7
+- [x] **T24** En el gate, el orquestador corre el check solo si `status` no lo muestra verde para el árbol actual · `behavior` · Risk: low · Covers: R2.5, R2.6, R4.7
   - Test: `P/hooks/tests/contract/test_flows.py::test_gate_runs_the_check_only_when_status_is_not_green`
   - Files: `P/skills/develop-feature/SKILL.md` (Phase 3 step 6)
   - Verify: `... -k test_gate_runs_the_check_only_when_status_is_not_green`
   - Depends on: T8
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T25** El commit de cada tarea usa `message` y un `git commit -F` normal, sin tocar casillas ni rondas del plan · `behavior` · Risk: high · Covers: R2.7, R4.2, R4.3
   - Test: `P/hooks/tests/contract/test_flows.py::test_task_commit_goes_through_the_gate_with_its_message` (develop-feature paso 7 y la sesión de partición; el modo develop-feature de committing-changes)

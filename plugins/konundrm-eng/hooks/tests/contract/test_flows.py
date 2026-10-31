@@ -2786,5 +2786,65 @@ class ReviewFlowTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
 
+# R2.5, R2.6, R4.7: the gate asks `task_ledger.py status` and runs the check only when it is not green for this tree.
+_GATE_STATUS = re.compile(r"\btask_ledger\.py status\b")
+_GATE_GREEN = re.compile(r"\bgreen\b")
+_GATE_STATUS_OR_GREEN = re.compile(r"\bstatus\b|\bgreen\b|\botherwise\b")
+_GATE_TO_COMMIT = re.compile(r"\bcommit\w*|\bstep 7\b")
+_GATE_SKIPS = re.compile(_NEGATION.pattern + r"|\bskip\w*")
+_GATE_NOT_GREEN = re.compile(r"\botherwise\b|\b(?:not|no|never|isn't|doesn't)\b(?: \S+){0,3} (?:green|show\w*)\b")
+_GATE_RUNS_CHECK_COMMAND = (re.compile(r"\brun\w*"), re.compile(r"\bcheck command\b"))
+_GATE_RED = re.compile(r"\bred\b|\bfail\w*|\bdoes not pass\b")
+_GATE_STEP_5 = re.compile(r"\bsteps?\b[^.;]{0,15}\b5\b|\bverify by risk\b")
+_GATE_RULES = {
+    "R4.7 runs task_ledger.py status to learn whether the check is green for this tree": (
+        _GATE_STATUS,
+        _CHECK,
+        _GATE_GREEN,
+    ),
+    "R2.5 goes to the commit without running the check when status shows it green": (
+        re.compile(r"\bstatus\b"),
+        _GATE_GREEN,
+        _GATE_TO_COMMIT,
+        _GATE_SKIPS,
+        _CHECK,
+    ),
+    "R2.6 otherwise runs the check command before committing": (_GATE_NOT_GREEN, *_GATE_RUNS_CHECK_COMMAND),
+    "a red check's fix goes through step 5 (verify by risk) again": (_GATE_RED, _CHECK, _GATE_STEP_5),
+}
+# Running the check with no condition: "then run the check command", "run the check again", "the full check runs".
+_GATE_RUNS_CHECK = re.compile(r"\b(?:re)?run\w*(?: (?:the|full))* check\b|\bcheck (?:command )?runs?\b")
+
+
+class GateFlowTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_gate_runs_the_check_only_when_status_is_not_green(self) -> None:
+        """R2.5, R2.6, R4.7: 002 develop-feature's Phase 3 gate runs `task_ledger.py status`, goes to the commit
+        without running the check when status shows it green for this tree, runs the check command otherwise, and
+        sends a red check's fix through step 5 again; no Phase 3 sentence runs the check with no such condition."""
+        phase_3 = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Phase 3: Task loop")
+        gate = [block for block in phase_3 if block.startswith("6. **gate.**")]
+
+        gaps = [] if gate else ["develop-feature Phase 3 has no step 6 starting '6. **Gate.**'"]
+        gaps += [
+            f"develop-feature Phase 3 step 6 lacks: {rule}"
+            for rule, patterns in _GATE_RULES.items()
+            if not any(_in_one_sentence(block, *patterns) for block in gate)
+        ]
+        gaps += [
+            f"develop-feature Phase 3 runs the check whatever status shows: {sentence.strip()}"
+            for block in phase_3
+            for sentence in _sentences(block)
+            if not _GATE_STATUS_OR_GREEN.search(sentence)
+            and any(
+                _GATE_RUNS_CHECK.search(clause) and not _NEGATION.search(clause)
+                for clause in _CLAUSE_BREAK.split(sentence)
+            )
+        ]
+
+        self.assertEqual(gaps, [])
+
+
 if __name__ == "__main__":
     unittest.main()

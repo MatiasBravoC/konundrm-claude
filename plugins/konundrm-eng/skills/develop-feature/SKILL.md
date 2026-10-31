@@ -189,8 +189,8 @@ or a code or security review with a Critical finding no `finding-verifier` refut
    yourself **five times in a row**: every run must pass (Standards → Tests). A run that fails
    while others pass means a flaky test: send the failing output to a new `test-writer`
    (flaky-test prompt), then run the five verifications again. For `chore` tasks, dispatch
-   `implementer` directly and run the task's verify command once. The full check runs once, at
-   the gate.
+   `implementer` directly and run the task's verify command once. The implementer runs the check
+   at the end of its dispatch, and the gate runs it only when `status` does not show it green.
 3. **Reviews.** Dispatch `spec-reviewer` and `code-reviewer` at the same time, in one message,
    each with the output of your verification runs. On `high` tasks, dispatch `security-reviewer`
    in the same message too, with the task's `Security:` line and the `Threats` table. Dispatch no
@@ -228,10 +228,15 @@ or a code or security review with a Critical finding no `finding-verifier` refut
    - Any change made in this step (a test added, a fix or an exclusion mark) goes through the
      reviews again as after step 4's fix round (re-review prompt), so nothing lands unreviewed.
 6. **Gate.** In `tasks.md`, check the task's box and add `  - Rounds: spec <n> · code <n> ·
-   escalations <n>` under it. Then run the check command. It must pass; if it does not, send the
-   failure to the `implementer` (fix-round prompt), rerun the verify command and the reviews as
-   after step 4's fix round, then run the check again. Running the check last, on the exact
-   files you will commit, lets the commit hook reuse this green result.
+   escalations <n>` under it. Then run
+   `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py status specs/<NNN-slug>/tasks.md` to
+   learn whether the check is green for the current tree (a passing check recorded on exactly
+   these files, whoever ran it). When `status` shows `check: green for this tree`, go to step 7
+   without running the check again. Otherwise run the check command: it must pass, and running
+   it on the exact files you will commit lets the commit hook reuse its green result. If the
+   check fails, send the failure to the `implementer` (fix-round prompt), rerun the verify command
+   and the reviews as after step 4's fix round, take the task through step 5 (verify by risk)
+   again, then repeat this step.
 7. **Commit.** Run the `committing-changes` skill in its develop-feature mode: the task's code,
    tests, evidence and `tasks.md` update land as **one** commit with `Task: T<n> · Covers: R…` in
    the body, without rerunning the check and without asking about pushing yet. A task is
