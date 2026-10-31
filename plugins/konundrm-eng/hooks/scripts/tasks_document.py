@@ -1,8 +1,12 @@
-"""Reads a feature's tasks.md: its status and each task's fields, partition, wave and review rounds.
+"""Reads a feature's tasks.md: its header and each task's fields, partition, wave and review rounds.
 
 writing-plans creates the file from its template and develop-feature checks the boxes and adds a
-``Rounds:`` line per task. The header's ``- **Parallel:** yes | no`` line says whether partitions
-run in parallel: only a whole value of ``yes`` does, so a missing or unfilled line means serial.
+``Rounds:`` line per task. The header's ``- **Base commit:** `<sha>``` line names the commit the
+feature branch started from; only a hex SHA, full or short, is read from it, since callers hand
+it to git as a revision. A task's covers come from the ``· Covers:`` field that ends its line, so
+a ``Covers:`` quoted in its title is not mistaken for it. The header's ``- **Parallel:** yes | no``
+line says whether partitions run in parallel: only a whole value of ``yes`` does, so a missing or
+unfilled line means serial.
 Each slice ends with a ``### Partitions`` table (``| Wave | Partition | Tasks | Depends on |``)
 that assigns its tasks to partitions and each partition to a numbered wave. The Wave and Partition
 cells are read bold or not; a Tasks cell lists IDs and inclusive ranges (``T1-T3``, ``T4..T6``,
@@ -29,6 +33,8 @@ from typing import NamedTuple
 STATUS = re.compile(r"(?mi)^-\s*\*\*Status:\*\*\s*(?P<status>[A-Za-z]+)")
 PARALLEL = re.compile(r"(?mi)^-\s*\*\*Parallel:\*\*[ \t]*(?P<parallel>[^\r\n]*)")
 TASK = re.compile(r"(?m)^- \[(?P<box>[ xX])\] \*\*(?P<id>T\d+)\*\*[ \t]*(?P<rest>[^\n]*)")
+BASE_COMMIT = re.compile(r"(?mi)^-\s*\*\*Base commit:\*\*[ \t]*`(?P<sha>[0-9a-f]{4,64})`")
+COVERS = re.compile(r" · Covers:[ \t]*(?P<covers>[^·]*?)\s*$")
 RISK = re.compile(r"\bRisk:\s*(?P<risk>low|medium|high)\b", re.IGNORECASE)
 SLICE_HEADING = re.compile(r"(?m)^#{2,3}\s+Slice\s+(?P<slice>S\d+)\b")
 ROUNDS = re.compile(r"Rounds:\s*spec\s*(\d+)\D+code\s*(\d+)\D+escalations\s*(\d+)", re.IGNORECASE)
@@ -60,6 +66,8 @@ class Task:
             None when no row lists it.
         wave: The Wave of that same first row, or None when no row lists it or its Wave cell is
             not a number of at most ``MAX_TASK_NUMBER_DIGITS`` significant digits.
+        covers: The requirement IDs (``R1.2``) of the ``· Covers:`` field that ends the task's
+            line, in order; empty when that field is ``—`` or the line does not end with one.
     """
 
     id: str
@@ -70,6 +78,7 @@ class Task:
     rounds: tuple[int, int, int] | None
     partition: str | None = None
     wave: int | None = None
+    covers: tuple[str, ...] = ()
 
 
 class _Placement(NamedTuple):
@@ -89,11 +98,15 @@ class TasksDocument:
         parallel: Whether the rest of the header's ``Parallel:`` line, comments removed, is
             exactly ``yes`` (in any case, surrounding spaces allowed), so the partitions run in
             parallel; False when the line says anything else, is unfilled or is missing.
+        base_commit: The hex SHA, full or short, between backticks in the header's
+            ``Base commit:`` line, or None when the line is missing or holds anything else, such
+            as the template's placeholder.
     """
 
     status: str
     tasks: tuple[Task, ...]
     parallel: bool = False
+    base_commit: str | None = None
 
 
 def _rounds(block: str) -> tuple[int, int, int] | None:
@@ -102,6 +115,15 @@ def _rounds(block: str) -> tuple[int, int, int] | None:
         return None
     spec, code, escalations = (int(value) for value in match.groups())
     return spec, code, escalations
+
+
+def _covers(rest: str) -> tuple[str, ...]:
+    """The requirement IDs of the Covers field that ends a task line, or () when it is ``—``."""
+    match = COVERS.search(rest)
+    if match is None:
+        return ()
+    ids = (item.strip() for item in match.group("covers").split(","))
+    return tuple(item for item in ids if item and item != "—")
 
 
 def _task(match: re.Match[str], block: str, slice_: str | None, placements: dict[str, _Placement]) -> Task:
@@ -117,6 +139,7 @@ def _task(match: re.Match[str], block: str, slice_: str | None, placements: dict
         rounds=_rounds(block),
         partition=placement.partition if placement else None,
         wave=placement.wave if placement else None,
+        covers=_covers(rest),
     )
 
 
@@ -214,7 +237,7 @@ def read_tasks(path: Path) -> TasksDocument:
         path: The file to read.
 
     Returns:
-        Its status and tasks; an empty document when the file cannot be read.
+        Its header fields and tasks; an empty document when the file cannot be read.
     """
     try:
         text = HTML_COMMENT.sub("", path.read_text(encoding="utf-8", errors="replace"))
@@ -230,8 +253,10 @@ def read_tasks(path: Path) -> TasksDocument:
         for match, end in zip(matches, ends, strict=True)
     )
     parallel = PARALLEL.search(text)
+    base_commit = BASE_COMMIT.search(text)
     return TasksDocument(
         status=status.group("status") if status else "",
         tasks=tasks,
         parallel=parallel is not None and parallel.group("parallel").strip().lower() == "yes",
+        base_commit=base_commit.group("sha") if base_commit else None,
     )

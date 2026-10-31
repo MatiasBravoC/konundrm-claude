@@ -138,9 +138,9 @@ class ReadTasksTest(unittest.TestCase):
         self.assertEqual(
             tasks,
             (
-                Task("T1", "Applies a 10 % coupon", True, "low", "S1", (2, 1, 0)),
-                Task("T2", "Total is never negative for any coupon", False, "high", "S1", None),
-                Task("T3", "Rejects expired coupons", False, "medium", "S2", None),
+                Task("T1", "Applies a 10 % coupon", True, "low", "S1", (2, 1, 0), covers=("R1.1",)),
+                Task("T2", "Total is never negative for any coupon", False, "high", "S1", None, covers=("R1.2",)),
+                Task("T3", "Rejects expired coupons", False, "medium", "S2", None, covers=("R2.1",)),
             ),
         )
 
@@ -393,6 +393,37 @@ class ReadTasksTest(unittest.TestCase):
             with self.subTest(header=header):
                 self.path.write_text(f"- **Status:** Approved\n{header}\n- [ ] **T1** First\n", encoding="utf-8")
                 self.assertIs(read_tasks(self.path).parallel, expected)
+
+    def test_reads_the_base_commit_and_each_tasks_covers(self) -> None:
+        # R1.8, R4.2: the base commit is a hex SHA, full or short; the template's placeholder or a
+        # missing line gives None, since the value is later handed to git as a revision. Each task's
+        # covers are the IDs of its trailing Covers field, even when its title mentions "Covers: …".
+        headers = {
+            "- **Base commit:** `79dbbaedcab693f354418995a117fb422ae95f50`\n": (
+                "79dbbaedcab693f354418995a117fb422ae95f50"
+            ),
+            "- **Base commit:** `b8c3142`\n": "b8c3142",
+            "- **Base commit:** `<SHA the feature branch started from>`\n": None,
+            "": None,
+        }
+        for header, expected in headers.items():
+            with self.subTest(header=header):
+                self.path.write_text(f"- **Status:** Approved\n{header}\n- [ ] **T1** First\n", encoding="utf-8")
+                self.assertEqual(read_tasks(self.path).base_commit, expected)
+        _, tasks = self.read(
+            "- **Status:** Approved\n\n"
+            "## Slice S1: resume\n\n"
+            "- [ ] **T5** El lector del plan entrega el Base commit · `behavior` · Risk: low · Covers: R1.8, R4.2\n"
+            "- [ ] **T6** Una sola cobertura · `behavior` · Risk: low · Covers: R5.1\n"
+            "- [ ] **T7** Sin cobertura · `refactor` · Risk: low · Covers: —\n"
+            "- [ ] **T11** `message` arma el mensaje con el asunto, `Task: T<n> · Covers: …` del plan y"
+            " `Rounds:`, lo escribe bajo el directorio de Git e imprime su ruta · `behavior` · Risk: low"
+            " · Covers: R4.2, R2.7\n"
+        )
+        self.assertEqual(
+            {task.id: task.covers for task in tasks},
+            {"T5": ("R1.8", "R4.2"), "T6": ("R5.1",), "T7": (), "T11": ("R4.2", "R2.7")},
+        )
 
 
 if __name__ == "__main__":

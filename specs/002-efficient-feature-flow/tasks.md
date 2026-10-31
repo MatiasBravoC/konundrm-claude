@@ -84,11 +84,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S2: commits de tarea por rango y huella del check junto al repositorio
 
-- [ ] **T5** El lector del plan entrega el Base commit y los requisitos de cada tarea · `behavior` · Risk: low · Covers: R1.8, R4.2
+- [x] **T5** El lector del plan entrega el Base commit y los requisitos de cada tarea · `behavior` · Risk: low · Covers: R1.8, R4.2
   - Test: `P/hooks/tests/test_tasks_document.py::test_reads_the_base_commit_and_each_tasks_covers`
   - Files: `P/hooks/scripts/tasks_document.py` (modify)
   - Verify: `... -k test_reads_the_base_commit_and_each_tasks_covers`
   - Depends on: —
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T6** Los commits de tarea se buscan solo en `<base>..HEAD`, con sus rondas · `behavior` · Risk: medium · Covers: R1.8, R1.9
   - Test: `P/hooks/tests/test_task_commits.py::test_finds_task_commits_only_after_the_base_with_their_rounds` (repo temporal: `Task: T1` antes de la base y T1, T2 después, uno con `Rounds:`; T01 cuenta como T1; T1 no calza con T10)
