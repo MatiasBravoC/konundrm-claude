@@ -114,11 +114,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S3: `task_ledger.py status`, el estado de la feature en una llamada
 
-- [ ] **T8** `status` muestra la próxima tarea, las tareas con commit, el árbol y el check en una llamada · `behavior` · Risk: low · Covers: R4.1, R1.8
+- [x] **T8** `status` muestra la próxima tarea, las tareas con commit, el árbol y el check en una llamada · `behavior` · Risk: low · Covers: R4.1, R1.8
   - Test: `P/hooks/tests/test_task_ledger.py::test_status_shows_next_task_built_tasks_tree_and_check` (plan de 3 tareas, T1 commiteada con su casilla sin marcar → próxima T2; árbol limpio; check verde tras recordar la huella)
   - Files: `P/hooks/scripts/task_ledger.py` (new)
   - Verify: `... -k test_status_shows_next_task_built_tasks_tree_and_check`
   - Depends on: T6, T7
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T9** `status` nombra la próxima tarea de cada partición de la ola en curso · `behavior` · Risk: low · Covers: R4.1
   - Test: `P/hooks/tests/test_task_ledger.py::test_status_names_the_next_task_of_each_partition_in_the_current_wave`
