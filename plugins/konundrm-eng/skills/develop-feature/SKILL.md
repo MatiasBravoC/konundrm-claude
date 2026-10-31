@@ -225,14 +225,18 @@ or a code or security review with a Critical finding no `finding-verifier` refut
      run the task's end-to-end check against the real application (HTTP calls, CLI runs, or the
      browser for UI) and save the commands and their output, or screenshots, in
      `specs/<NNN-slug>/evidence/T<n>.md`.
-   - Any test added in this step goes through steps 3–4 once more, so no test lands unreviewed.
+   - Any change made in this step (a test added, a fix or an exclusion mark) goes through the
+     reviews again as after step 4's fix round (re-review prompt), so nothing lands unreviewed.
 6. **Gate.** In `tasks.md`, check the task's box and add `  - Rounds: spec <n> · code <n> ·
    escalations <n>` under it. Then run the check command. It must pass; if it does not, send the
-   failure to the `implementer` (fix-round prompt) and repeat from step 3. Running the check
-   last, on the exact files you will commit, lets the commit hook reuse this green result.
+   failure to the `implementer` (fix-round prompt), rerun the verify command and the reviews as
+   after step 4's fix round, then run the check again. Running the check last, on the exact
+   files you will commit, lets the commit hook reuse this green result.
 7. **Commit.** Run the `committing-changes` skill in its develop-feature mode: the task's code,
    tests, evidence and `tasks.md` update land as **one** commit with `Task: T<n> · Covers: R…` in
-   the body, without rerunning the check and without asking about pushing yet.
+   the body, without rerunning the check and without asking about pushing yet. A task is
+   committed only when its spec review and code review, and on `high` tasks its security review,
+   passed on its final code.
 
 When the task was the slice's last task and the slice is built here without a parallel wave, run
 the [Slice checkpoint](#slice-checkpoint) before the next slice's first task; a parallel slice runs

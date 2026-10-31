@@ -241,11 +241,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
     - Recommendation: A; la revisión de spec de toda la feature (Phase 4) atrapa lo que se escape.
   - Rounds: spec 2 · code 1 · escalations 0
 
-- [ ] **T22** Una tarea se commitea solo cuando sus revisiones pasaron con su código final · `behavior` · Risk: low · Covers: R3.4
+- [x] **T22** Una tarea se commitea solo cuando sus revisiones pasaron con su código final · `behavior` · Risk: low · Covers: R3.4
   - Test: `P/hooks/tests/contract/test_flows.py::test_task_commits_only_after_its_reviews_pass_on_its_final_code`
   - Files: `P/skills/develop-feature/SKILL.md`
   - Verify: `... -k test_task_commits_only_after_its_reviews_pass_on_its_final_code`
   - Depends on: T21
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T23** La auditoría restaura el cambio de un revisor con otros revisores corriendo, terminen en el orden que terminen · `behavior` · Risk: medium · Covers: R3.6
   - Test: `P/hooks/tests/test_audit_subagent_changes.py::test_restores_a_reviewers_change_whatever_order_concurrent_reviewers_stop`

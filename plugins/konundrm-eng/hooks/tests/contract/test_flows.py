@@ -2686,6 +2686,30 @@ _RE_REVIEW_PROMPT_RULES = {
 }
 
 
+# R3.4: a task is committed only once its reviews passed on its final code, so any later change is reviewed again.
+_COMMIT_ANY = re.compile(r"\b(?:any|every)\b")
+_COMMIT_REVIEWED_AGAIN = (re.compile(r"\breview\w*|\bsteps? 3\W{1,3}4\b"), re.compile(r"\bagain\b|\bonce more\b"))
+_COMMIT_PHASE_3_RULES = {
+    "R3.4 commits a task only when its spec, code and (on high tasks) security reviews passed on its final code": (
+        re.compile(r"\bcommit\w*"),
+        re.compile(r"\bonly\b"),
+        _REVIEWS_SPEC,
+        _REVIEWS_CODE,
+        _REVIEWS_SECURITY,
+        _REVIEWS_HIGH,
+        re.compile(r"\bpass\w*"),
+        re.compile(r"\bfinal\b"),
+    ),
+    "R3.4 reviews again any change made after the reviews, before the commit": (
+        _COMMIT_ANY,
+        re.compile(r"\bchang\w*|\bfix\w*"),
+        *_COMMIT_REVIEWED_AGAIN,
+    ),
+}
+_COMMIT_ANY_TEST = re.compile(r"\b(?:any|every)\b(?: \S+)? tests?\b")
+_COMMIT_NOT_ONLY_TESTS = re.compile(r"\bchang\w*|\bfix\w*|\bcode\b")
+
+
 class ReviewFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
@@ -2737,6 +2761,27 @@ class ReviewFlowTest(unittest.TestCase):
         contents = read_section(prompts, "Contents").lower().splitlines()
         if not any(line.lstrip().startswith(("-", "*")) and "re-review" in line for line in contents):
             gaps.append("dispatch-prompts.md: the Contents list does not name the re-review prompt")
+
+        self.assertEqual(gaps, [])
+
+    def test_task_commits_only_after_its_reviews_pass_on_its_final_code(self) -> None:
+        """R3.4: 002 develop-feature's Phase 3 commits a task only when its spec and code reviews (and, on high tasks,
+        its security review) passed on its final code, sends any change made after the reviews through them again,
+        and has no sentence that limits that second review to the tests added after the reviews."""
+        phase_3 = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Phase 3: Task loop")
+
+        gaps = [
+            f"develop-feature Phase 3 lacks: {rule}"
+            for rule, patterns in _COMMIT_PHASE_3_RULES.items()
+            if not any(_in_one_sentence(block, *patterns) for block in phase_3)
+        ]
+        gaps += [
+            f"develop-feature Phase 3 reviews again only the tests added after the reviews: {sentence.strip()}"
+            for block in phase_3
+            for sentence in _sentences(block)
+            if all(pattern.search(sentence) for pattern in (_COMMIT_ANY_TEST, *_COMMIT_REVIEWED_AGAIN))
+            and not _COMMIT_NOT_ONLY_TESTS.search(sentence)
+        ]
 
         self.assertEqual(gaps, [])
 
