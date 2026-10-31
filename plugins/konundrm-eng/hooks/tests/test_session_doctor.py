@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -17,6 +18,27 @@ from session_doctor import (
     feature_progress_context,
     installed_legacy_skills,
 )
+
+
+def git(root: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return completed.stdout.strip()
+
+
+def commit(root: Path, message: str) -> str:
+    """Commit everything with `message` (written to a UTF-8 file, so `·` survives) and return its sha."""
+    message_file = root.parent / "message.txt"
+    message_file.write_text(message, encoding="utf-8", newline="\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "--allow-empty", "-F", str(message_file))
+    return git(root, "rev-parse", "HEAD")
 
 
 class InstalledLegacySkillsTest(unittest.TestCase):
@@ -188,6 +210,90 @@ class FeatureProgressContextTest(unittest.TestCase):
             with self.subTest(case):
                 (folder / "tasks.md").write_text(header + body + table, encoding="utf-8")
                 context = feature_progress_context(self.root) or ""
+
+                self.assertIn(expected_line, context.splitlines())
+
+    def test_counts_committed_tasks_as_done_and_names_the_first_without_a_commit(self) -> None:
+        # R1.9: at session start a task with a `Task: T<n>` commit after the plan's base counts as
+        # done even while its box is open, and the next task is the first without a commit (per
+        # partition of the wave in progress when partitions run in parallel). Plans without a usable
+        # base (0.6.0-era, the template placeholder, a commit this repository lacks) keep the
+        # box-based line.
+        header = (
+            "- **Status:** Approved\n- **Base commit:** `{base}`\n- **Parallel:** {parallel}\n\n## Slice S1: apply\n\n"
+        )
+        table = (
+            "\n### Partitions\n\n"
+            "| Wave | Partition | Tasks | Depends on |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | P1 | T1, T2 | — |\n"
+            "| 1 | P2 | T3, T4 | — |\n"
+        )
+        mixed_boxes = (
+            "- [ ] **T1** Step 1 · `behavior`\n"
+            "- [ ] **T02** Step 2 · `behavior`\n"
+            "- [x] **T3** Step 3 · `behavior`\n"
+            "- [ ] **T4** Step 4 · `behavior`\n"
+        )
+        open_boxes = "".join(f"- [ ] **T{n}** Step {n} · `behavior`\n" for n in range(1, 5))
+        fallback_boxes = "".join(f"- [{'x' if n == 1 else ' '}] **T{n}** Step {n} · `behavior`\n" for n in range(1, 4))
+        # case: (plan body, Parallel, base: "real" or a literal, tasks committed after the base, expected line)
+        cases = {
+            "commits, not boxes": (
+                mixed_boxes,
+                "no",
+                "real",
+                ("T2", "T1"),
+                "- specs/008-coupons: 2 of 4 tasks committed, next T3: Step 3",
+            ),
+            "parallel partitions": (
+                open_boxes + table,
+                "yes",
+                "real",
+                ("T3", "T1"),
+                "- specs/008-coupons: 2 of 4 tasks committed, next per partition: P1 T2, P2 T4",
+            ),
+            "every task committed": (
+                open_boxes,
+                "no",
+                "real",
+                ("T4", "T2", "T1", "T3"),
+                "- specs/008-coupons: 4 of 4 tasks committed, every task committed; the finish phase is left",
+            ),
+            "template placeholder base": (
+                fallback_boxes,
+                "no",
+                "<SHA the feature branch started from>",
+                ("T2",),
+                "- specs/008-coupons: 1 of 3 tasks checked, next T2: Step 2",
+            ),
+            "base this repository lacks": (
+                fallback_boxes,
+                "no",
+                "deadbeef" * 5,
+                ("T2",),
+                "- specs/008-coupons: 1 of 3 tasks checked, next T2: Step 2",
+            ),
+        }
+        for index, (case, (body, parallel, base, committed, expected_line)) in enumerate(cases.items()):
+            with self.subTest(case):
+                root = self.root / f"repo{index}"
+                root.mkdir()
+                git(root, "init", "-q")
+                # An earlier feature's T3, before the base: it must not count for this plan.
+                commit(root, "feat: an earlier feature\n\nTask: T3 · Covers: R9.9\n")
+                real_base = commit(root, "chore: start the feature branch\n")
+                plan = root / "specs" / "008-coupons" / "tasks.md"
+                plan.parent.mkdir(parents=True)
+                plan.write_text(
+                    header.format(base=real_base if base == "real" else base, parallel=parallel) + body,
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                for task_id in committed:
+                    commit(root, f"feat: build {task_id}\n\nTask: {task_id} · Covers: R1.9\n")
+
+                context = feature_progress_context(root) or ""
 
                 self.assertIn(expected_line, context.splitlines())
 

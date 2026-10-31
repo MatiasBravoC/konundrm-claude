@@ -165,11 +165,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: T11
   - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T14** Al iniciar sesión, las tareas con commit cuentan como hechas aunque su casilla siga sin marcar · `behavior` · Risk: low · Covers: R1.9
+- [x] **T14** Al iniciar sesión, las tareas con commit cuentan como hechas aunque su casilla siga sin marcar · `behavior` · Risk: low · Covers: R1.9
   - Test: `P/hooks/tests/test_session_doctor.py::test_counts_committed_tasks_as_done_and_names_the_first_without_a_commit`
   - Files: `P/hooks/scripts/session_doctor.py` (modify)
   - Verify: `... -k test_counts_committed_tasks_as_done_and_names_the_first_without_a_commit`
   - Depends on: T9
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T15** El informe de impacto lee las rondas escritas por `close-slice` igual que las escritas por tarea · `behavior` · Risk: low · Covers: R2.9
   - Test: `P/hooks/tests/test_metrics_report.py::test_reads_rounds_written_by_close_slice_and_per_task_alike`

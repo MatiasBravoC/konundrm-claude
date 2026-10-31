@@ -4,9 +4,12 @@ Warns the person when Git is missing or when the account-level skills this plugi
 still installed, since Claude would then choose between two versions of each skill. Adds context
 for Claude: the project's check command, the same one every hook runs, and the features in
 progress under specs/ with their next task, or the next task of each partition of the wave in
-progress while a slice's partitions run in parallel. The hook runs on every session start, including the
-one after a compaction, so a long develop-feature run finds its place again. A missing Python is
-reported by run.sh, which cannot start this script without one.
+progress while a slice's partitions run in parallel. A task counts as done when its ``Task: T<n>``
+commit exists after the plan's base commit, whatever its box says; a plan without a usable base
+(written before 0.7.0, the template placeholder, a commit this repository lacks, or no Git) falls
+back to counting checked boxes. The hook runs on every session start, including the one after a
+compaction, so a long develop-feature run finds its place again. A missing Python is reported by
+run.sh, which cannot start this script without one.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from pathlib import Path
 from hook_io import emit_json, read_hook_input
 from project_paths import project_root
 from quality_check import find_check_command, gates_disabled
+from task_commits import GitError, task_commits, task_key
 from tasks_document import TasksDocument, next_tasks, read_tasks
 
 LEGACY_SKILLS = ("deployer", "documentator", "engineer", "mapper", "tdd", "tester")
@@ -68,21 +72,45 @@ def check_command_context(check: str | None) -> str:
     )
 
 
-def next_step(document: TasksDocument) -> str:
+def committed_task_ids(root: Path, document: TasksDocument) -> set[str] | None:
+    """Lists the plan's tasks that have a ``Task: T<n>`` commit after the plan's base commit.
+
+    Runs one ``git log`` and never raises: Git failures mean "cannot tell", not an error.
+
+    Args:
+        root: Project root inside the feature's Git repository.
+        document: The feature's parsed tasks.md.
+
+    Returns:
+        The task IDs as the plan writes them (``T02``, not ``T2``), or None when the plan has no
+        usable Base commit or Git cannot list ``<base>..HEAD`` (a base this repository lacks, not
+        a repository, no Git), so the caller falls back to the checked boxes.
+    """
+    if document.base_commit is None:
+        return None
+    try:
+        commits = task_commits(root, document.base_commit)
+    except GitError:
+        return None
+    return {task.id for task in document.tasks if task_key(task.id) in commits}
+
+
+def next_step(document: TasksDocument, done_ids: set[str], finished: str) -> str:
     """Describes where a feature resumes: its next task, or each partition's while they run in parallel.
 
     Args:
         document: The feature's parsed tasks.md.
+        done_ids: IDs, as the plan writes them, of the tasks counted as built.
+        finished: What to say when no task is left, such as ``every task committed``.
 
     Returns:
-        ``next per partition: P1 T3, P2 T2`` when tasks_document.next_tasks, counting checked
-        boxes as built, returns one task per partition of the wave in progress; otherwise
-        ``next T<n>: <title>`` for the first unchecked task, or the finish-phase text when every
-        box is checked.
+        ``next per partition: P1 T3, P2 T2`` when tasks_document.next_tasks returns one task per
+        partition of the wave in progress; otherwise ``next T<n>: <title>`` for the first task
+        not in ``done_ids``, or ``<finished>; the finish phase is left`` when none is left.
     """
-    resume_tasks = next_tasks(document, {task.id for task in document.tasks if task.done})
+    resume_tasks = next_tasks(document, done_ids)
     if not resume_tasks:
-        return "every box checked; the finish phase is left"
+        return f"{finished}; the finish phase is left"
     if len(resume_tasks) > 1:
         return "next per partition: " + ", ".join(f"{task.partition} {task.id}" for task in resume_tasks)
     return f"next {resume_tasks[0].id}: {resume_tasks[0].title}"
@@ -90,6 +118,13 @@ def next_step(document: TasksDocument) -> str:
 
 def feature_progress_context(root: Path) -> str | None:
     """Describes the features whose plan is approved and not done yet, with each one's next task.
+
+    Each feature's tasks count as done by their commits after its base commit
+    (committed_task_ids); a feature whose commits cannot be read counts its checked boxes
+    instead. Never raises on a Git failure.
+
+    Args:
+        root: Project root whose ``specs/*/tasks.md`` are read.
 
     Returns:
         One paragraph for Claude, or None when no feature is in progress.
@@ -99,9 +134,15 @@ def feature_progress_context(root: Path) -> str | None:
         document = read_tasks(tasks_file)
         if document.status.lower() != "approved" or not document.tasks:
             continue
-        done = sum(task.done for task in document.tasks)
+        done_ids = committed_task_ids(root, document)
+        if done_ids is None:
+            done_ids = {task.id for task in document.tasks if task.done}
+            counted, finished = "checked", "every box checked"
+        else:
+            counted, finished = "committed", "every task committed"
         lines.append(
-            f"- specs/{tasks_file.parent.name}: {done} of {len(document.tasks)} tasks checked, {next_step(document)}"
+            f"- specs/{tasks_file.parent.name}: {len(done_ids)} of {len(document.tasks)} tasks {counted}, "
+            f"{next_step(document, done_ids, finished)}"
         )
     if not lines:
         return None
