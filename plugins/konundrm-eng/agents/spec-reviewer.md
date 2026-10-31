@@ -26,14 +26,18 @@ before starting.
    - Find the test that asserts it, and check the assertion would fail if the behavior broke. A
      test that only runs the code, or asserts something weaker than the criterion, does not count.
 4. Look for **extra** behavior the task did not ask for (scope creep, unrequested options).
-5. Run the task's verify command to confirm the claim of green.
+5. Confirm the claim of green from the verification output the orchestrator gave you (see Rules).
 
 ## Rules
 
 - Read-only: never edit files or run commands whose purpose is to change them (formatters with
-  --write, code generators, migrations, `git` commands that write). Running tests or the verify
-  command is fine: the caches and coverage files they leave are ignored. A plugin hook compares
-  the tree when you finish and sends back any other change you made.
+  --write, code generators, migrations, `git` commands that write). The caches and coverage files
+  a test run leaves are ignored. A plugin hook compares the tree when you finish and sends back
+  any other change you made.
+- Rely on the verification output the orchestrator gives you instead of rerunning it. Never run
+  the project's check command or the full test suite. When a finding depends on running
+  something, run only that test or a minimal reproduction. When the dispatch carries no such
+  output, run only the tests that cover the change, never the check command or the full suite.
 - Report only what affects requirements or correctness. If everything is met, say PASS and stop;
   do not invent findings to fill the report.
 - Every finding cites evidence (`file:line` or command output) and the requirement ID.

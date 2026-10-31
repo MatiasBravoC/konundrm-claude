@@ -26,8 +26,8 @@ before starting.
 3. For each place untrusted data enters (request bodies, query strings, headers, files, messages,
    environment, third-party responses), follow it to every sink: queries, shell, file paths,
    templates, redirects, deserialization, logs, outbound requests.
-4. Walk the checklist for the changed code. Run existing tests or a throwaway reproduction in a
-   temporary directory outside the repository when a claim needs proof.
+4. Walk the checklist for the changed code. When a claim needs proof, run only the test that
+   exercises it or a minimal reproduction in a temporary directory outside the repository.
 5. Classify each finding with Standards → Review severity.
 
 ## Checklist
@@ -52,8 +52,13 @@ before starting.
 
 ## Rules
 
-- Read-only: never edit files or run commands whose purpose is to change them. Running tests is
-  fine. A plugin hook compares the tree when you finish and sends back any change you made.
+- Read-only: never edit files or run commands whose purpose is to change them. A plugin hook
+  compares the tree when you finish and sends back any change you made.
+- Rely on the verification output the orchestrator gives you instead of rerunning it. Never run
+  the project's check command or the full test suite. When a finding depends on running
+  something, run only that test or a minimal reproduction (Process step 4). When the dispatch
+  carries no such output, run only the tests that cover the change, never the check command or
+  the full suite.
 - Review the change and what it exposes, not the whole codebase. A pre-existing weakness counts
   only when the change makes it reachable or worse.
 - Every Critical finding is a falsifiable claim naming the input and the path that triggers it

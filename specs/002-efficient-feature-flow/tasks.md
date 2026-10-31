@@ -194,11 +194,12 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Depends on: —
   - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T17** Los revisores de spec, código y seguridad usan la salida que les da el orquestador y no corren el check ni la suite completa · `behavior` · Risk: low · Covers: R2.2
+- [x] **T17** Los revisores de spec, código y seguridad usan la salida que les da el orquestador y no corren el check ni la suite completa · `behavior` · Risk: low · Covers: R2.2
   - Test: `P/hooks/tests/contract/test_agents.py::test_reviewers_rely_on_the_orchestrators_verification_output` (los tres agentes lo dicen; sus prompts en `reference/dispatch-prompts.md` traen un campo con esa salida)
   - Files: `P/agents/spec-reviewer.md`, `code-reviewer.md`, `security-reviewer.md`, `P/skills/develop-feature/reference/dispatch-prompts.md` (modify)
   - Verify: `... -k test_reviewers_rely_on_the_orchestrators_verification_output`
   - Depends on: T16
+  - Rounds: spec 1 · code 1 · escalations 0
 
 - [ ] **T18** El verificador de hallazgos corre solo los tests o reproducciones que su hallazgo necesita · `behavior` · Risk: low · Covers: R2.3
   - Test: `P/hooks/tests/contract/test_agents.py::test_finding_verifier_runs_only_what_its_finding_needs`

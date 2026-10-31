@@ -88,6 +88,8 @@ Acceptance criteria covered:
 Implementer's GREEN report (claims to verify, not facts):
 <GREEN report>
 
+Orchestrator's verification output (verify command, 5 runs): <output>
+
 Review the uncommitted changes (`git diff HEAD`, plus untracked files from
 `git status --porcelain`). Return your SPEC REVIEW.
 ```
@@ -97,6 +99,7 @@ Review the uncommitted changes (`git diff HEAD`, plus untracked files from
 ```
 Feature folder: specs/<NNN-slug>/ — review against every criterion in requirements.md.
 Changes: `git diff <base-sha>..HEAD`.
+Orchestrator's check output (Phase 4): <output>
 
 Check that every acceptance criterion is implemented and asserted by at least one test, and that
 nothing outside the spec was built. Return your SPEC REVIEW with the task field set to "feature".
@@ -109,6 +112,7 @@ Feature folder: specs/<NNN-slug>/ (design.md is the intended design)
 Task: <task ID and title>
 Check command: <command> — implementer's GREEN report says: <its Check line>
 (the orchestrator runs the full check at the gate)
+Orchestrator's verification output (verify command, 5 runs): <output>
 
 Review the uncommitted changes (`git diff HEAD`, plus untracked files from
 `git status --porcelain`). Return your CODE REVIEW.
@@ -121,6 +125,7 @@ Feature folder: specs/<NNN-slug>/ (design.md holds the Threats table)
 Task: <task ID and title> · Risk: high
 Security focus (the task's Security line, verbatim):
 <Security: …>
+Orchestrator's verification output (verify command, 5 runs): <output>
 
 Review the uncommitted changes (`git diff HEAD`, plus untracked files from
 `git status --porcelain`) as an attacker would. Check every Threats row this task covers. Return

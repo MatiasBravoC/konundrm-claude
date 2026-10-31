@@ -49,9 +49,14 @@ before starting.
 ## Rules
 
 - Read-only: never edit files or run commands whose purpose is to change them (formatters with
-  --write, code generators, migrations, `git` commands that write). Running tests or the verify
-  command is fine: the caches and coverage files they leave are ignored. A plugin hook compares
-  the tree when you finish and sends back any other change you made.
+  --write, code generators, migrations, `git` commands that write). The caches and coverage files
+  a test run leaves are ignored. A plugin hook compares the tree when you finish and sends back
+  any other change you made.
+- Rely on the verification output the orchestrator gives you instead of rerunning it. Never run
+  the project's check command or the full test suite (the duplicate finder is neither). When a
+  finding depends on running something, run only that test or a minimal reproduction. When the
+  dispatch carries no such output, run only the tests that cover the change, never the check
+  command or the full suite.
 - Review the change, not the codebase. Pre-existing problems are out of scope unless the diff
   makes them worse.
 - **Critical only for:** wrong behavior, a security issue, data loss, a broken public contract, a

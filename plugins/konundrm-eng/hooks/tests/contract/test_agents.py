@@ -6,7 +6,7 @@ import re
 import unittest
 from pathlib import Path
 
-from .plugin_files import AGENTS_DIR, read_frontmatter
+from .plugin_files import AGENTS_DIR, SKILLS_DIR, read_frontmatter, read_section
 from .test_flows import _NEGATION, _in_one_sentence, _section_blocks
 
 RETHINKER = AGENTS_DIR / "rethinker.md"
@@ -95,6 +95,26 @@ _TEST_WRITER_RUN_SCOPE = {
     "it runs only the tests it wrote or changed": (_RUNS, _ONLY, _TESTS, _IT_WROTE, _IT_CHANGED),
     "it never runs the project's check command": (_NEGATION, _RUNS, _CHECK_COMMAND),
     "it never runs the full test suite": (_NEGATION, _RUNS, _FULL_SUITE),
+}
+# R2.2 (002): the reviewers rely on the verification output the orchestrator gives them instead of rerunning it.
+REVIEWERS = tuple(AGENTS_DIR / f"{role}-reviewer.md" for role in ("spec", "code", "security"))
+DISPATCH_PROMPTS = SKILLS_DIR / "develop-feature" / "reference" / "dispatch-prompts.md"
+REVIEWER_PROMPTS = ("spec-reviewer (task)", "spec-reviewer (whole feature)", "code-reviewer", "security-reviewer")
+_ORCHESTRATOR = re.compile(r"\borchestrator'?s?\b")
+_VERIFICATION = re.compile(r"\b(?:verif\w*|checks?)\b")
+_OUTPUT = re.compile(r"\boutputs?\b")
+_OUTPUT_FIELD = (_ORCHESTRATOR, _VERIFICATION, _OUTPUT, re.compile(r"<[^<>]+>"))  # one prompt line, with a placeholder
+_MINIMAL_REPRODUCTION = re.compile(r"\b(?:minimal|smallest)\b(?: \S+){0,2}? repro\w*")
+_REVIEWER_RUN_SCOPE = {
+    "it uses the verification output the orchestrator gives it": (_ORCHESTRATOR, _VERIFICATION, _OUTPUT),
+    "it never runs the project's check command": (_NEGATION, _RUNS, _CHECK_COMMAND),
+    "it never runs the full test suite": (_NEGATION, _RUNS, _FULL_SUITE),
+    "a finding that needs running something runs only that test or a minimal reproduction": (
+        _RUNS,
+        _ONLY,
+        _TESTS,
+        _MINIMAL_REPRODUCTION,
+    ),
 }
 
 
@@ -372,6 +392,23 @@ class AgentRunScopeTest(unittest.TestCase):
         test-driven-development skill the agent loads is outside this rule.
         """
         gaps = _section_rule_gaps(TEST_WRITER, "Rules", _TEST_WRITER_RUN_SCOPE)
+
+        self.assertEqual(gaps, [])
+
+    def test_reviewers_rely_on_the_orchestrators_verification_output(self) -> None:
+        """R2.2: 002 the `## Rules` section of the spec, code and security reviewers says, each part in one sentence,
+        that they use the verification output the orchestrator gives them, never run the project's check command nor
+        the full test suite, and run only that test or a minimal reproduction when a finding depends on running
+        something; and the fenced prompt of each reviewer section of develop-feature's dispatch-prompts.md has a line
+        with a `<…>` placeholder for the orchestrator's verification output.
+
+        The code-reviewer prompt's "implementer's GREEN report says" line is the implementer's claim, not that output.
+        """
+        gaps = [gap for reviewer in REVIEWERS for gap in _section_rule_gaps(reviewer, "Rules", _REVIEWER_RUN_SCOPE)]
+        for heading in REVIEWER_PROMPTS:
+            prompt = "\n".join(_fenced_blocks(read_section(DISPATCH_PROMPTS, heading))).lower()
+            if not any(all(p.search(line) for p in _OUTPUT_FIELD) for line in prompt.splitlines()):
+                gaps.append(f"dispatch-prompts.md: ## {heading} prompt has no field for the orchestrator's output")
 
         self.assertEqual(gaps, [])
 
