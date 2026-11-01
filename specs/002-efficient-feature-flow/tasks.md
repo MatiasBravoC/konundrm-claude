@@ -468,6 +468,10 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Files: `P/.claude-plugin/plugin.json`, `P/CHANGELOG.md` (modify)
   - Verify: `... -k test_0_7_0_changelog_names_each_mechanism`
   - Depends on: T39
+  - Decision: Option A (recommended) — qué versión exige la prueba en `plugin.json`
+    - Option A: 0.7.0 o posterior, comparada como números, más una entrada [0.7.0] del changelog buscada por versión; la prueba de la 0.6.0 ya ata `plugin.json` a la primera entrada publicada · pros: la próxima versión no la rompe, como la prueba de la 0.6.0 · cons: no fija el texto exacto "0.7.0" después de otra subida
+    - Option B: exactamente "0.7.0" · pros: fija el texto de la tarea · cons: se rompe en la próxima versión
+    - Recommendation: A.
 
 - [ ] **T41** El README describe el flujo nuevo, cómo encadenar sesiones y cómo medir una corrida · `behavior` · Risk: low · Covers: R7.2
   - Test: `P/hooks/tests/contract/test_release.py::test_readme_describes_sessions_per_slice_and_measuring_a_run`

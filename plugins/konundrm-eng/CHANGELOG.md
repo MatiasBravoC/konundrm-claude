@@ -5,6 +5,121 @@ All notable changes to `konundrm-eng` are documented here. The format follows
 [Semantic Versioning](https://semver.org/). Bump `version` in `.claude-plugin/plugin.json` with
 every release; installed copies only update when it changes.
 
+## [0.7.0] - 2026-11-01
+
+A cheaper feature flow. The run that built 0.6.0 (80 tasks, 5 sessions, 380 subagents) spent
+about 57% of its price-weighted tokens in the orchestrators, whose every turn rereads the whole
+conversation; it ran the full check 290 times (about 5.7 h), ran its 221 reviews one after
+another and paid about 0.65 s of hooks on every shell command. This release continues the feature
+in a new session per slice, runs the full check once per task unless something changed after it
+passed, runs a task's reviews at the same time, moves the flow's bookkeeping into commands that
+answer in one call, keeps Python out of the hook for commands that are not the check, and measures
+a run from its transcripts. Its savings are not measured yet: the next feature built with this
+flow is the comparison. Requires Claude Code 2.1.295 or later, as 0.6.0 did.
+
+### Added
+
+- `task_ledger.py` does the flow's bookkeeping, one call each. `status <tasks.md>` prints the
+  plan's base commit, the tasks with a `Task:` commit in `<base>..HEAD`, the next task (or each
+  partition's next task in the wave in progress), whether the working tree is clean and whether a
+  passing check is recorded for this exact tree. `message <tasks.md> T<n> --subject … --rounds …
+  [--body …]` writes a task's commit message, with its `Task: T<n> · Covers: …` and `Rounds: …`
+  trailers, under the Git directory and prints its path; it refuses, with exit 1 and nothing
+  written, a task the plan lacks or one already committed. `close-slice <tasks.md> S<k>` checks
+  the boxes of the slice's committed tasks and writes their Rounds lines from their commits. A
+  plan that cannot be read, or whose base commit is missing or unknown, ends with exit 2 and
+  `<file>:<line>` on stderr, changing nothing.
+- `run_slices.py specs/<NNN-slug> [--claude PATH] [--max-sessions N] [-- ARGS...]` builds a
+  feature with pre-approved pauses from a terminal: it runs
+  `claude -p "/konundrm-eng:develop-feature specs/<NNN-slug>"` once per slice, in order, and its
+  last line says how the run ended: `DONE`, `BLOCKED: <reason>`, `RED: <reason>` (a session waits
+  for a person's decision), `FAILED: exit <n>`, `STALLED: session <k> added no commit` or
+  `STALLED: reached the cap of <n> sessions`. It opens no session unless the plan is readable,
+  `Approved`, `Checkpoints: pre-approved` and names a base commit in the repository, and never
+  more than the pending slices plus one.
+- `session_costs.py <folder>... [--check-pattern REGEX]` measures a run from Claude Code transcript
+  folders: per role (the orchestrator and each subagent type) its dispatches, turns, tokens by kind
+  and weighted (1, 1.25, 0.1 and 5) with its share, active minutes, full check runs with their
+  minutes, test runs and messages that dispatched subagents at once; then the busiest orchestrator
+  session's context per turn (first, median, 90th percentile, maximum). It prints counts, times
+  and token totals, never content (an unreadable transcript gives one line with its path and the
+  error type, and exit 1), skips and counts invalid lines, and reads Windows paths past 260
+  characters. `/konundrm-eng:measure-impact [days] [transcript folders...]` adds this report to
+  the delivery report when it gets transcript folders.
+- Tests, run by the check, for this release's agreements that can be checked without a model:
+  each role's instructions, each new step of the flow, the new commands and the hook. The rules go
+  into the contract tests under `hooks/tests/contract/`; the commands get `test_task_ledger.py`,
+  `test_task_commits.py`, `test_run_slices.py`, `test_deliberate_stops.py` and
+  `test_session_costs.py`; the fast path of `run.sh` is tested in
+  `integration/test_hook_scripts.py`; and hook tests such as `test_record_check_result.py` and
+  `test_audit_subagent_changes.py` grow with what they cover.
+
+### Changed
+
+- Sessions: once a slice's pause is over and another slice or the finish phase is left, the
+  session's part of the feature ends, and the feature goes on in a new session per slice that
+  resumes from the plan and the repository, so the cost of a turn no longer grows with the
+  feature. In the desktop app the session tools open it in the same folder with
+  `/konundrm-eng:develop-feature specs/<NNN-slug>`; elsewhere the session ends with the exact
+  `claude "…"` command. Uncommitted files stop the hand-off with a `BLOCKED:` line naming them.
+  `- **Sessions:** single` in the `tasks.md` header, set from the request, the plan approval or a
+  pause, keeps the next slice in the current session; `- **Sessions:** per-slice` is the default.
+- One full check per task: the test-writer runs only the tests it wrote or changed; the spec,
+  code and security reviewers get the orchestrator's verification output and run only the test or
+  minimal reproduction a finding needs; the finding verifier runs only what its finding needs; the
+  implementer runs the task's test and the tests of the code it changed, then the project's check
+  once at the end of each dispatch. None runs the full suite outside the check.
+- The gate starts with `task_ledger.py status` and runs the check only when no passing check is
+  recorded for the current tree, so a file changed after the last green check (a test fix,
+  evidence, a rethink report) still gets one. A passing check, Claude's or a gate's, also writes
+  its tree to `.git/konundrm-eng-green` (one per worktree).
+- A task's commit is one command: `task_ledger.py message`, then `git commit -F` on the file it
+  wrote, through the commit gate like any other commit. The message carries the task, its
+  requirements and its review rounds; the pause's `close-slice` writes the boxes and Rounds lines
+  into `tasks.md`, committed with the slice summary.
+- Parallel reviews: once a task is verified, develop-feature launches the spec and code reviews in
+  one message, with the security review on a high-risk task, and runs no test-writer or
+  implementer meanwhile. All their findings go to one fix round, and each re-review gets its
+  previous findings, the fix round's reports and the new verification output. A change made while
+  verifying by risk or after a red check goes back through the reviews before the commit.
+- Resuming and the session start count a task as built by its `Task:` commit in `<base>..HEAD`,
+  whatever its box says; the session start falls back to the boxes for a plan without a usable
+  base commit.
+- The fast path of `hooks/run.sh`: for the hook that records checks, a command that cannot be the
+  project's check (`KONUNDRM_CHECK_CMD` included) exits without starting Python. What it cannot
+  decide goes to Python byte for byte, and every other hook, the commit gate and the dependency
+  guard included, gets its input untouched.
+
+### Fixed
+
+- Resuming looked task commits up with `git log -E --grep '^Task: T<n>( |$)'` over the whole
+  history, so `Task:` commits an earlier feature left on the default branch counted as built;
+  `task_ledger.py status` searches only `<base>..HEAD`.
+
+### Known limitations
+
+- A check run piped, redirected or chained (`npm run check | tail`) is not recorded, on purpose,
+  so the gate runs it again; run it alone, or after `cd <root> &&`.
+- Parallel partitions still look a partition's tasks up with an unranged `git log --grep`.
+- `run_slices.py` checks the plan only before the first session, counts a session as progress when
+  HEAD's SHA changed, and sees no stop line when `--output-format json` or `stream-json` follows
+  `--`.
+- `session_costs.py`: a malformed tool block, or a transcript mixing timestamps with and without a
+  time zone, still stops the report (one line, exit 1, no content); a folder that does not exist
+  gives an empty table without a warning; subagents that workflows start
+  (`subagents/workflows/`) are not read; a `--check-pattern` is searched anywhere in a command, so
+  start it with `^`; test runs count only `python -m unittest`, `python -m pytest`, `pytest`,
+  `npm test` and `npm run test`.
+
+### Upgrading
+
+Plans written with 0.6.0, with boxes and Rounds lines per task, keep working: resuming, the
+session start and the impact report read both. A `tasks.md` without a `Sessions:` line reads as
+`per-slice`, so the feature continues in a new session after each slice's pause; add
+`- **Sessions:** single` to its header to stay in one session. `task_ledger.py` and
+`run_slices.py` need the plan's `- **Base commit:**` line with a SHA. No setup-project template
+changed, so projects prepared with 0.6.0 need nothing copied.
+
 ## [0.6.0] - 2026-10-30
 
 Guided slice delivery. A 61-task feature ran for about three days in one session, with the session

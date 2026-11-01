@@ -115,18 +115,61 @@ def _changelog_released_entries() -> list[tuple[tuple[int, int, int], str]]:
     return entries
 
 
-def _changelog_mechanism_gaps(entries: list[tuple[tuple[int, int, int], str]]) -> list[str]:
-    """Return one gap per new mechanism the 0.6.0 entry does not name, or one gap when that entry is missing."""
-    heading = next((heading for version, heading in entries if version == _CHANGELOG_FEATURE_VERSION), None)
+# Feature 002 (efficient feature flow) ships as 0.7.0 (R7.2). Keyword patterns, not sentence grammars: each ties its
+# keyword to the mechanism so a quoted command or "one commit per task" in the entry does not match by accident.
+_CHANGELOG_002_VERSION = (0, 7, 0)
+_CHANGELOG_002_MECHANISMS = (
+    (
+        "a new session per slice",
+        re.compile(
+            r"\b(?:new|one|a|fresh|own) sessions? (?:per|for each|for every) slice\b"
+            r"|\bper-slice sessions?\b|\bsessions?\W{1,6}per-slice\b"
+            r"|\beach slice (?:runs |gets |starts )?(?:in )?(?:its own|a new|a fresh) session\b"
+        ),
+    ),
+    ("one check per task", re.compile(r"\bchecks?\b(?: \w+){0,2} (?:per|for each|for every) task\b")),
+    (
+        "parallel reviews",
+        re.compile(
+            r"\bparallel (?:spec and code )?reviews?\b"
+            r"|\breviews?\b(?: \w+){0,2} (?:in parallel|at once|concurrently)\b"
+        ),
+    ),
+    ("task_ledger.py", re.compile(r"\btask_ledger\.py\b")),
+    ("the fast path of run.sh", re.compile(r"\bfast[ -]path\b.{0,60}\brun\.sh\b|\brun\.sh\b.{0,60}\bfast[ -]path\b")),
+    ("run_slices.py", re.compile(r"\brun_slices\.py\b")),
+    ("session_costs.py", re.compile(r"\bsession_costs\.py\b")),
+)
+
+
+def _changelog_mechanism_gaps(
+    entries: list[tuple[tuple[int, int, int], str]],
+    version: tuple[int, int, int],
+    mechanisms: tuple[tuple[str, re.Pattern[str]], ...],
+) -> list[str]:
+    """Return one gap per mechanism the `version` entry does not name, or one gap when that entry is missing.
+
+    The entry is looked up by its version, never by position. Its text is matched lowercased, without backticks and
+    with whitespace collapsed, since entries wrap their lines.
+    """
+    version_text = ".".join(str(part) for part in version)
+    heading = next((heading for entry_version, heading in entries if entry_version == version), None)
     if heading is None:
-        return ["CHANGELOG.md: there is no [0.6.0] entry"]
+        return [f"CHANGELOG.md: there is no [{version_text}] entry"]
     text = read_section(_CHANGELOG_PATH, heading).lower().replace("`", "")
     text = re.sub(r"\s+", " ", text)
     return [
-        f"CHANGELOG.md [0.6.0]: the entry does not name {label}"
-        for label, pattern in _CHANGELOG_MECHANISMS
+        f"CHANGELOG.md [{version_text}]: the entry does not name {label}"
+        for label, pattern in mechanisms
         if not pattern.search(text)
     ]
+
+
+def _manifest_version() -> tuple[int, ...] | None:
+    """Return plugin.json's version as a tuple of numbers, or None when it is not `<x.y.z>`."""
+    version = json.loads(_CHANGELOG_MANIFEST_PATH.read_text(encoding="utf-8"))["version"]
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    return tuple(int(part) for part in match.groups()) if match else None
 
 
 class VersionAndChangelogTest(unittest.TestCase):
@@ -153,7 +196,26 @@ class VersionAndChangelogTest(unittest.TestCase):
                 gaps.append(f"plugin.json version {manifest_version} is not the first CHANGELOG entry {first_heading}")
             if first_version < _CHANGELOG_FEATURE_VERSION:
                 gaps.append(f"CHANGELOG.md: the first released entry {first_heading} is older than 0.6.0")
-        gaps += _changelog_mechanism_gaps(entries)
+        gaps += _changelog_mechanism_gaps(entries, _CHANGELOG_FEATURE_VERSION, _CHANGELOG_MECHANISMS)
+
+        self.assertEqual(gaps, [])
+
+    def test_0_7_0_changelog_names_each_mechanism(self) -> None:
+        """R7.1, R7.2: 002 ships as 0.7.0 or later, and the [0.7.0] CHANGELOG entry names each new mechanism.
+
+        plugin.json's version, compared as numbers, is 0.7.0 or later (test_version_and_changelog_agree already ties
+        it to the first released entry). The [0.7.0] entry is looked up by its version, and must name a new session per
+        slice, one check per task, parallel reviews, task_ledger.py, the fast path of run.sh, run_slices.py and
+        session_costs.py.
+        """
+        manifest_version = _manifest_version()
+        entries = _changelog_released_entries()
+
+        gaps = []
+        if manifest_version is None or manifest_version < _CHANGELOG_002_VERSION:
+            shown = "not <x.y.z>" if manifest_version is None else ".".join(str(part) for part in manifest_version)
+            gaps.append(f"plugin.json version {shown} is older than 0.7.0")
+        gaps += _changelog_mechanism_gaps(entries, _CHANGELOG_002_VERSION, _CHANGELOG_002_MECHANISMS)
 
         self.assertEqual(gaps, [])
 
