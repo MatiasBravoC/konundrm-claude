@@ -26,6 +26,15 @@ from metrics_report import (
     read_merged_pull_requests,
     rework_section,
 )
+from task_commits import NOTES_REF
+
+
+def add_note(root: Path, text: str) -> None:
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@e", "notes", f"--ref={NOTES_REF}", "add", "-m", text, "HEAD"],
+        cwd=root,
+        check=True,
+    )
 
 
 def commit(root: Path, path: str, content: str, message: str) -> None:
@@ -135,6 +144,25 @@ class MetricsReportTest(unittest.TestCase):
         commit(self.root, "src/b.py", "4", "fix(b): log less\n\nEscaped-gate: review")
         lines = delivery_section(read_commits(self.root, self.since))
         self.assertIn("**property 2, review 1**", "\n".join(lines))
+
+    def test_reads_flow_notes_and_defaults_to_a_500_line_budget(self) -> None:
+        # R6.2: a task's and a fix's flow lines live in the commit's note, not its message.
+        # R6.5: commits from before notes (setUp's task commit) are still read from the message.
+        # R7.4: without KONUNDRM_PR_BUDGET, a pull request may change up to 500 lines.
+        commit(self.root, "src/c.py", "1", "feat(c): add c")
+        add_note(self.root, "Task: T2 · Covers: R1.2\nRounds: spec 1 · code 1 · escalations 0")
+        commit(self.root, "src/c.py", "2", "fix(c): reject empty input")
+        add_note(self.root, "Escaped-gate: property")
+        environment = {key: value for key, value in os.environ.items() if key != "KONUNDRM_PR_BUDGET"}
+        merged = {"additions": 450, "deletions": 0, "createdAt": "2026-10-01T10:00Z", "mergedAt": "2026-10-01T12:00Z"}
+
+        commits = read_commits(self.root, self.since)
+        with mock.patch.dict(os.environ, environment, clear=True):
+            report = build_report(self.root, 30, pull_requests=[merged])
+
+        self.assertEqual([c.is_task for c in commits], [True, False, False, True, False])
+        self.assertEqual(commits[-1].escaped_gate, "property")
+        self.assertIn("0 of 1 (budget 500)", report)
 
     def test_builds_a_report_with_every_section(self) -> None:
         metrics_log.record_event(self.root, "stop_blocked", "s1")
