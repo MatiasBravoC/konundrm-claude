@@ -17,6 +17,8 @@ object, carry a timestamp that is not ISO 8601, or are user or assistant lines m
 report reads.
 ``--check-pattern REGEX`` says what a check run is; by default it is the check command that
 ``quality_check`` finds from the current folder.
+On Windows it reads transcripts and folders whose paths pass 260 characters, through the
+extended-length prefix it adds to each folder; the paths it prints stay as the folder was given.
 
 It prints nothing read from a transcript except role names and numbers. When a transcript cannot be
 read or measured (other than an invalid line), it writes one line to stderr naming the error's type
@@ -33,7 +35,9 @@ Sections:
     find_transcripts()     — lists the transcripts of a folder with their role.
     RoleCosts              — what every transcript of one role cost together.
     RunCosts               — what a run cost per role, and its busiest orchestrator session.
-    collect_run_costs()    — measures every transcript of the given folders as one run.
+    EXTENDED_PATH_PREFIX   — Windows prefix that lifts the 260-character path limit.
+    collect_run_costs()    — measures every transcript of the given folders as one run, long
+                             Windows paths included.
     format_role_table()    — renders the per-role table.
     format_busiest_orchestrator() — renders the busiest orchestrator's turns and context per turn.
     main()                 — CLI.
@@ -44,6 +48,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import os
 import re
 import statistics
 import sys
@@ -455,11 +460,35 @@ class RunCosts:
             self.busiest_orchestrator = transcript
 
 
+EXTENDED_PATH_PREFIX = "\\\\?\\"
+"""Windows prefix that lifts the 260-character path limit from a path, whatever the registry says."""
+
+EXTENDED_UNC_PREFIX = EXTENDED_PATH_PREFIX + "UNC\\"
+"""The same prefix for a network path, which replaces the path's leading two backslashes."""
+
+
+def _long_path_folder(folder: Path) -> Path:
+    """Returns `folder` as a path whose files Windows opens past 260 characters; elsewhere `folder`.
+
+    The prefixed path is absolute, with backslashes and no "." or ".." parts, as the prefix needs.
+    A folder that already carries the prefix is returned as it is.
+    """
+    if sys.platform != "win32" or str(folder).startswith(EXTENDED_PATH_PREFIX):
+        return folder
+    absolute = os.path.abspath(folder)
+    if absolute.startswith("\\\\"):  # \\server\share
+        return Path(EXTENDED_UNC_PREFIX + absolute[2:])
+    return Path(EXTENDED_PATH_PREFIX + absolute)
+
+
 def collect_run_costs(folders: list[Path], check_pattern: re.Pattern[str] | None = None) -> RunCosts:
-    """Measures every transcript of the given folders as one run.
+    r"""Measures every transcript of the given folders as one run.
+
+    On Windows each folder is read through the extended-length prefix (``\\?\``), so transcripts
+    and folders whose paths pass 260 characters are read too.
 
     Args:
-        folders: Project transcript folders, read as one run.
+        folders: Project transcript folders, read as one run; relative ones from the current folder.
         check_pattern: What a check run looks like, as read_transcript takes it.
 
     Returns:
@@ -468,14 +497,19 @@ def collect_run_costs(folders: list[Path], check_pattern: re.Pattern[str] | None
     Raises:
         TranscriptReadError: If a transcript or an existing subagent's meta.json cannot be read or
             measured, whatever the error (invalid lines are skipped, not errors); the original
-            error is its ``__cause__``.
+            error is its ``__cause__``. Its path starts with the folder as given, without the
+            prefix this function adds.
     """
     run = RunCosts()
     for folder in folders:
-        for role, transcript in find_transcripts(folder):
-            with _reading(transcript):
-                costs = read_transcript(transcript, check_pattern)
-            run.add(role, costs)
+        readable_folder = _long_path_folder(folder)
+        try:
+            for role, transcript in find_transcripts(readable_folder):
+                with _reading(transcript):
+                    costs = read_transcript(transcript, check_pattern)
+                run.add(role, costs)
+        except TranscriptReadError as error:
+            raise TranscriptReadError(folder / error.path.relative_to(readable_folder)) from error.__cause__
     return run
 
 

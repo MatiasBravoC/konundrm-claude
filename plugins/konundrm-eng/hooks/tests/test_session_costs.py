@@ -6,6 +6,7 @@ import json
 import os
 import random
 import re
+import shutil
 import string
 import subprocess
 import sys
@@ -783,6 +784,65 @@ def number(row: dict[str, str], key: str) -> float:
     return float(row[COLUMNS[key]].rstrip("%"))
 
 
+# Windows refuses paths of 260 characters or more unless they carry this prefix (and the registry's
+# LongPathsEnabled is off); built with chr so no escape slips. Linux opens long paths natively.
+EXTENDED_PATH_PREFIX = chr(92) * 2 + "?" + chr(92)
+# Windows' limit, which the fixture's long paths must reach.
+WINDOWS_PATH_LIMIT = 260
+
+
+def extended_path(path: Path) -> Path:
+    """Returns `path`, absolute and without "." or ".." parts, as this test can create and remove it.
+
+    On Windows that is the path behind the extended-length prefix, so files past 260 characters can
+    be written whatever the registry says; elsewhere it is `path` itself.
+    """
+    if sys.platform != "win32":
+        return path
+    return Path(EXTENDED_PATH_PREFIX + str(path))
+
+
+def build_long_path_transcripts(root: Path) -> tuple[Path, Path, Path]:
+    """Writes the transcripts of R6.5 (T38) under `root` (absolute, resolved) and returns their folders.
+
+    Returns:
+        ``(long_folder, short_folder, long_bad_folder)`` as a user would pass them, without prefix:
+        a folder whose own path passes 260 characters, holding a session (100 + 10 tokens) and a
+        test-writer subagent (50 + 5); a short folder whose session transcript (200 + 20) is short
+        but whose implementer subagent (70 + 7) and its meta.json pass 260; and a folder past 260
+        holding only a directory named like a session transcript, which cannot be read.
+    """
+    long_folder = root / ("p" * 110) / ("q" * 110)
+    short_folder = root / "short"
+    long_bad_folder = root / ("b" * 110) / ("c" * 110)
+    long_session = "sess-long"
+    write_jsonl(
+        extended_path(long_folder / f"{long_session}.jsonl"),
+        [user_line(0, False), *assistant_lines(1, "msg-l1", (100, 0, 0, 10), 1, False)],
+    )
+    write_subagent(
+        extended_path(long_folder / long_session / "subagents"),
+        "l1",
+        TEST_WRITER,
+        [user_line(10, True), *assistant_lines(11, "msg-l2", (50, 0, 0, 5), 1, True)],
+    )
+    # Claude Code names the session folder after the session id; a long id makes the subagent's
+    # files pass the limit while the session transcript beside it stays under it.
+    short_session = "s" * 120
+    write_jsonl(
+        extended_path(short_folder / f"{short_session}.jsonl"),
+        [user_line(20, False), *assistant_lines(21, "msg-s1", (200, 0, 0, 20), 1, False)],
+    )
+    write_subagent(
+        extended_path(short_folder / short_session / "subagents"),
+        "a" * 100,
+        IMPLEMENTER,
+        [user_line(30, True), *assistant_lines(31, "msg-s2", (70, 0, 0, 7), 1, True)],
+    )
+    extended_path(long_bad_folder / f"{SESSION_ID}.jsonl").mkdir(parents=True)
+    return long_folder, short_folder, long_bad_folder
+
+
 class SessionCostsTest(unittest.TestCase):
     # R6.1 (first half, T33): per role, dispatches, turns, tokens by type, weighted tokens (1; 1.25;
     # 0.1; 5), share of the total and active minutes (median and total, pauses over 5 min left out).
@@ -1039,6 +1099,57 @@ class SessionCostsTest(unittest.TestCase):
         self.assertEqual(set(rows), set(expected), context)
         actual = {role: {key: number(rows[role], key) for key in keys} for role in expected}
         self.assertEqual(actual, expected, context)
+
+    # R6.5 (T38, decision A): transcripts whose paths pass 260 characters are read on Windows: a folder
+    # whose own path passes the limit, and a short folder whose subagent transcript and meta.json pass
+    # it. A path the script prints never carries the \\?\ prefix it may add.
+    def test_reads_transcripts_past_the_windows_path_limit(self) -> None:
+        # ignore_cleanup_errors: on Windows only the explicit rmtree through the prefix can remove it.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temporary:
+            root = Path(temporary).resolve()
+            try:
+                long_folder, short_folder, long_bad_folder = build_long_path_transcripts(root)
+                short_subagents = short_folder / ("s" * 120) / "subagents"
+                long_paths = {
+                    "long folder": long_folder,
+                    "short folder's subagent transcript": short_subagents / f"agent-{'a' * 100}.jsonl",
+                    "short folder's subagent meta.json": short_subagents / f"agent-{'a' * 100}.meta.json",
+                }
+                bad_transcript = extended_path(long_bad_folder / f"{SESSION_ID}.jsonl")
+                with self.assertRaises(OSError) as raised:
+                    bad_transcript.read_text(encoding="utf-8")
+                expected_type = type(raised.exception).__name__
+
+                completed = run_session_costs(long_folder, root, str(short_folder))
+                failing = run_session_costs(long_bad_folder, root)
+            finally:
+                shutil.rmtree(extended_path(root), ignore_errors=True)
+
+        for name, path in long_paths.items():
+            self.assertGreater(len(str(path)), WINDOWS_PATH_LIMIT, name)
+        self.assertLess(len(str(short_folder / f"{'s' * 120}.jsonl")), WINDOWS_PATH_LIMIT)
+        context = f"exit {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        self.assertEqual(completed.returncode, 0, context)
+        self.assertEqual(completed.stderr, "", context)
+        self.assertEqual(completed.stdout.splitlines()[-1], "skipped lines: 0", context)
+        rows = read_table(completed.stdout)
+        keys = ("dispatches", "turns", "input", "cache_write", "cache_read", "output")
+        # An empty table means a folder was listed as empty; a row "unknown" means a meta.json was
+        # taken for missing; exit 1 means a transcript could not be opened.
+        expected = {
+            ORCHESTRATOR: dict(zip(keys, (2, 2, 300, 0, 0, 30), strict=True)),
+            TEST_WRITER: dict(zip(keys, (1, 1, 50, 0, 0, 5), strict=True)),
+            IMPLEMENTER: dict(zip(keys, (1, 1, 70, 0, 0, 7), strict=True)),
+        }
+        self.assertEqual(set(rows), set(expected), context)
+        actual = {role: {key: number(rows[role], key) for key in keys} for role in expected}
+        self.assertEqual(actual, expected, context)
+        # The unreadable transcript in a long folder: T36's one error line, its path as the user gave it.
+        failing_context = f"exit {failing.returncode}\nstdout:\n{failing.stdout}\nstderr:\n{failing.stderr}"
+        self.assertEqual(failing.returncode, 1, failing_context)
+        expected_line = f"session_costs: cannot read {long_bad_folder / f'{SESSION_ID}.jsonl'}: {expected_type}\n"
+        self.assertEqual(failing.stderr, expected_line, failing_context)
+        self.assertNotIn(EXTENDED_PATH_PREFIX, failing.stderr, failing_context)
 
 
 if __name__ == "__main__":

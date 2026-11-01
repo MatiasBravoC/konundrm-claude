@@ -440,6 +440,10 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Files: `P/hooks/scripts/session_costs.py`
   - Verify: `... -k test_reads_transcripts_past_the_windows_path_limit`
   - Depends on: T36
+  - Decision: Option A (recommended) — dónde se agrega el prefijo `\\?\`
+    - Option A: solo en Windows, cada carpeta de la línea de comandos se vuelve ruta absoluta y recibe `\\?\` (o `\\?\UNC\` para `\\servidor\recurso`) una vez, antes de listar y leer; toda ruta que se imprime (la línea de error de T36) sale sin el prefijo, como la dio la persona · pros: un solo lugar; nada cambia en otras plataformas; funciona diga lo que diga el registro · cons: hay que quitar el prefijo donde se imprime una ruta
+    - Option B: agregar el prefijo solo a las rutas de 260 caracteres o más · pros: las rutas comunes no cambian · cons: el límite tiene bordes (248 para carpetas, el 260 cuenta el nulo final) y deja dos caminos que probar
+    - Recommendation: A.
 
 - [ ] **T39** El informe de impacto incluye el de costos cuando se le indican las transcripciones · `behavior` · Risk: low · Covers: R6.6
   - Test: `P/hooks/tests/contract/test_skills.py::test_measure_impact_adds_session_costs_when_given_transcripts`
