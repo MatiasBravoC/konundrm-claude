@@ -99,7 +99,8 @@ so the extra effort goes only to work that has shown it needs it.
    the user to commit or stash them first; never mix them into feature commits.
 3. Get the check command from the plugin, the same one its hooks run: the session context names
    it, or `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" quality_check.py` prints it. Run it once as a
-   baseline. If it is red before you start, stop and report: never build on red. If none exists,
+   baseline, exactly as given, alone in its own shell call, with no pipe, redirection or other
+   command around it, because the hook records only such a check run. If it is red before you start, stop and report: never build on red. If none exists,
    suggest `/konundrm-eng:setup-project` and ask whether to continue without gates.
 
 **Partition session.** When `$ARGUMENTS` also says `--partition P<k>`, the feature's main session
@@ -242,7 +243,8 @@ failure of the same review, sends the task to [Rethink](#rethink) instead of ano
    `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py status specs/<NNN-slug>/tasks.md` to
    learn whether the check is green for the current tree (a passing check recorded on exactly
    these files, whoever ran it). When `status` shows `check: green for this tree`, go to step 7
-   without running the check again. Otherwise run the check command: it must pass, and running
+   without running the check again. Otherwise run the check command exactly as given, alone in its own
+   shell call, with no pipe, redirection or other command around it: it must pass, and running
    it on the exact files you will commit lets the commit hook reuse its green result. If the
    check fails, send the failure to the `implementer` (fix-round prompt), rerun the verify command
    and the reviews as after step 4's fix round, take the task through step 5 (verify by risk)

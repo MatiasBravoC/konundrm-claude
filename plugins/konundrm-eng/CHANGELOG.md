@@ -73,6 +73,9 @@ flow is the comparison. Requires Claude Code 2.1.295 or later, as 0.6.0 did.
   recorded for the current tree, so a file changed after the last green check (a test fix,
   evidence, a rethink report) still gets one. A passing check, Claude's or a gate's, also writes
   its tree to `.git/konundrm-eng-green` (one per worktree).
+- The implementer, develop-feature's baseline and its gate run the check command as given, alone
+  in its shell call, with no pipe, redirection or other command around it, so its pass is
+  recorded and the commit reuses it instead of running the check again.
 - A task's commit is one command: `task_ledger.py message`, then `git commit -F` on the file it
   wrote, through the commit gate like any other commit. The message carries the task, its
   requirements and its review rounds; the pause's `close-slice` writes the boxes and Rounds lines

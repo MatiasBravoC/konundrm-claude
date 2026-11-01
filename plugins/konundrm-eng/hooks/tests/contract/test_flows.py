@@ -2898,6 +2898,24 @@ _RESUME_RULES = {
     "R1.8 continues at the task status names as next": (_RESUME_CONTINUES, _RESUME_NEXT, _RESUME_STATUS_NAMES),
 }
 
+# The check run as given (R2.4, R2.5): the recorder keeps a passing check only when the shell call is the check command
+# alone, so a trimmed, redirected or chained run leaves `check: not recorded` and the gate and the commit run it again.
+IMPLEMENTER = PLUGIN_ROOT / "agents" / "implementer.md"
+_ALONE_CHECK = re.compile(r"\bcheck\b")
+_ALONE_AS_GIVEN = re.compile(r"\bas (?:given|is|written|printed|named)\b|\bexactly as\b|\bverbatim\b|\bunchanged\b")
+_ALONE_OWN_CALL = re.compile(
+    r"\balone\b|\bby itself\b|\bon its own\b"
+    r"|\b(?:its own|a separate|a single|one) (?:shell |bash )?(?:call|invocation)\b"
+)
+_ALONE_PIPE = re.compile(r"\bpip(?:e|es|ed|ing)\b|\|")
+_ALONE_REDIRECT = re.compile(r"\bredirect\w*")
+_ALONE_REASON = re.compile(r"\brecord\w*|\bregister\w*|\breus\w*")
+_ALONE_RULES = {
+    "the check command run as given, alone in its own shell call": (_ALONE_CHECK, _ALONE_AS_GIVEN, _ALONE_OWN_CALL),
+    "no pipe or redirection on the check": (_ALONE_CHECK, _NEGATION, _ALONE_PIPE, _ALONE_REDIRECT),
+    "why: only such a run is recorded and reused": (_ALONE_CHECK, _ALONE_REASON),
+}
+
 
 class GateFlowTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
@@ -3006,6 +3024,37 @@ class GateFlowTest(unittest.TestCase):
             for block in prepare
             for sentence in _sentences(block)
             if _RESUME_UNRANGED_LOOKUP.search(sentence) and not _RESUME_RANGE.search(sentence)
+        ]
+
+        self.assertEqual(gaps, [])
+
+    def test_the_check_runs_alone_so_its_pass_is_recorded(self) -> None:
+        """R2.4, R2.5: 002 the implementer's check step (agents/implementer.md `## Process`), develop-feature's Phase 0
+        baseline (step 3) and its Phase 3 gate (step 6) each say, in one sentence of that step, to run the check
+        command as given, alone in its own shell call, with no pipe or redirection, and why: the hook records only
+        such a run, so the commit can reuse it instead of the gate running the check again.
+
+        The "why" rule shares its sentence with the word "check" only, so wording like "so its pass is recorded" fits.
+        """
+        skill = DEVELOP_FEATURE_DIR / "SKILL.md"
+        places = {
+            "implementer.md ## Process check step": [
+                block for block in _section_blocks(IMPLEMENTER, "Process") if block.startswith("6.")
+            ],
+            "develop-feature Phase 0 step 3 (baseline)": [
+                block for block in _section_blocks(skill, "Phase 0: Prepare") if block.startswith("3.")
+            ],
+            "develop-feature Phase 3 step 6 (gate)": [
+                block for block in _section_blocks(skill, "Phase 3: Task loop") if block.startswith("6. **gate.**")
+            ],
+        }
+
+        gaps = [f"{place} is missing" for place, blocks in places.items() if not blocks]
+        gaps += [
+            f"{place} lacks: {rule}"
+            for place, blocks in places.items()
+            for rule, patterns in _ALONE_RULES.items()
+            if not any(_in_one_sentence(block, *patterns) for block in blocks)
         ]
 
         self.assertEqual(gaps, [])

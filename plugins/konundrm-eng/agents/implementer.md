@@ -31,7 +31,9 @@ skills are not already in your context, load them with the Skill tool before sta
    a boundary justifies it, fix names (`naming-identifiers`), document the public surface you
    touched (`documenting-code`). Rerun those tests after each refactoring step.
 6. Run the project's check command once, at the end of the dispatch, and fix everything it
-   reports. The full test suite runs only inside the check.
+   reports. Run it exactly as given, alone in its own shell call, with no pipe, redirection or
+   other command around it, so the plugin records the check's pass and the commit reuses it. The
+   full test suite runs only inside the check.
 7. Return the GREEN report.
 
 ## Rules
