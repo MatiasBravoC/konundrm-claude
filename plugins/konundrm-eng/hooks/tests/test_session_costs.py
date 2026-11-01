@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,10 @@ COLUMNS = {
     "share": "share",
     "median_minutes": "active_min_median",
     "total_minutes": "active_min_total",
+    "check_runs": "check_runs",
+    "check_minutes": "check_min_total",
+    "test_runs": "test_runs",
+    "parallel_messages": "parallel_dispatch_msgs",
 }
 
 
@@ -173,6 +178,134 @@ def build_transcripts(folder: Path, second_folder: Path) -> None:
     )
 
 
+def tool_use_line(minutes: float, message_id: str, tool: tuple[str, str, dict], sidechain: bool) -> dict:
+    """Returns one assistant line holding a single tool_use block, as Claude Code writes it.
+
+    Args:
+        minutes: Minutes after START.
+        message_id: The API message's id; a message with several blocks repeats it on each line.
+        tool: ``(tool_use_id, tool name, tool input)``.
+        sidechain: Whether the line belongs to a subagent transcript.
+    """
+    tool_use_id, name, tool_input = tool
+    return {
+        "type": "assistant",
+        "timestamp": stamp(minutes),
+        "sessionId": SESSION_ID,
+        "isSidechain": sidechain,
+        "message": {
+            "id": message_id,
+            "model": "claude-opus-5-5",
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": tool_use_id, "name": name, "input": tool_input}],
+            "usage": {
+                "input_tokens": 1,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 1,
+            },
+        },
+    }
+
+
+def tool_result_line(minutes: float, tool_use_id: str, sidechain: bool) -> dict:
+    """Returns the user line that carries a tool's result back to the model."""
+    return {
+        "type": "user",
+        "timestamp": stamp(minutes),
+        "sessionId": SESSION_ID,
+        "isSidechain": sidechain,
+        "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": "ok"}]},
+    }
+
+
+def shell(tool_use_id: str, command: str, name: str = "Bash") -> tuple[str, str, dict]:
+    """Returns a Bash (or PowerShell) tool call running `command`."""
+    return tool_use_id, name, {"command": command, "description": "run it"}
+
+
+def dispatch(tool_use_id: str) -> tuple[str, str, dict]:
+    """Returns an Agent tool call, the one that dispatches a subagent."""
+    return tool_use_id, "Agent", {"subagent_type": TEST_WRITER, "description": "red", "prompt": "write the test"}
+
+
+def build_tool_transcripts(folder: Path) -> None:
+    """Writes an orchestrator session and two subagents that run checks, tests and dispatches."""
+    write_jsonl(
+        folder / f"{SESSION_ID}.jsonl",
+        [
+            user_line(0, False),
+            # One message with two Agent blocks, on two lines: one parallel-dispatch message.
+            tool_use_line(1, "msg-o1", dispatch("toolu_o1a"), False),
+            tool_use_line(1, "msg-o1", dispatch("toolu_o1b"), False),
+            tool_result_line(1.5, "toolu_o1a", False),
+            tool_result_line(1.5, "toolu_o1b", False),
+            # A message with a single Agent block is not parallel.
+            tool_use_line(2, "msg-o2", dispatch("toolu_o2"), False),
+            tool_result_line(2.5, "toolu_o2", False),
+            # The check (in a pipeline after a cd) and a grep for its text, run in parallel. The grep's
+            # result arrives first; the check's arrives 1.5 min after it started.
+            tool_use_line(3, "msg-o3", shell("toolu_o3", "cd /repo && npm run check 2>&1 | tail -5"), False),
+            tool_use_line(3.25, "msg-o3", shell("toolu_o3g", 'grep -n "npm run check" notes.md'), False),
+            tool_result_line(3.5, "toolu_o3g", False),
+            tool_result_line(4.5, "toolu_o3", False),
+            tool_use_line(5, "msg-o5", shell("toolu_o5", 'echo "remember: npm run check"'), False),
+            tool_result_line(5.25, "toolu_o5", False),
+            # A custom check, counted only when --check-pattern names it: 2 min.
+            tool_use_line(6, "msg-o6", shell("toolu_o6", "cd /repo; make verify", "PowerShell"), False),
+            tool_result_line(8, "toolu_o6", False),
+            # Two test runs.
+            tool_use_line(9, "msg-o7", shell("toolu_o7", "python -m unittest discover -s tests -k name"), False),
+            tool_result_line(9.5, "toolu_o7", False),
+            tool_use_line(10, "msg-o8", shell("toolu_o8", "npm test"), False),
+            tool_result_line(10.5, "toolu_o8", False),
+        ],
+    )
+    subagents = folder / SESSION_ID / "subagents"
+    # Implementer: the check, 3 min, and two test runs.
+    write_subagent(
+        subagents,
+        "c1",
+        IMPLEMENTER,
+        [
+            user_line(100, True),
+            tool_use_line(100, "msg-c1-1", shell("toolu_c1a", "npm run check"), True),
+            tool_result_line(103, "toolu_c1a", True),
+            tool_use_line(104, "msg-c1-2", shell("toolu_c1b", "pytest plugins/x -k foo"), True),
+            tool_result_line(104.5, "toolu_c1b", True),
+            tool_use_line(105, "msg-c1-3", shell("toolu_c1c", "python -m pytest -q"), True),
+            tool_result_line(105.5, "toolu_c1c", True),
+        ],
+    )
+    # Test-writer: one test run, nothing else.
+    write_subagent(
+        subagents,
+        "c2",
+        TEST_WRITER,
+        [
+            user_line(200, True),
+            tool_use_line(200, "msg-c2-1", shell("toolu_c2a", "python -m unittest discover -s t -k one"), True),
+            tool_result_line(200.5, "toolu_c2a", True),
+        ],
+    )
+
+
+def run_session_costs(folder: Path, project: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+    """Runs the CLI from `project`, with no KONUNDRM_CHECK_CMD override in its environment."""
+    environment = {name: value for name, value in os.environ.items() if name != "KONUNDRM_CHECK_CMD"}
+    return subprocess.run(
+        [sys.executable, str(SESSION_COSTS), str(folder), *extra],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=60,
+        cwd=project,
+        env=environment,
+    )
+
+
 def read_table(stdout: str) -> dict[str, dict[str, str]]:
     """Returns each role's row of the per-role table, keyed by column name from its header line."""
     lines = [line.split() for line in stdout.splitlines() if line.strip()]
@@ -254,6 +387,43 @@ class SessionCostsTest(unittest.TestCase):
         }
         actual = {role: {key: number(rows[role], key) for key in values} for role, values in expected.items()}
         self.assertEqual(actual, expected, completed.stdout)
+
+    # R6.1 (second half, T34): per role, full check runs with their total time, test runs and
+    # messages with two or more parallel dispatches.
+    def test_counts_check_runs_test_runs_and_parallel_dispatches(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary) / "transcripts"
+            project = Path(temporary) / "app"
+            project.mkdir()
+            # The default check is the project's, found as the hooks find it: `npm run check`.
+            (project / "package.json").write_text(json.dumps({"scripts": {"check": "echo ok"}}), encoding="utf-8")
+            build_tool_transcripts(folder)
+
+            default_check = run_session_costs(folder, project)
+            custom_check = run_session_costs(folder, project, "--check-pattern", "^make verify")
+
+        keys = ("check_runs", "check_minutes", "test_runs", "parallel_messages")
+        # Default check: the orchestrator's `cd … && npm run check | tail` (1.5 min, paired with its own
+        # result, not the grep's) counts; the grep, the echo and `make verify` do not. The implementer's
+        # check counts in its own row. A check is not a test run.
+        expected_default = {
+            ORCHESTRATOR: {"check_runs": 1, "check_minutes": 1.5, "test_runs": 2, "parallel_messages": 1},
+            IMPLEMENTER: {"check_runs": 1, "check_minutes": 3, "test_runs": 2, "parallel_messages": 0},
+            TEST_WRITER: {"check_runs": 0, "check_minutes": 0, "test_runs": 1, "parallel_messages": 0},
+        }
+        # --check-pattern replaces the default: only `make verify` (2 min) is a check run.
+        expected_custom = {
+            ORCHESTRATOR: {"check_runs": 1, "check_minutes": 2, "test_runs": 2, "parallel_messages": 1},
+            IMPLEMENTER: {"check_runs": 0, "check_minutes": 0, "test_runs": 2, "parallel_messages": 0},
+            TEST_WRITER: {"check_runs": 0, "check_minutes": 0, "test_runs": 1, "parallel_messages": 0},
+        }
+        for completed, expected in ((default_check, expected_default), (custom_check, expected_custom)):
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            rows = read_table(completed.stdout)
+            self.assertEqual(set(rows), set(expected), completed.stdout)
+            self.assertLessEqual({COLUMNS[key] for key in keys}, set(rows[ORCHESTRATOR]), completed.stdout)
+            actual = {role: {key: number(rows[role], key) for key in keys} for role in expected}
+            self.assertEqual(actual, expected, completed.stdout)
 
 
 if __name__ == "__main__":

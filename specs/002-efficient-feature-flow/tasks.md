@@ -376,6 +376,14 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Files: `P/hooks/scripts/session_costs.py`
   - Verify: `... -k test_counts_check_runs_test_runs_and_parallel_dispatches`
   - Depends on: T33
+  - Decision: Option A (recommended) — qué es el check si no se pasa `--check-pattern`
+    - Option A: el comando del check del proyecto, como lo encuentra `quality_check.find_check_command` desde la carpeta actual · pros: el mismo check que usan los hooks y el gate; sirve con un check propio · cons: depende de dónde se corre; fuera del proyecto hace falta la bandera
+    - Option B: un patrón fijo con las formas usuales (`npm/pnpm/yarn/bun run check`, `poe check`, `make check`, `just check`) · pros: no depende de la carpeta · cons: repite lo que ya sabe `quality_check`; un check propio necesita la bandera
+    - Recommendation: A.
+  - Decision: Option A (recommended) — cómo se lee la línea de comando de una llamada a Bash o PowerShell
+    - Option A: cada comando simple que encuentra el separador del gate (`shell_commands.iter_commands`) · pros: un `grep` con el texto del check no cuenta, un `cd … && check | tail` sí · cons: depende del parser del gate
+    - Option B: buscar el patrón en la línea entera · pros: simple · cons: cuenta como corrida un `grep` que contiene el texto del check, como pasó en una medición de esta feature
+    - Recommendation: A.
 
 - [ ] **T35** `session_costs.py` informa el contexto por turno del orquestador con más turnos · `behavior` · Risk: low · Covers: R6.2
   - Test: `P/hooks/tests/test_session_costs.py::test_reports_the_busiest_orchestrators_context_per_turn`

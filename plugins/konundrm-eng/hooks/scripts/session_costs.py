@@ -6,14 +6,19 @@ transcript ``<folder>/<session-id>.jsonl`` belongs to the role ``orchestrator``;
 transcript ``<folder>/<session-id>/subagents/agent-<id>.jsonl`` belongs to the ``agentType`` of its
 ``agent-<id>.meta.json``. The per-role table it prints has, for each role: dispatches (transcripts),
 turns, input, cache-write, cache-read and output tokens, weighted tokens, the role's share of all
-weighted tokens and its active minutes (median and total over its transcripts).
+weighted tokens, its active minutes (median and total over its transcripts), its check runs with
+their total minutes, its test runs and its messages that dispatched two or more subagents at once.
+``--check-pattern REGEX`` says what a check run is; by default it is the check command that
+``quality_check`` finds from the current folder.
 
 It prints nothing read from a transcript except the agent type and numbers.
 
 Sections:
     TOKEN_WEIGHTS          — input-equivalent weight of each token type.
-    TranscriptCosts        — what one transcript cost.
-    read_transcript()      — measures one transcript.
+    TEST_RUN                — what a test run looks like.
+    TranscriptCosts         — what one transcript cost.
+    default_check_pattern() — what a run of the project's check looks like.
+    read_transcript()       — measures one transcript, its tool calls counted by a private tally.
     find_transcripts()     — lists the transcripts of a folder with their role.
     RoleCosts              — what every transcript of one role cost together.
     collect_role_costs()   — measures every transcript of the given folders, per role.
@@ -26,12 +31,17 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import re
 import statistics
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+from quality_check import find_check_command
+from shell_commands import iter_commands
 
 ORCHESTRATOR_ROLE = "orchestrator"
 """Role of every session transcript, the session that dispatches the subagents."""
@@ -54,6 +64,19 @@ MAX_ACTIVE_GAP_SECONDS = 5 * 60
 """Longest gap between two transcript lines that still counts as active time; longer is a pause."""
 
 
+JsonObject = dict[str, Any]
+"""A transcript line, or a block of one, as json.loads returns it."""
+
+SHELL_TOOLS = frozenset({"Bash", "PowerShell"})
+"""Tools whose ``command`` input is a shell command line."""
+
+DISPATCH_TOOL = "Agent"
+"""The tool that dispatches a subagent."""
+
+TEST_RUN = re.compile(r"^(?:python3? -m (?:unittest|pytest)|pytest|npm (?:run )?test)(?:\s|$)")
+"""A simple command (program plus arguments) that runs tests."""
+
+
 @dataclass
 class TranscriptCosts:
     """What one transcript cost.
@@ -62,11 +85,19 @@ class TranscriptCosts:
         turns: Distinct API messages the model sent.
         tokens: Tokens per type (keys of TOKEN_TYPES), each message's usage counted once.
         active_minutes: Sum of the gaps between consecutive lines, pauses left out.
+        check_runs: Shell calls that ran the check.
+        check_minutes: Time from each check run's call to its result, summed.
+        test_runs: Simple commands, other than the check, that ran tests.
+        parallel_dispatch_messages: Messages that dispatched two or more subagents.
     """
 
     turns: int = 0
     tokens: dict[str, int] = field(default_factory=lambda: dict.fromkeys(TOKEN_TYPES, 0))
     active_minutes: float = 0.0
+    check_runs: int = 0
+    check_minutes: float = 0.0
+    test_runs: int = 0
+    parallel_dispatch_messages: int = 0
 
 
 def _parse_timestamp(text: str) -> datetime:
@@ -80,35 +111,124 @@ def _active_minutes(moments: list[datetime]) -> float:
     return seconds / 60
 
 
-def read_transcript(path: Path) -> TranscriptCosts:
+def _simple_command_texts(command_line: str) -> list[str]:
+    """Returns each simple command of a command line as its program and arguments, space-joined."""
+    return [" ".join((command.program, *command.arguments)) for command in iter_commands(command_line)]
+
+
+def default_check_pattern(root: Path) -> re.Pattern[str] | None:
+    """Returns the pattern of the project's check command, as quality_check finds it from `root`.
+
+    The pattern matches a simple command that is the check's first simple command, with any further
+    arguments, so a grep or echo that only mentions the check's text does not match.
+
+    Args:
+        root: Directory the project's check is looked up from.
+
+    Returns:
+        The pattern, or None when the project has no check command.
+    """
+    check = find_check_command(root)
+    texts = _simple_command_texts(check) if check else []
+    return re.compile(rf"^{re.escape(texts[0])}(?:\s|$)") if texts else None
+
+
+def _content_blocks(entry: JsonObject, block_type: str) -> list[JsonObject]:
+    content = entry.get("message", {}).get("content", [])
+    if not isinstance(content, list):  # A user line's content can be plain text.
+        return []
+    return [block for block in content if isinstance(block, dict) and block.get("type") == block_type]
+
+
+@dataclass
+class _ToolCallTally:
+    """Counts one transcript's tool calls into its costs while the transcript is read in order.
+
+    Attributes:
+        costs: The transcript's costs, whose tool-call fields this fills.
+        check_pattern: What a check run looks like; None counts none.
+        check_started_at: When each check run still waiting for its result started, by tool_use id.
+        dispatches_by_message_id: Agent calls per assistant message.
+    """
+
+    costs: TranscriptCosts
+    check_pattern: re.Pattern[str] | None
+    check_started_at: dict[str, datetime | None] = field(default_factory=dict)
+    dispatches_by_message_id: dict[str | None, int] = field(default_factory=dict)
+
+    def add_tool_uses(self, entry: JsonObject, moment: datetime | None) -> None:
+        """Counts the Agent and shell calls of one assistant line written at `moment`."""
+        message_id = entry.get("message", {}).get("id")
+        for block in _content_blocks(entry, "tool_use"):
+            if block.get("name") == DISPATCH_TOOL:
+                self.dispatches_by_message_id[message_id] = self.dispatches_by_message_id.get(message_id, 0) + 1
+            elif block.get("name") in SHELL_TOOLS:
+                self._add_shell_call(block, moment)
+
+    def _add_shell_call(self, block: JsonObject, moment: datetime | None) -> None:
+        is_check_run = False
+        for text in _simple_command_texts(str(block.get("input", {}).get("command", ""))):
+            if self.check_pattern is not None and self.check_pattern.search(text):
+                is_check_run = True
+            elif TEST_RUN.match(text):
+                self.costs.test_runs += 1
+        if is_check_run:
+            self.costs.check_runs += 1
+            self.check_started_at[block.get("id", "")] = moment
+
+    def add_tool_results(self, entry: JsonObject, moment: datetime | None) -> None:
+        """Adds the time of every check run whose result one user line, written at `moment`, carries."""
+        for block in _content_blocks(entry, "tool_result"):
+            started_at = self.check_started_at.pop(block.get("tool_use_id", ""), None)
+            if started_at is not None and moment is not None:
+                self.costs.check_minutes += (moment - started_at).total_seconds() / 60
+
+    def finish(self) -> None:
+        """Counts the messages with two or more dispatches, once every line was read."""
+        self.costs.parallel_dispatch_messages = sum(1 for count in self.dispatches_by_message_id.values() if count >= 2)
+
+
+def read_transcript(path: Path, check_pattern: re.Pattern[str] | None = None) -> TranscriptCosts:
     """Measures one transcript.
 
     Claude Code writes one API message as one line per content block, each repeating the message's
     id. A message counts as one turn and its usage once, taken from its last line: earlier lines
     can carry a partial ``output_tokens`` written while the message was still streaming.
 
+    A Bash or PowerShell call is a check run when one of its simple commands (as
+    ``shell_commands.iter_commands`` splits it, program plus arguments) matches `check_pattern`;
+    its time runs from the call's line to the line that carries its result. Every other simple
+    command that runs ``python -m unittest``, ``python -m pytest``, ``pytest``, ``npm test`` or
+    ``npm run test`` is a test run.
+
     Args:
         path: A JSON Lines transcript.
+        check_pattern: Searched in each simple command's text; None counts no check runs.
 
     Returns:
-        Its turns, tokens per type and active minutes. A transcript without assistant lines has 0
-        turns and 0 tokens.
+        Its turns, tokens per type, active minutes, check runs and their minutes, test runs and
+        parallel-dispatch messages. A transcript without assistant lines has 0 turns and 0 tokens.
 
     Raises:
         OSError: If the file cannot be read.
         ValueError: If a line is not JSON or a timestamp is not ISO 8601.
     """
     costs = TranscriptCosts()
+    tool_calls = _ToolCallTally(costs, check_pattern)
     usage_by_message_id: dict[str | None, dict[str, int]] = {}
     moments: list[datetime] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         entry = json.loads(line)
-        if "timestamp" in entry:
-            moments.append(_parse_timestamp(entry["timestamp"]))
+        moment = _parse_timestamp(entry["timestamp"]) if "timestamp" in entry else None
+        if moment is not None:
+            moments.append(moment)
+        if entry.get("type") == "user":
+            tool_calls.add_tool_results(entry, moment)
         if entry.get("type") != "assistant":
             continue
+        tool_calls.add_tool_uses(entry, moment)
         message = entry.get("message", {})
         # Each later line of a message overwrites the earlier ones, so its last line's usage wins.
         usage_by_message_id[message.get("id")] = message.get("usage", {})
@@ -117,6 +237,7 @@ def read_transcript(path: Path) -> TranscriptCosts:
         for token_type, usage_field in USAGE_FIELDS.items():
             costs.tokens[token_type] += usage.get(usage_field, 0)
     costs.active_minutes = _active_minutes(sorted(moments))
+    tool_calls.finish()
     return costs
 
 
@@ -152,12 +273,20 @@ class RoleCosts:
         turns: Turns over all of them.
         tokens: Tokens per type over all of them.
         active_minutes: Active minutes of each transcript, in reading order.
+        check_runs: Check runs over all of them.
+        check_minutes: Minutes of those check runs.
+        test_runs: Test runs over all of them.
+        parallel_dispatch_messages: Messages with two or more dispatches over all of them.
     """
 
     dispatches: int = 0
     turns: int = 0
     tokens: dict[str, int] = field(default_factory=lambda: dict.fromkeys(TOKEN_TYPES, 0))
     active_minutes: list[float] = field(default_factory=list)
+    check_runs: int = 0
+    check_minutes: float = 0.0
+    test_runs: int = 0
+    parallel_dispatch_messages: int = 0
 
     def add(self, transcript: TranscriptCosts) -> None:
         """Adds one transcript of the role as one more dispatch."""
@@ -166,6 +295,10 @@ class RoleCosts:
         for token_type in TOKEN_TYPES:
             self.tokens[token_type] += transcript.tokens[token_type]
         self.active_minutes.append(transcript.active_minutes)
+        self.check_runs += transcript.check_runs
+        self.check_minutes += transcript.check_minutes
+        self.test_runs += transcript.test_runs
+        self.parallel_dispatch_messages += transcript.parallel_dispatch_messages
 
     @property
     def weighted_tokens(self) -> float:
@@ -173,11 +306,12 @@ class RoleCosts:
         return sum(self.tokens[token_type] * TOKEN_WEIGHTS[token_type] for token_type in TOKEN_TYPES)
 
 
-def collect_role_costs(folders: list[Path]) -> dict[str, RoleCosts]:
+def collect_role_costs(folders: list[Path], check_pattern: re.Pattern[str] | None = None) -> dict[str, RoleCosts]:
     """Measures every transcript of the given folders and adds them up per role.
 
     Args:
         folders: Project transcript folders, read as one run.
+        check_pattern: What a check run looks like, as read_transcript takes it.
 
     Returns:
         Each role's costs, keyed by role, in the order roles were first found.
@@ -190,7 +324,7 @@ def collect_role_costs(folders: list[Path]) -> dict[str, RoleCosts]:
     costs_by_role: dict[str, RoleCosts] = {}
     for folder in folders:
         for role, transcript in find_transcripts(folder):
-            costs_by_role.setdefault(role, RoleCosts()).add(read_transcript(transcript))
+            costs_by_role.setdefault(role, RoleCosts()).add(read_transcript(transcript, check_pattern))
     return costs_by_role
 
 
@@ -203,6 +337,10 @@ ROLE_TABLE_COLUMNS = (
     "share",
     "active_min_median",
     "active_min_total",
+    "check_runs",
+    "check_min_total",
+    "test_runs",
+    "parallel_dispatch_msgs",
 )
 """Header of the per-role table."""
 
@@ -231,10 +369,22 @@ def format_role_table(costs_by_role: dict[str, RoleCosts]) -> list[str]:
                 f"{share:.1f}%",
                 f"{statistics.median(costs.active_minutes):.1f}",
                 f"{sum(costs.active_minutes):.1f}",
+                str(costs.check_runs),
+                f"{costs.check_minutes:.1f}",
+                str(costs.test_runs),
+                str(costs.parallel_dispatch_messages),
             ]
         )
     widths = [max(len(row[column]) for row in rows) for column in range(len(ROLE_TABLE_COLUMNS))]
     return ["  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip() for row in rows]
+
+
+def _compile_pattern(text: str) -> re.Pattern[str]:
+    try:
+        return re.compile(text)
+    except re.error as error:
+        # argparse turns only this error type into a usage error; it does not print the pattern.
+        raise argparse.ArgumentTypeError(f"not a valid regular expression: {error.msg}") from error
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -248,8 +398,16 @@ def main(argv: list[str] | None = None) -> int:
     """
     parser = argparse.ArgumentParser(description="konundrm-eng session costs per role")
     parser.add_argument("folders", nargs="+", type=Path, help="project transcript folders of one run")
+    parser.add_argument(
+        "--check-pattern",
+        type=_compile_pattern,
+        help="regex searched in each simple shell command; default: the current project's check command",
+    )
     arguments = parser.parse_args(argv)
-    lines = format_role_table(collect_role_costs(arguments.folders))
+    check_pattern = arguments.check_pattern
+    if check_pattern is None:
+        check_pattern = default_check_pattern(Path.cwd())
+    lines = format_role_table(collect_role_costs(arguments.folders, check_pattern))
     sys.stdout.write("\n".join(lines) + "\n")
     return 0
 
