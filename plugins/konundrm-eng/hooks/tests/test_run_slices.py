@@ -60,10 +60,10 @@ def git(*args):
     subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args], check=True)
 
 
-if step.get("task"):
-    Path(step["task"] + ".txt").write_text(step["task"] + "\n", encoding="utf-8")
+for task in step.get("tasks") or ([step["task"]] if step.get("task") else []):
+    Path(task + ".txt").write_text(task + "\n", encoding="utf-8")
     git("add", "-A")
-    git("commit", "-q", "-m", "feat: build " + step["task"], "-m", "Task: " + step["task"])
+    git("commit", "-q", "-m", "feat: build " + task, "-m", "Task: " + task)
 if step.get("done"):
     plan = Path(os.environ["FAKE_CLAUDE_PLAN"])
     text = plan.read_text(encoding="utf-8").replace("- **Status:** Approved", "- **Status:** Done")
@@ -134,6 +134,16 @@ def plan_text(base: str) -> str:
     )
 
 
+def plan_with_slices(slices: list[list[str]]) -> Callable[[str], str]:
+    """An `edit_plan` that replaces the fixture's two slices with `slices` (each a list of task IDs)."""
+    sections = "\n".join(
+        f"## Slice S{index}: part {index}\n\n"
+        + "".join(f"- [ ] **{task}** builds {task} · `behavior` · Risk: low · Covers: R1.1\n" for task in tasks)
+        for index, tasks in enumerate(slices, start=1)
+    )
+    return lambda text: text[: text.index("## Slice S1")] + sections
+
+
 def write_fake_claude(folder: Path) -> Path:
     """Write the fake `claude` so subprocess can start it without a shell on every platform."""
     script = folder / "fake_claude.py"
@@ -165,12 +175,15 @@ class RunSlicesTest(unittest.TestCase):
         claude_options: list[str] | None = None,
         path: str | None = None,
         stdin_text: str | None = None,
+        committed: list[str] | None = None,
+        options: list[str] | None = None,
     ) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
         """Build a two-slice feature in a fresh repository with `steps` as the sessions' script.
 
         `extra` goes after `--` (EXTRA_ARGS when None); `edit_plan` rewrites the plan's text and
         `feature` is the folder the runner is given. `claude_options` replaces `--claude <the fake>`,
-        `path` the runner's PATH, and `stdin_text` is fed to its stdin. Returns the run and each
+        `path` the runner's PATH, and `stdin_text` is fed to its stdin. Each task in `committed` gets a
+        `Task:` commit after the plan's, and `options` go to the runner before `--`. Returns the run and each
         session's argv[1:].
         """
         extra = EXTRA_ARGS if extra is None else extra
@@ -186,6 +199,9 @@ class RunSlicesTest(unittest.TestCase):
         plan.parent.mkdir(parents=True)
         plan.write_text(edit_plan(plan_text(base)), encoding="utf-8", newline="\n")
         commit(root, "docs(specs): add spec and plan\n")
+        for task in committed or []:
+            (root / f"{task}.txt").write_text(f"{task}\n", encoding="utf-8")
+            commit(root, f"feat: build {task}\n\nTask: {task}\n")
         script = folder / "steps.json"
         script.write_text(json.dumps(steps), encoding="utf-8")
         log = folder / "calls.log"
@@ -202,7 +218,7 @@ class RunSlicesTest(unittest.TestCase):
             claude_options = ["--claude", str(write_fake_claude(folder))]
 
         completed = subprocess.run(
-            [sys.executable, str(RUN_SLICES), feature, *claude_options, "--", *extra],
+            [sys.executable, str(RUN_SLICES), feature, *claude_options, *(options or []), "--", *extra],
             cwd=root,
             env=environment,
             input=stdin_text,
@@ -395,6 +411,75 @@ class RunSlicesTest(unittest.TestCase):
                 self.assertEqual((completed.returncode, calls, completed.stdout), (2, [], ""), report)
                 self.assertRegex(completed.stderr, reason, report)
                 self.assertNotIn("Traceback", completed.stderr, report)
+
+    # R1.5, Threats row 3: a session that exits 0 without a stop line but leaves HEAD where it was
+    # stops the run with STALLED instead of opening another session, even when the next ones would
+    # build the whole feature.
+    def test_stops_when_a_session_adds_no_commit(self) -> None:
+        idle = {"stdout": ["Looked at the plan.", "Nothing to build right now."]}
+        cases = {
+            "second session": ([BUILD_ALL[0], idle, BUILD_ALL[1]], 2),
+            "first session": ([idle, *BUILD_ALL], 1),
+        }
+
+        runs = self.run_features([{"steps": steps} for steps, _ in cases.values()])
+
+        for (name, (_, stalled_session)), (completed, calls) in zip(cases.items(), runs, strict=True):
+            with self.subTest(case=name):
+                report = f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+                self.assertEqual(calls, [["-p", RESUME_PROMPT, *EXTRA_ARGS]] * stalled_session, report)
+                self.assertEqual(completed.returncode, 1, report)
+                self.assertEqual(
+                    last_line(completed.stdout), f"STALLED: session {stalled_session} added no commit", report
+                )
+
+    # R1.5 (T32 invariant): whatever the plan, the tasks already committed and --max-sessions N, the
+    # runner opens at most pending slices + 1 sessions (the extra one finishes the feature) and N only
+    # lowers that cap. Sessions that keep committing without finishing stop exactly at the cap.
+    def test_never_opens_more_sessions_than_pending_slices_plus_one(self) -> None:
+        cases = []
+        for seed in range(SEED_COUNT):
+            rng = random.Random(seed)  # noqa: S311 - seeded for reproducible test data, not cryptography
+            sizes = [rng.randint(1, 2) for _ in range(rng.randint(1, 4))]
+            ids = iter(f"T{number}" for number in range(1, sum(sizes) + 1))
+            slices = [[next(ids) for _ in range(size)] for size in sizes]
+            tasks = [task for tasks in slices for task in tasks]
+            committed = tasks[: rng.randint(0, len(tasks) - 1)]  # never all, so a slice is pending
+            remaining = [left for tasks in slices if (left := [task for task in tasks if task not in committed])]
+            pending = len(remaining)
+            max_sessions = rng.choice([None, rng.randint(1, pending + 3)])
+            cap = min(pending + 1, max_sessions or pending + 1)
+            is_slow = rng.random() < 0.5
+            if is_slow:  # one commit per session, never Done; T5x are commits outside the plan
+                steps = [
+                    {"task": task}
+                    for task in [
+                        *(task for tasks in remaining for task in tasks),
+                        *(f"T5{k}" for k in range(pending + 4)),
+                    ]
+                ]
+            else:
+                steps = [*({"tasks": tasks} for tasks in remaining), {"done": True}]
+            options = [] if max_sessions is None else ["--max-sessions", str(max_sessions)]
+            run = {"steps": steps, "committed": committed, "options": options, "edit_plan": plan_with_slices(slices)}
+            cases.append((seed, is_slow, pending, max_sessions, cap, run))
+
+        runs = self.run_features([run for *_, run in cases])
+
+        for (seed, is_slow, pending, max_sessions, cap, _), (completed, calls) in zip(cases, runs, strict=True):
+            with self.subTest(seed=seed):
+                context = f"seed {seed}, slow {is_slow}, pending {pending}, N {max_sessions}\n"
+                context += f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+                self.assertLessEqual(len(calls), cap, context)
+                outcome = (len(calls), completed.returncode, last_line(completed.stdout))
+                if is_slow:
+                    self.assertEqual(outcome, (cap, 1, f"STALLED: reached the cap of {cap} sessions"), context)
+                elif cap == pending + 1:
+                    self.assertEqual(outcome, (pending + 1, 0, "DONE"), context)
+        self.assertEqual({case[1] for case in cases}, {True, False}, "both modes occur")
+        self.assertIn(None, [case[3] for case in cases], "N is absent at least once")
+        self.assertTrue(any(case[3] is not None and case[3] < case[2] + 1 for case in cases), "N binds once")
+        self.assertGreater(len({case[2] for case in cases}), 1, "pending slices vary")
 
     # R1.4, Threats row 3 (T31 invariant): every session's argv[1:] is the resume prompt and exactly
     # the arguments after `--`, in order: nothing added (no permission flags), dropped or reordered,

@@ -73,8 +73,10 @@ def green_tree(root: Path) -> str | None
 # run_slices.py: run_slices.py specs/<NNN-slug> [--claude PATH] [--max-sessions N] [-- ARGS...]
 #   corre `claude -p "/konundrm-eng:develop-feature specs/<NNN-slug>" ARGS` en bucle; última línea:
 #   DONE | BLOCKED: <línea> | RED: <línea> | FAILED: exit <n> | STALLED: session <k> added no commit
-#   (RED: una sesión espera la decisión de una persona). Antes de la primera sesión se niega (sale
-#   con 2, sin abrir ninguna) si el plan no se lee, no está Approved o sus pausas no son pre-approved.
+#   | STALLED: reached the cap of <n> sessions (RED: una sesión espera la decisión de una persona;
+#   el tope es slices pendientes + 1, y --max-sessions solo lo baja). Antes de la primera sesión se
+#   niega (sale con 2, sin abrir ninguna) si el plan no se lee, no está Approved, sus pausas no son
+#   pre-approved o su base commit no está en el repositorio.
 
 # session_costs.py: session_costs.py <carpeta>... [--check-pattern REGEX]
 #   tabla por rol + bloque del orquestador más largo + "skipped lines: <n>"
