@@ -361,7 +361,7 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S10: `session_costs.py`, tokens y tiempo por rol
 
-- [ ] **T33** `session_costs.py` informa por rol despachos, turnos, tokens por tipo, tokens ponderados, su parte y minutos activos · `behavior` · Risk: low · Covers: R6.1
+- [x] **T33** `session_costs.py` informa por rol despachos, turnos, tokens por tipo, tokens ponderados, su parte y minutos activos · `behavior` · Risk: low · Covers: R6.1
   - Test: `P/hooks/tests/test_session_costs.py::test_reports_tokens_weights_shares_and_active_time_per_role` (transcripciones sintéticas: una sesión y dos subagentes con `meta.json`; mensajes repetidos por bloque cuentan una vez; pausas de más de 5 min no cuentan)
   - Files: `P/hooks/scripts/session_costs.py` (new)
   - Verify: `... -k test_reports_tokens_weights_shares_and_active_time_per_role`
@@ -370,8 +370,9 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
     - Option A: cada transcripción de sesión del orquestador · pros: igual que en un subagente (una transcripción, un despacho); dice cuántas sesiones tomó la corrida · cons: no dice cuánto delegó, aunque eso ya suman las filas de los subagentes
     - Option B: cada llamada del orquestador al tool Agent · pros: mide cuánto delega · cons: repite la suma de los despachos de los subagentes y deja sin contar las sesiones
     - Recommendation: A, que la prueba de T33 fija con dos carpetas y dos sesiones.
+  - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T34** `session_costs.py` cuenta corridas del check con su tiempo, corridas de tests y mensajes con despachos en paralelo · `behavior` · Risk: low · Covers: R6.1
+- [x] **T34** `session_costs.py` cuenta corridas del check con su tiempo, corridas de tests y mensajes con despachos en paralelo · `behavior` · Risk: low · Covers: R6.1
   - Test: `P/hooks/tests/test_session_costs.py::test_counts_check_runs_test_runs_and_parallel_dispatches`
   - Files: `P/hooks/scripts/session_costs.py`
   - Verify: `... -k test_counts_check_runs_test_runs_and_parallel_dispatches`
@@ -384,8 +385,9 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
     - Option A: cada comando simple que encuentra el separador del gate (`shell_commands.iter_commands`) · pros: un `grep` con el texto del check no cuenta, un `cd … && check | tail` sí · cons: depende del parser del gate
     - Option B: buscar el patrón en la línea entera · pros: simple · cons: cuenta como corrida un `grep` que contiene el texto del check, como pasó en una medición de esta feature
     - Recommendation: A.
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T35** `session_costs.py` informa el contexto por turno del orquestador con más turnos · `behavior` · Risk: low · Covers: R6.2
+- [x] **T35** `session_costs.py` informa el contexto por turno del orquestador con más turnos · `behavior` · Risk: low · Covers: R6.2
   - Test: `P/hooks/tests/test_session_costs.py::test_reports_the_busiest_orchestrators_context_per_turn`
   - Files: `P/hooks/scripts/session_costs.py`
   - Verify: `... -k test_reports_the_busiest_orchestrators_context_per_turn`
@@ -394,6 +396,7 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
     - Option A: rango más cercano, el valor en la posición ceil(0,9 × n) en orden ascendente · pros: siempre es el contexto de un turno real; simple de explicar · cons: salta de un turno a otro con pocas muestras
     - Option B: interpolación lineal (`statistics.quantiles(method="inclusive")`) · pros: más suave con pocas muestras · cons: da un valor que ningún turno tuvo
     - Recommendation: A.
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
