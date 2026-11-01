@@ -30,6 +30,8 @@ para registrar checks que no lo son; y `session_costs.py` mide una corrida desde
 | Rondas por tarea en el informe de impacto | `P/hooks/scripts/metrics_report.py` | Extended | dueño del informe | R2.9 |
 | Auditoría con varios revisores a la vez | `P/hooks/scripts/audit_subagent_changes.py` | Extended | dueño de la auditoría | R3.5, R3.6 |
 | Encadenar sesiones headless por slice | `P/hooks/scripts/run_slices.py` | New | herramienta aparte, como `metrics_report.py` | R1.4, R1.5 |
+| Reconocer la línea con que una sesión se detiene a propósito (`RED:`, `BLOCKED:`, con formato Markdown) | `P/hooks/scripts/deliberate_stops.py` | New (sale de `quality_gate.py`) | el stop gate y `run_slices` deben leerla igual (revisiones de T31) | R1.4 |
+| Leer `Checkpoints:` de la cabecera del plan | `P/hooks/scripts/tasks_document.py` | Extended | único lector de `tasks.md` | R1.4 |
 | Camino rápido del hook que registra checks | `P/hooks/run.sh` | Extended | el lanzador decide antes de arrancar Python | R5.1–R5.4 |
 | Medir una corrida desde sus transcripciones | `P/hooks/scripts/session_costs.py` | New | no es del informe de entrega (Git/GitHub) | R6.1–R6.5 |
 | Qué corre cada rol | `P/agents/{test-writer,implementer,spec-reviewer,code-reviewer,security-reviewer,finding-verifier}.md` | Extended | cada rol se define en su agente | R2.1–R2.4 |
@@ -70,7 +72,9 @@ def green_tree(root: Path) -> str | None
 
 # run_slices.py: run_slices.py specs/<NNN-slug> [--claude PATH] [--max-sessions N] [-- ARGS...]
 #   corre `claude -p "/konundrm-eng:develop-feature specs/<NNN-slug>" ARGS` en bucle; última línea:
-#   DONE | BLOCKED: <línea> | FAILED: exit <n> | STALLED: session <k> added no commit
+#   DONE | BLOCKED: <línea> | RED: <línea> | FAILED: exit <n> | STALLED: session <k> added no commit
+#   (RED: una sesión espera la decisión de una persona). Antes de la primera sesión se niega (sale
+#   con 2, sin abrir ninguna) si el plan no se lee, no está Approved o sus pausas no son pre-approved.
 
 # session_costs.py: session_costs.py <carpeta>... [--check-pattern REGEX]
 #   tabla por rol + bloque del orquestador más largo + "skipped lines: <n>"
@@ -94,7 +98,8 @@ slice) → process-reviewer → preguntas (con `ask`) → sesión nueva.
 
 `tasks_document` sigue sin Git. `task_commits` usa el runner de Git de `working_tree`;
 `task_ledger`, `session_doctor` y `run_slices` dependen de `tasks_document` y `task_commits`, nunca al
-revés. Solo librería estándar.
+revés. `quality_gate` y `run_slices` dependen de `deliberate_stops`, que solo usa `re`. Solo
+librería estándar.
 
 ## Alternatives considered
 
@@ -113,7 +118,7 @@ revés. Solo librería estándar.
 | --- | --- | --- | --- |
 | `run.sh` → gate de commit y guard | el camino rápido salta el gate o el guard, o les cambia la entrada | solo aplica a `record_check_result.py`; los demás reciben stdin intacto (T4) | R5.4 |
 | orquestador → `git commit` | un commit de tarea escapa al gate | `message` solo escribe el mensaje; el commit es un `git commit -F` normal (T25) | R4.3 |
-| `run_slices.py` → sesiones headless | amplía permisos o sigue tras un `BLOCKED:` y entra código sin una persona | no agrega flags de permisos propios; se detiene ante BLOCKED, falla o sesión sin commits (T31, T32) | R1.4, R1.5 |
+| `run_slices.py` → sesiones headless | amplía permisos o sigue tras un `BLOCKED:` y entra código sin una persona | no agrega flags de permisos propios; corre solo un plan Approved con pausas pre-approved; se detiene ante BLOCKED, una decisión pendiente (`RED:`), falla o sesión sin commits, leyendo esas líneas como el stop gate (T31, T32) | R1.4, R1.5 |
 | transcripciones → informe | el informe filtra prompts, código, secretos o datos personales | solo imprime conteos, tiempos y tokens; test con secretos plantados (T36) | R6.3 |
 
 ## Delivery

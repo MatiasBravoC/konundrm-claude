@@ -457,7 +457,9 @@ wave is integrated:
 With `Checkpoints: pre-approved` in the `tasks.md` header, still write the summary, run `close-slice`,
 commit both and save the improvement notes (steps 1 to 3), then go on to the next slice as step 8
 says (in a new session, or here with `Sessions: single`) without stopping, asking questions or
-waiting.
+waiting. From a terminal, `run_slices.py` chains those sessions for a `Checkpoints: pre-approved`
+plan, headless and one per slice, and its last line says how it ended:
+`sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" run_slices.py specs/<NNN-slug>`.
 
 ## Phase 4: Finish
 

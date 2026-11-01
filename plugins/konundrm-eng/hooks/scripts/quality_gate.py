@@ -6,18 +6,19 @@ the project's check, reusing a green result for the same tree content, and looks
 silencers the turn added without their reason (suppressions.py). On either problem it blocks the
 stop, so Claude keeps working with the details. Two escape valves keep it from trapping
 deliberate stops: a final message with a line starting with ``RED:`` (test-driven-development
-handoff) or ``BLOCKED:`` (escalation to the user), and a cap of MAX_CONSECUTIVE_BLOCKS attempts
+handoff) or ``BLOCKED:`` (escalation to the user), Markdown decoration allowed (deliberate_stops.py),
+and a cap of MAX_CONSECUTIVE_BLOCKS attempts
 after which the turn ends with a visible warning. Outside a Git repository it falls back to the
 edits that format_and_lint.py recorded, and cannot see silencers.
 """
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 from typing import Any
 
+from deliberate_stops import find_deliberate_stop
 from file_kinds import is_documentation_path, is_tool_artifact
 from hook_io import block_stop, read_hook_input, warn_user
 from hook_state import SessionState
@@ -28,12 +29,15 @@ from suppressions import Suppression, describe, find_unjustified
 from working_tree import added_lines, changed_paths, snapshot_tree
 
 MAX_CONSECUTIVE_BLOCKS = 3
-DELIBERATE_RED_STOP = re.compile(r"(?m)^[\s>*_`#-]*(RED|BLOCKED)\b\**:")
 
 
 def is_deliberate_red_stop(last_message: str) -> bool:
-    """Tells whether the final message hands off on purpose while the tree is red."""
-    return bool(DELIBERATE_RED_STOP.search(last_message or ""))
+    """Tells whether the final message hands off on purpose while the tree is red.
+
+    It does when one of its lines is a ``RED:`` or ``BLOCKED:`` stop line as deliberate_stops
+    reads it, Markdown decoration allowed.
+    """
+    return find_deliberate_stop(last_message or "") is not None
 
 
 def turn_changed_code(state: SessionState, root: Path, current_tree: str | None) -> bool:

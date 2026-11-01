@@ -59,8 +59,10 @@ limpio, para que el costo de cada turno no crezca con la feature.
   retoma la feature en una sesión nueva.
 - `R1.4` WHERE las pausas están preaprobadas y la feature corre desde una terminal, THE SYSTEM
   SHALL ofrecer un comando que construye la feature con una sesión no interactiva nueva por
-  slice, en orden, hasta que la feature termina, una sesión se detiene con `BLOCKED:` o una sesión
-  falla, y que dice cuál de las tres pasó.
+  slice, en orden, hasta que la feature termina, una sesión se detiene con `BLOCKED:`, una sesión
+  espera la decisión de una persona con `RED:` o una sesión falla, y que dice cuál de las cuatro
+  pasó. <!-- 2026-11-01: el usuario aprobó sumar el final RED: (hallazgo de la revisión de
+  seguridad de T31: una sesión que espera una decisión no detenía el comando). -->
 - `R1.5` IF una sesión de ese comando termina sin agregar ningún commit, THEN THE SYSTEM SHALL
   detener el comando y decirlo, en vez de abrir otra sesión.
 - `R1.6` IF hay cambios sin commitear al momento de pasar a la sesión nueva, THEN THE SYSTEM SHALL
@@ -216,7 +218,8 @@ para que no se pierda en la próxima versión.
    tarea correcta con tareas commiteadas y casillas sin marcar; el comando de mensaje rechaza una
    tarea inexistente o ya commiteada; la contabilidad de la pausa marca las casillas y escribe las
    rondas tomadas de los commits; y el comando que encadena sesiones, con un `claude` de prueba, se
-   detiene al terminar, ante un `BLOCKED:`, ante una falla y ante una sesión sin commits.
+   detiene al terminar, ante un `BLOCKED:`, ante un `RED:` que espera una decisión, ante una falla
+   y ante una sesión sin commits.
 3. El hook que registra checks, corrido 20 veces sobre un comando que no es el check, tarda en
    promedio menos de la mitad que en la 0.6.0, y sobre `npm run check` sigue registrando el
    resultado.

@@ -7,7 +7,9 @@ it to git as a revision, and only from the first such line, whose number is kept
 point at it. A task's covers come from the ``· Covers:`` field that ends its line, so a
 ``Covers:`` quoted in its title is not mistaken for it. The header's ``- **Parallel:** yes | no``
 line says whether partitions run in parallel: only a whole value of ``yes`` does, so a missing or
-unfilled line means serial.
+unfilled line means serial. The header's ``- **Checkpoints:** pre-approved | ask`` line says
+whether the pauses between slices were approved with the plan; a missing or unfilled line reads as
+``ask``.
 Each slice ends with a ``### Partitions`` table (``| Wave | Partition | Tasks | Depends on |``)
 that assigns its tasks to partitions and each partition to a numbered wave. The Wave and Partition
 cells are read bold or not; a Tasks cell lists IDs and inclusive ranges (``T1-T3``, ``T4..T6``,
@@ -36,6 +38,9 @@ from typing import NamedTuple
 
 STATUS = re.compile(r"(?mi)^-\s*\*\*Status:\*\*\s*(?P<status>[A-Za-z]+)")
 PARALLEL = re.compile(r"(?mi)^-\s*\*\*Parallel:\*\*[ \t]*(?P<parallel>[^\r\n]*)")
+CHECKPOINTS = re.compile(r"(?mi)^-\s*\*\*Checkpoints:\*\*[ \t]*(?P<checkpoints>[^\r\n]*)")
+CHECKPOINTS_DEFAULT = "ask"
+"""What a plan without a filled ``Checkpoints:`` line says: every pause waits for the person."""
 TASK = re.compile(r"(?m)^- \[(?P<box>[ xX])\] \*\*(?P<id>T\d+)\*\*[ \t]*(?P<rest>[^\n]*)")
 BASE_COMMIT_LINE = re.compile(r"(?mi)^-[ \t]*\*\*Base commit:\*\*[ \t]*(?P<value>[^\n]*)")
 BASE_COMMIT_SHA = re.compile(r"(?i)`(?P<sha>[0-9a-f]{4,64})`")
@@ -103,6 +108,9 @@ class TasksDocument:
         parallel: Whether the rest of the header's ``Parallel:`` line, comments removed, is
             exactly ``yes`` (in any case, surrounding spaces allowed), so the partitions run in
             parallel; False when the line says anything else, is unfilled or is missing.
+        checkpoints: The rest of the header's ``Checkpoints:`` line, comments removed, stripped and
+            lowercased, such as ``pre-approved`` or ``ask``; ``CHECKPOINTS_DEFAULT`` when the line
+            is unfilled or missing.
         base_commit: The hex SHA, full or short, between backticks in the header's
             ``Base commit:`` line, or None when the line is missing or holds anything else, such
             as the template's placeholder. Only the first ``Base commit:`` line is read.
@@ -114,6 +122,7 @@ class TasksDocument:
     status: str
     tasks: tuple[Task, ...]
     parallel: bool = False
+    checkpoints: str = CHECKPOINTS_DEFAULT
     base_commit: str | None = None
     base_commit_line: int | None = None
     is_readable: bool = True
@@ -327,12 +336,14 @@ def read_tasks(path: Path) -> TasksDocument:
         for match, end in zip(matches, ends, strict=True)
     )
     parallel = PARALLEL.search(text)
+    checkpoints = CHECKPOINTS.search(text)
     base_line = BASE_COMMIT_LINE.search(text)
     base_commit = BASE_COMMIT_SHA.match(base_line.group("value")) if base_line else None
     return TasksDocument(
         status=status.group("status") if status else "",
         tasks=tasks,
         parallel=parallel is not None and parallel.group("parallel").strip().lower() == "yes",
+        checkpoints=(checkpoints.group("checkpoints").strip().lower() if checkpoints else "") or CHECKPOINTS_DEFAULT,
         base_commit=base_commit.group("sha") if base_commit else None,
         base_commit_line=text.count("\n", 0, base_line.start()) + 1 if base_line else None,
     )

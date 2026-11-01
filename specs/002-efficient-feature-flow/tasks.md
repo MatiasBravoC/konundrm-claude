@@ -335,6 +335,7 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 - [ ] **T31** `run_slices.py` corre una sesión headless por slice hasta que la feature termina, una sesión se bloquea o falla, y dice cuál pasó · `behavior` · Risk: high · Covers: R1.4
   - Test: `P/hooks/tests/test_run_slices.py::test_runs_one_session_per_slice_until_done_blocked_or_failed` (un `claude` falso por `--claude`: commitea y termina; imprime `BLOCKED:`; sale con 3; marca el plan `Done`)
+  - Plan change (2026-11-01, aprobado por el usuario): también se detiene ante `RED:` (una sesión que espera una decisión), y R1.4 suma ese final; las revisiones de T31 agregaron además la negativa antes de la primera sesión (plan ilegible, no Approved o pausas no pre-approved) y las líneas `BLOCKED:`/`RED:` con formato Markdown que acepta el stop gate.
   - Files: `P/hooks/scripts/run_slices.py` (new), `P/skills/develop-feature/SKILL.md` (una línea: cuándo usarlo)
   - Invariants: los argumentos que recibe `claude` son el prompt de reanudación y los que el usuario pasó tras `--`, nada más.
   - Mutation: `mutmut run --paths-to-mutate plugins/konundrm-eng/hooks/scripts/run_slices.py` (no corre en Windows; se registra en la evidencia).
