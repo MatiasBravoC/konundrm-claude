@@ -1100,6 +1100,64 @@ class SessionCostsTest(unittest.TestCase):
         actual = {role: {key: number(rows[role], key) for key in keys} for role in expected}
         self.assertEqual(actual, expected, context)
 
+    # R6.4 (T43): an assistant line whose tool_use block has an input that is not an object, a name or
+    # an id that is not a string, a user line whose tool_result has a tool_use_id that is not a string,
+    # and a line whose time carries no zone, are skipped and counted instead of stopping the report.
+    def test_skips_and_counts_lines_with_a_malformed_tool_block_or_a_time_without_a_zone(self) -> None:
+        def costly_tool_use(minutes: float, message_id: str, name: object, tool_input: object) -> dict:
+            line = tool_use_line(minutes, message_id, ("toolu_bad", "Bash", {}), False)
+            line["message"]["content"][0].update(name=name, input=tool_input)
+            line["message"]["usage"].update(input_tokens=COSTLY_USAGE[0], output_tokens=COSTLY_USAGE[3])
+            return line
+
+        user_without_zone = user_line(2.25, False)
+        user_without_zone["timestamp"] = "2026-10-30T10:03:00"
+        assistant_date_only = costly_assistant(2.5, "msg-bad-date-only")
+        assistant_date_only["timestamp"] = "2026-01-01"
+        # A check run whose id is a list: read, it would add a check run and a million tokens.
+        check_with_list_id = costly_tool_use(3.75, "msg-bad-list-id", "Bash", {"command": "npm run check"})
+        check_with_list_id["message"]["content"][0]["id"] = ["toolu_check"]
+        # The result of the pending valid check run below, its tool_use_id a list: read, the pending
+        # check would have to look it up, and the line, the last one, would add a minute of activity.
+        result_with_list_id = tool_result_line(5, "toolu_check", False)
+        result_with_list_id["message"]["content"][0]["tool_use_id"] = ["toolu_check"]
+        lines = [
+            user_line(0, False),
+            *assistant_lines(1, "msg-v1", (100, 0, 0, 10), 1, False),
+            *assistant_lines(2, "msg-v2", (200, 0, 0, 20), 1, False),
+            # Invalid lines, skipped and counted:
+            costly_tool_use(2.75, "msg-bad-null-input", "Bash", None),
+            costly_tool_use(3, "msg-bad-text-input", "Bash", "ls"),
+            costly_tool_use(3.25, "msg-bad-list-input", "Bash", ["ls"]),
+            costly_tool_use(3.5, "msg-bad-list-name", ["Bash"], {"command": "ls"}),
+            user_without_zone,
+            assistant_date_only,
+            check_with_list_id,
+            # Valid: a check run (a turn of 1+1) whose result is still pending when the next line comes.
+            tool_use_line(4, "msg-v3-check", shell("toolu_check", "npm run check"), False),
+            # Invalid, skipped and counted:
+            result_with_list_id,
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary) / "transcripts"
+            write_jsonl(folder / f"{SESSION_ID}.jsonl", lines)
+
+            completed = run_session_costs(folder, Path(temporary), "--check-pattern", "^npm run check")
+
+        context = f"exit {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        self.assertEqual(completed.returncode, 0, context)
+        self.assertEqual(completed.stderr, "", context)
+        self.assertEqual(completed.stdout.splitlines()[-1], "skipped lines: 8", context)
+        rows = read_table(completed.stdout)
+        keys = ("dispatches", "turns", *("input", "cache_write", "cache_read", "output"))
+        keys += ("median_minutes", "total_minutes", "check_runs", "check_minutes")
+        # Only the valid lines count: turns of 100+10, 200+20 and the check run's 1+1, active from
+        # minute 0 to 4; one check run, its result never read, so no check minutes.
+        expected = {ORCHESTRATOR: dict(zip(keys, (1, 3, 301, 0, 0, 31, 4, 4, 1, 0), strict=True))}
+        self.assertEqual(set(rows), set(expected), context)
+        actual = {role: {key: number(rows[role], key) for key in keys} for role in expected}
+        self.assertEqual(actual, expected, context)
+
     # R6.5 (T38, decision A): transcripts whose paths pass 260 characters are read on Windows: a folder
     # whose own path passes the limit, and a short folder whose subagent transcript and meta.json pass
     # it. A path the script prints never carries the \\?\ prefix it may add.

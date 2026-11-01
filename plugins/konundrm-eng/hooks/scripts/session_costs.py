@@ -13,8 +13,8 @@ dispatched two or more subagents at once.
 After the table comes the session transcript with the most turns: its turns and the context of
 its turns (first, median, 90th percentile by nearest rank, maximum). The last line is
 ``skipped lines: <n>``: the lines left out of every count because they are not UTF-8, not a JSON
-object, carry a timestamp that is not ISO 8601, or are user or assistant lines missing a field the
-report reads.
+object, carry a timestamp that is not ISO 8601 with a time zone, or are user or assistant lines
+missing a field the report reads or holding a tool_use block it cannot read.
 ``--check-pattern REGEX`` says what a check run is; by default it is the check command that
 ``quality_check`` finds from the current folder.
 On Windows it reads transcripts and folders whose paths pass 260 characters, through the
@@ -134,14 +134,16 @@ class TranscriptCosts:
 
 
 def _timestamp_moment(value: object) -> datetime | None:
-    """Returns the moment an ISO 8601 timestamp text names, or None when `value` is not one."""
+    """Returns the moment an ISO 8601 timestamp text with a time zone names, or None when `value` is not one."""
     if not isinstance(value, str):
         return None
     try:
         # Python 3.10's fromisoformat does not accept the trailing "Z" Claude Code writes.
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    # A time without a zone names no moment, and it cannot be compared with one that has a zone.
+    return moment if moment.tzinfo is not None else None
 
 
 def _is_token_count(value: object) -> bool:
@@ -158,20 +160,40 @@ def _has_report_fields(entry: JsonObject) -> bool:
     if "timestamp" not in entry or not isinstance(message, dict):
         return False
     if entry_type == "user":
-        return True
+        return all(_is_tool_result_readable(block) for block in _content_blocks(entry, "tool_result"))
     usage = message.get("usage")
     return (
         isinstance(message.get("id"), str)
         and isinstance(usage, dict)
         and all(_is_token_count(usage.get(usage_field, 0)) for usage_field in USAGE_FIELDS.values())
+        and all(_is_tool_use_readable(block) for block in _content_blocks(entry, "tool_use"))
     )
+
+
+def _is_tool_use_readable(block: JsonObject) -> bool:
+    """Tells whether a tool_use block's ``id`` and ``name`` are text and its ``input`` an object, when present.
+
+    The report reads only a shell call's ``input.command``, but every tool's ``input`` must be an
+    object on purpose: Claude Code always writes one, so any other value means a corrupt line.
+    """
+    return (
+        isinstance(block.get("id", ""), str)
+        and isinstance(block.get("name", ""), str)
+        and isinstance(block.get("input", {}), dict)
+    )
+
+
+def _is_tool_result_readable(block: JsonObject) -> bool:
+    """Tells whether a tool_result block's ``tool_use_id`` is text, when present."""
+    return isinstance(block.get("tool_use_id", ""), str)
 
 
 def _parse_line(raw_line: bytes) -> tuple[JsonObject, datetime | None] | None:
     """Returns one transcript line with the moment it was written, or None when it is invalid.
 
     A line is invalid when it is not UTF-8, not a JSON object, has a timestamp that is not ISO 8601
-    text, or is a user or assistant line missing a field the report reads (_has_report_fields).
+    text with a time zone, or is a user or assistant line missing a field the report reads, or
+    holding one it cannot read (_has_report_fields).
     """
     try:
         entry = json.loads(raw_line.decode("utf-8"))
@@ -284,9 +306,11 @@ def read_transcript(path: Path, check_pattern: re.Pattern[str] | None = None) ->
     Lines end only at a line feed and each is decoded on its own, so U+2028, U+2029 and U+0085 inside a
     JSON string do not split a line, and one line that is not UTF-8 spoils only itself. Blank lines
     are ignored. An invalid line (not UTF-8, not a JSON object, a timestamp that is not ISO 8601
-    text, or a user or assistant line without a timestamp and a ``message`` object, or an assistant
-    line without a text ``message.id`` and a ``message.usage`` object whose counts are non-negative
-    integers) is left out of every count and counted as skipped. A missing usage count is 0.
+    text with a time zone, or a user or assistant line without a timestamp and a ``message`` object,
+    or a user line with a tool_result block whose ``tool_use_id`` is not text, or an assistant line
+    without a text ``message.id`` and a ``message.usage`` object whose counts are non-negative
+    integers, or with a tool_use block whose ``id`` or ``name`` is not text or whose ``input`` is
+    not an object) is left out of every count and counted as skipped. A missing usage count is 0.
 
     Args:
         path: A JSON Lines transcript.

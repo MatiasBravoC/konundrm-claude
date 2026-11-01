@@ -104,12 +104,10 @@ flow is the comparison. Requires Claude Code 2.1.295 or later, as 0.6.0 did.
 - `run_slices.py` checks the plan only before the first session, counts a session as progress when
   HEAD's SHA changed, and sees no stop line when `--output-format json` or `stream-json` follows
   `--`.
-- `session_costs.py`: a malformed tool block, or a transcript mixing timestamps with and without a
-  time zone, still stops the report (one line, exit 1, no content); a folder that does not exist
-  gives an empty table without a warning; subagents that workflows start
-  (`subagents/workflows/`) are not read; a `--check-pattern` is searched anywhere in a command, so
-  start it with `^`; test runs count only `python -m unittest`, `python -m pytest`, `pytest`,
-  `npm test` and `npm run test`.
+- `session_costs.py`: a folder that does not exist gives an empty table without a warning;
+  subagents that workflows start (`subagents/workflows/`) are not read; a `--check-pattern` is
+  searched anywhere in a command, so start it with `^`; test runs count only `python -m unittest`,
+  `python -m pytest`, `pytest`, `npm test` and `npm run test`.
 
 ### Upgrading
 
