@@ -415,6 +415,10 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Evidence: corrida sobre las transcripciones de la 0.6.0, con la comprobación de que una muestra de textos de esas transcripciones no aparece en la salida; en `evidence/T36.md`, sin copiar contenido.
   - Verify: `... -k test_never_prints_message_command_or_result_content`
   - Depends on: T35
+  - Decision: Option A (recommended) — qué hace `session_costs.py` cuando leer una transcripción lanza un error (hasta que T37 salte las líneas inválidas)
+    - Option A: `main()` atrapa el error y escribe en stderr una sola línea fija con el tipo del error y la ruta de la transcripción, nunca el mensaje del error ni un traceback, y sale con 1 · pros: un solo control en la frontera vale para todo error, actual o futuro; dice qué archivo falló · cons: sin traceback para depurar
+    - Option B: cada error se lanza sin el texto que leyó (por ejemplo, `_parse_timestamp` relanza un ValueError fijo) y el traceback sigue saliendo · pros: el cambio más chico; conserva el traceback · cons: cada error nuevo que copie su entrada vuelve a filtrar; el control queda repartido
+    - Recommendation: A.
 
 - [ ] **T37** `session_costs.py` salta las líneas inválidas y las cuenta · `behavior` · Risk: low · Covers: R6.4
   - Test: `P/hooks/tests/test_session_costs.py::test_skips_and_counts_invalid_lines`

@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import re
+import string
 import subprocess
 import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -336,6 +340,322 @@ def build_busiest_transcripts(folder: Path, second_folder: Path) -> None:
     write_jsonl(second_folder / f"{busiest_id}.jsonl", busiest_lines)
 
 
+# Content planted where real transcripts carry it (R6.3, T36). Long and distinctive, so the report's
+# role names and numbers cannot contain them by chance; each also has fragments checked on their own,
+# so a truncated or partly rewritten leak fails too. No uppercase Z: the timestamp parser rewrites it.
+PLANTED_TAG = "pl4nted-content-marker-q7vw"
+PLANTED_EMAIL_LOCAL = "yolanda.quintavalle.leak"
+PLANTED_EMAIL_DOMAIN = "planted-mail.example"
+PLANTED_EMAIL = PLANTED_EMAIL_LOCAL + "@" + PLANTED_EMAIL_DOMAIN
+# A key shaped like a real Anthropic key, built by parts so no literal key sits in the source.
+PLANTED_KEY_TAIL = "Xq7Vb" + "Lm2Rk" + "9TwPd" + "Ha4Ns" + "Ej8Uy" + "Cf3Gx" + "_Kv6Q" + "o1Wt-" + "Jr5Mb"
+PLANTED_KEY = "sk-" + "ant-api03-" + PLANTED_KEY_TAIL * 2 + "-planted"
+PLANTED_CODE_IDENTIFIER = "leak_marker_payload_quux"
+PLANTED_CODE = f"def {PLANTED_CODE_IDENTIFIER}(rows):\n    return sorted(rows)  # planted-code-comment-v9"
+PLANTED_FRAGMENTS = (
+    PLANTED_TAG,
+    PLANTED_EMAIL,
+    PLANTED_EMAIL_LOCAL,
+    PLANTED_EMAIL_DOMAIN,
+    PLANTED_KEY,
+    PLANTED_KEY_TAIL,
+    PLANTED_KEY_TAIL[:12],
+    PLANTED_KEY_TAIL[-12:],
+    PLANTED_CODE_IDENTIFIER,
+    "planted-code-comment-v9",
+)
+
+
+def planted(place: str) -> str:
+    """Returns text holding the email, the key and the code, tagged with where it was planted."""
+    return f"{place} {PLANTED_TAG}: write to {PLANTED_EMAIL}, key {PLANTED_KEY}\n{PLANTED_CODE}"
+
+
+def planted_command(place: str) -> str:
+    """Returns shell-safe planted text, for an echo inside a command line."""
+    return f"'{place} {PLANTED_TAG} {PLANTED_EMAIL} {PLANTED_KEY} {PLANTED_CODE_IDENTIFIER}'"
+
+
+def with_planted_result(line: dict, content: object, place: str) -> dict:
+    """Puts planted content in a tool_result line's content and in its top-level toolUseResult."""
+    line["message"]["content"][0]["content"] = content
+    line["toolUseResult"] = {"stdout": planted(f"{place}-stdout"), "stderr": planted(f"{place}-stderr")}
+    return line
+
+
+def build_planted_transcripts(folder: Path) -> None:
+    """Writes a well-formed session and subagent with planted content in every place content lives."""
+    user_text = user_line(0, False)
+    user_text["message"]["content"] = planted("user-string")
+    user_blocks = user_line(0.5, False)
+    user_blocks["message"]["content"] = [{"type": "text", "text": planted("user-block")}]
+    reply = assistant_lines(1, "msg-p1", (100, 0, 0, 10), 2, False)
+    reply[0]["message"]["content"] = [{"type": "thinking", "thinking": planted("thinking"), "signature": "c2ln"}]
+    reply[1]["message"]["content"] = [{"type": "text", "text": planted("assistant-text")}]
+    check_run = shell("toolu_p2", f"npm run check && echo {planted_command('bash')}")
+    test_run = shell(
+        "toolu_p3", f"python -m pytest -k {PLANTED_CODE_IDENTIFIER}; echo {planted_command('ps')}", "PowerShell"
+    )
+    write_code = ("toolu_p4", "Write", {"file_path": f"src/{PLANTED_CODE_IDENTIFIER}.py", "content": planted("write")})
+    agent_call = (
+        "toolu_p5",
+        "Agent",
+        {"subagent_type": TEST_WRITER, "description": planted("dispatch-description"), "prompt": planted("prompt")},
+    )
+    attachment = {"type": "attachment", "timestamp": stamp(7), "attachment": {"content": planted("attachment")}}
+    write_jsonl(
+        folder / f"{SESSION_ID}.jsonl",
+        [
+            user_text,
+            user_blocks,
+            *reply,
+            tool_use_line(2, "msg-p2", check_run, False),
+            with_planted_result(tool_result_line(3, "toolu_p2", False), planted("result-string"), "check"),
+            tool_use_line(4, "msg-p3", test_run, False),
+            with_planted_result(
+                tool_result_line(4.5, "toolu_p3", False), [{"type": "text", "text": planted("result-list")}], "test"
+            ),
+            tool_use_line(5, "msg-p4", write_code, False),
+            with_planted_result(tool_result_line(5.5, "toolu_p4", False), planted("write-result"), "write"),
+            tool_use_line(6, "msg-p5", agent_call, False),
+            with_planted_result(tool_result_line(6.5, "toolu_p5", False), planted("agent-result"), "agent"),
+            attachment,
+        ],
+    )
+    subagents = folder / SESSION_ID / "subagents"
+    sub_user = user_line(10, True)
+    sub_user["message"]["content"] = planted("subagent-prompt")
+    write_subagent(subagents, "p1", TEST_WRITER, [sub_user, *assistant_lines(11, "msg-p6", (50, 0, 0, 5), 1, True)])
+    meta_path = subagents / "agent-p1.meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["description"] = planted("meta-description")
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+
+
+def build_unreadable_meta_transcripts(folder: Path, meta_text: str) -> None:
+    """Writes a well-formed session and subagent whose meta.json is replaced by `meta_text`."""
+    session_lines = [user_line(0, False), *assistant_lines(1, "msg-m1", (10, 0, 0, 1), 1, False)]
+    write_jsonl(folder / f"{SESSION_ID}.jsonl", session_lines)
+    subagent_lines = [user_line(10, True), *assistant_lines(11, "msg-m2", (5, 0, 0, 1), 1, True)]
+    subagents = folder / SESSION_ID / "subagents"
+    write_subagent(subagents, "m1", TEST_WRITER, subagent_lines)
+    (subagents / "agent-m1.meta.json").write_text(meta_text, encoding="utf-8")
+
+
+def build_bad_timestamp_transcript(folder: Path) -> None:
+    """Writes a session whose first line's timestamp field holds planted content instead of a time."""
+    bad_line = user_line(0, False)
+    bad_line["timestamp"] = planted("timestamp")
+    write_jsonl(
+        folder / f"{SESSION_ID}.jsonl",
+        [bad_line, *assistant_lines(1, "msg-t1", (100, 0, 0, 10), 1, False)],
+    )
+
+
+# Generated transcripts for the output-shape property (R6.3, T36 invariant). U+2028, U+2029 and U+0085
+# are left out: read_transcript's splitlines() still splits on them (T37's concern), and the JSON
+# encoding below escapes every other non-ASCII character anyway.
+PROPERTY_SEEDS = 24
+TEXT_ALPHABET = string.ascii_letters + string.digits + string.punctuation + " \t\n\\\"'" + "áéíóúñÜç€" + "🙂🚀"
+LOOKALIKE_TEXTS = (
+    "orchestrator  1  2  3  4  5  6.0  7.5%",
+    "role  dispatches  turns  input  output",
+    "busiest orchestrator session",
+    "turns  context_first  context_max",
+    "42",
+    "12.5%",
+    TEST_WRITER,
+    "skipped lines: 7",
+    "Traceback (most recent call last):",
+    '{"type": "assistant", "message": {}}',
+    "C:\\Users\\someone\\file.py",
+)
+AGENT_TYPES = (TEST_WRITER, IMPLEMENTER, "konundrm-eng:spec-reviewer", "general-purpose", "Explore")
+MODELS = ("claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5")
+COMMAND_TEMPLATES = (
+    ("check", "npm run check {}"),
+    ("check", "cd /repo && npm run check 2>&1 | tail -5"),
+    ("test", "python -m pytest {}"),
+    ("test", "python -m unittest discover -s tests -k {}"),
+    ("test", "npm test"),
+    ("other", "echo {}"),
+    ("other", "grep -n {} notes.md"),
+    ("other", "git status {}"),
+)
+OTHER_LINE_TYPES = ("attachment", "system", "queue-operation", "last-prompt", "api-request-blob")
+NUMBER_CELL = re.compile(r"\d+(?:\.\d+)?%?")
+COLUMN_NAME = re.compile(r"[a-z][a-z0-9_]*")
+SKIPPED_LINES = re.compile(r"skipped lines: \d+")
+
+
+class TranscriptGenerator:
+    """Draws well-formed transcripts with arbitrary content where real transcripts carry content.
+
+    Attributes:
+        rng: The seeded source of every choice.
+        minutes: Minutes after START of the last line written; each line moves it forward.
+        roles: The orchestrator and every agentType written.
+        models: Every model name written.
+        features: The kinds of structure drawn, so the test can show the domain was covered.
+    """
+
+    def __init__(self, rng: random.Random) -> None:
+        self.rng = rng
+        self.minutes = 0.0
+        self.message_count = 0
+        self.roles = {ORCHESTRATOR}
+        self.models: set[str] = set()
+        self.features: set[str] = set()
+
+    def text(self) -> str:
+        """Returns arbitrary text, sometimes shaped like a table row, a number or a role name."""
+        noise = "".join(self.rng.choices(TEXT_ALPHABET, k=self.rng.randint(0, 40)))
+        return self.rng.choice(LOOKALIKE_TEXTS) + noise if self.rng.random() < 0.3 else noise
+
+    def _tick(self) -> float:
+        self.minutes += self.rng.choice((0, 0.1, 0.5, 2, 7))
+        return self.minutes
+
+    def _message_id(self) -> str:
+        self.message_count += 1
+        return f"msg-gen-{self.message_count}"
+
+    def _assistant(self, sidechain: bool, session_id: str) -> list[dict]:
+        usage = tuple(self.rng.randint(0, 5000) for _ in range(4))
+        lines = assistant_lines(
+            self._tick(), self._message_id(), usage, self.rng.randint(1, 3), sidechain, session_id=session_id
+        )
+        model = self.rng.choice(MODELS)
+        self.models.add(model)
+        for line in lines:
+            line["message"]["model"] = model
+            kind = self.rng.choice(("text", "thinking"))
+            line["message"]["content"] = [{"type": kind, kind: self.text()}]
+        return lines
+
+    def _user(self, sidechain: bool, session_id: str) -> dict:
+        line = user_line(self._tick(), sidechain, session_id=session_id)
+        if self.rng.random() < 0.5:
+            line["message"]["content"] = self.text()
+        else:
+            line["message"]["content"] = [{"type": "text", "text": self.text()} for _ in range(self.rng.randint(1, 2))]
+        return line
+
+    def _tool_input(self, tool_use_id: str) -> tuple[str, str, dict]:
+        roll = self.rng.random()
+        if roll < 0.6:
+            kind, template = self.rng.choice(COMMAND_TEMPLATES)
+            self.features.add(f"{kind} command")
+            return shell(tool_use_id, template.format(self.text()), self.rng.choice(("Bash", "PowerShell")))
+        if roll < 0.8:
+            self.features.add("dispatch")
+            dispatch_input = {"subagent_type": TEST_WRITER, "description": self.text(), "prompt": self.text()}
+            return tool_use_id, "Agent", dispatch_input
+        return tool_use_id, "Write", {"file_path": self.text(), "content": self.text()}
+
+    def _tool_call(self, sidechain: bool, session_id: str) -> list[dict]:
+        tool_use_id = f"toolu_gen_{self.message_count}"
+        call = tool_use_line(self._tick(), self._message_id(), self._tool_input(tool_use_id), sidechain)
+        result = tool_result_line(self._tick(), tool_use_id, sidechain)
+        for line in (call, result):
+            line["sessionId"] = session_id
+        if self.rng.random() < 0.5:
+            self.features.add("string result")
+            result["message"]["content"][0]["content"] = self.text()
+        else:
+            self.features.add("list result")
+            result["message"]["content"][0]["content"] = [{"type": "text", "text": self.text()}]
+        if self.rng.random() < 0.6:
+            self.features.add("toolUseResult")
+            result["toolUseResult"] = {"stdout": self.text(), "stderr": self.text(), "interrupted": False}
+        return [call, result]
+
+    def _other(self) -> dict:
+        self.features.add("other line type")
+        line = {"type": self.rng.choice(OTHER_LINE_TYPES), "content": self.text(), "data": {"text": self.text()}}
+        if self.rng.random() < 0.5:
+            line["timestamp"] = stamp(self._tick())
+        return line
+
+    def transcript(self, sidechain: bool, session_id: str) -> list[dict]:
+        """Returns one transcript: a first user line, then user, assistant, tool and other lines."""
+        lines = [self._user(sidechain, session_id)]
+        for _ in range(self.rng.randint(0, 8)):
+            roll = self.rng.random()
+            if roll < 0.2:
+                lines.append(self._user(sidechain, session_id))
+            elif roll < 0.5:
+                lines += self._assistant(sidechain, session_id)
+            elif roll < 0.85:
+                lines += self._tool_call(sidechain, session_id)
+            else:
+                lines.append(self._other())
+        return lines
+
+    def folders(self, root: Path) -> list[Path]:
+        """Writes one or two project folders, each with sessions and their subagents."""
+        folders = [root / f"project-{index}" for index in range(self.rng.randint(1, 2))]
+        if len(folders) == 2:
+            self.features.add("two folders")
+        for folder_index, folder in enumerate(folders):
+            for session_index in range(self.rng.randint(1, 2)):
+                session_id = f"sess-{folder_index}-{session_index}"
+                write_jsonl(folder / f"{session_id}.jsonl", self.transcript(False, session_id))
+                agent_count = self.rng.randint(0, 2)
+                self.features.add("subagents" if agent_count else "no subagent")
+                for agent_index in range(agent_count):
+                    agent_type = self.rng.choice(AGENT_TYPES)
+                    self.roles.add(agent_type)
+                    subagents = folder / session_id / "subagents"
+                    agent_id = f"g{agent_index}"
+                    write_subagent(subagents, agent_id, agent_type, self.transcript(True, session_id))
+                    meta_path = subagents / f"agent-{agent_id}.meta.json"
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    meta["description"] = self.text()
+                    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        return folders
+
+
+def lines_off_shape(stdout: str, roles: set[str], models: set[str]) -> list[str]:
+    """Returns every stdout line that is not blank, a fixed header or title, a role row or numbers.
+
+    A header is a line of column names starting with ``role`` or ``turns``; a role row starts with a
+    role the transcripts named and has one cell per header column, each a number (a percentage
+    allowed) or a model the transcripts named; the busiest orchestrator's row has only numbers.
+    """
+    off_shape = []
+    widths: dict[str, int] = {}
+    for line in stdout.splitlines():
+        cells = line.split()
+        if not cells or line == "busiest orchestrator session" or SKIPPED_LINES.fullmatch(line):
+            continue
+        if cells[0] in {"role", "turns"} and all(COLUMN_NAME.fullmatch(cell) for cell in cells):
+            widths[cells[0]] = len(cells)
+            continue
+        if (
+            cells[0] in roles
+            and len(cells) == widths.get("role")
+            and all(NUMBER_CELL.fullmatch(cell) or cell in models for cell in cells[1:])
+        ):
+            continue
+        if len(cells) == widths.get("turns") and all(NUMBER_CELL.fullmatch(cell) for cell in cells):
+            continue
+        off_shape.append(line)
+    return off_shape
+
+
+def run_generated_example(seed: int) -> tuple[TranscriptGenerator, subprocess.CompletedProcess[str]]:
+    """Writes the transcripts seed `seed` draws and runs the CLI on them from a project with a check."""
+    generator = TranscriptGenerator(random.Random(seed))  # noqa: S311 - seeded test data, not cryptography
+    with tempfile.TemporaryDirectory() as temporary:
+        project = Path(temporary) / "app"
+        project.mkdir()
+        (project / "package.json").write_text(json.dumps({"scripts": {"check": "echo ok"}}), encoding="utf-8")
+        folders = generator.folders(Path(temporary))
+        completed = run_session_costs(folders[0], project, *(str(folder) for folder in folders[1:]))
+    return generator, completed
+
+
 def read_busiest_block(stdout: str) -> dict[str, str]:
     """Returns the busiest-orchestrator block: its header line of field names, zipped with the next line."""
     lines = [line.split() for line in stdout.splitlines() if line.strip()]
@@ -494,6 +814,113 @@ class SessionCostsTest(unittest.TestCase):
         expected = {"turns": 10, "context_first": 500, "context_median": 600, "context_p90": 1000, "context_max": 5000}
         actual = {name: float(block[name]) for name in expected if name in block}
         self.assertEqual(actual, expected, completed.stdout)
+
+    # R6.3 (T36; design.md Threats, row 4): the report shows only counts, times and token totals,
+    # never the content of messages, commands or results, not even when reading a transcript fails.
+    def test_never_prints_message_command_or_result_content(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary) / "transcripts"
+            bad_folder = Path(temporary) / "bad-transcripts"
+            project = Path(temporary) / "app"
+            project.mkdir()
+            (project / "package.json").write_text(json.dumps({"scripts": {"check": "echo ok"}}), encoding="utf-8")
+            build_planted_transcripts(folder)
+            build_bad_timestamp_transcript(bad_folder)
+
+            clean = run_session_costs(folder, project)
+            failing = run_session_costs(bad_folder, project)
+
+        def leaks(text: str) -> list[str]:
+            return [fragment for fragment in PLANTED_FRAGMENTS if fragment in text]
+
+        # Well-formed transcripts: the table, with the planted commands counted, and nothing planted.
+        self.assertEqual(clean.returncode, 0, clean.stderr)
+        self.assertEqual(clean.stderr, "")
+        self.assertEqual(leaks(clean.stdout), [], clean.stdout)
+        rows = read_table(clean.stdout)
+        self.assertEqual(set(rows), {ORCHESTRATOR, TEST_WRITER}, clean.stdout)
+        self.assertEqual((number(rows[ORCHESTRATOR], "check_runs"), number(rows[ORCHESTRATOR], "test_runs")), (1, 1))
+        # A timestamp holding planted text: whatever the outcome, neither stream repeats it, and no
+        # traceback is printed.
+        self.assertEqual(leaks(failing.stdout), [], failing.stdout)
+        self.assertEqual(leaks(failing.stderr), [], failing.stderr)
+        self.assertNotIn("Traceback", failing.stderr)
+
+    # R6.3 (T36, decision A): a transcript that cannot be read exits 1 with one fixed stderr line that
+    # names the file and the original error's type, never its message nor a traceback; stdout is empty.
+    def test_unreadable_transcript_exits_1_with_one_line_naming_file_and_error_type(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary) / "unreadable-transcripts"
+            # A directory named like a session transcript: the glob lists it and reading it fails with
+            # an error that stays an error (PermissionError on Windows, IsADirectoryError on Linux).
+            transcript = folder / f"{SESSION_ID}.jsonl"
+            transcript.mkdir(parents=True)
+            with self.assertRaises(OSError) as raised:
+                transcript.read_text(encoding="utf-8")
+            expected_type = type(raised.exception).__name__
+
+            completed = run_session_costs(folder, Path(temporary))
+
+        context = f"exit {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        self.assertEqual(completed.returncode, 1, context)
+        self.assertEqual(completed.stdout, "", context)
+        self.assertNotIn("Traceback", completed.stderr, context)
+        self.assertTrue(completed.stderr.endswith("\n"), context)
+        stderr_lines = completed.stderr.splitlines()
+        self.assertEqual(len(stderr_lines), 1, context)
+        line = re.fullmatch(r"session_costs: cannot read (?P<path>.+): (?P<error_type>\w+)", stderr_lines[0])
+        self.assertIsNotNone(line, context)
+        # Compared by its last two parts, so a long-path prefix (\\?\) or expanded short name still matches.
+        self.assertEqual(Path(line["path"]).parts[-2:], (folder.name, transcript.name), context)
+        self.assertEqual(line["error_type"], expected_type, context)
+
+    # R6.3 (T36): a subagent's meta.json without agentType, or not JSON at all, never makes the script
+    # print a traceback or any of the meta.json's text, whatever the exit code.
+    def test_unusable_meta_json_prints_no_traceback_and_none_of_its_text(self) -> None:
+        missing_agent_type = json.dumps({"description": planted("meta-description"), "toolUseId": "toolu_m1"})
+        meta_texts = {"no agentType": missing_agent_type, "not JSON": planted("meta-not-json")}
+        for case, meta_text in meta_texts.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
+                folder = Path(temporary) / "transcripts"
+                build_unreadable_meta_transcripts(folder, meta_text)
+
+                completed = run_session_costs(folder, Path(temporary))
+
+                context = f"exit {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+                self.assertNotIn("Traceback", completed.stderr, context)
+                for stream in (completed.stdout, completed.stderr):
+                    self.assertEqual([fragment for fragment in PLANTED_FRAGMENTS if fragment in stream], [], context)
+
+    # R6.3 (T36 invariant): whatever well-formed transcripts hold, every output line is a fixed header
+    # or title, a role row (a role name, then numbers or model names) or numbers. Generated text may
+    # coincide with a number or a role name, so the property checks each line's shape, not absence.
+    def test_every_output_line_is_a_fixed_header_a_role_or_numbers(self) -> None:
+        # Each seed has its own folders and process, so the seeds run side by side to stay fast.
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            examples = list(pool.map(run_generated_example, range(PROPERTY_SEEDS)))
+
+        for seed, (generator, completed) in enumerate(examples):
+            with self.subTest(seed=seed):
+                context = f"seed {seed}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+                self.assertEqual(completed.returncode, 0, context)
+                self.assertEqual(completed.stderr, "", context)
+                self.assertEqual(lines_off_shape(completed.stdout, generator.roles, generator.models), [], context)
+                self.assertIn(ORCHESTRATOR, read_table(completed.stdout), context)
+        drawn = set().union(*(generator.features for generator, _ in examples))
+        expected_features = {
+            "check command",
+            "test command",
+            "other command",
+            "dispatch",
+            "string result",
+            "list result",
+            "toolUseResult",
+            "other line type",
+            "two folders",
+            "subagents",
+            "no subagent",
+        }
+        self.assertLessEqual(expected_features, drawn, "the generator covers its domain")
 
 
 if __name__ == "__main__":

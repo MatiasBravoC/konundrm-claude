@@ -13,7 +13,9 @@ its turns (first, median, 90th percentile by nearest rank, maximum).
 ``--check-pattern REGEX`` says what a check run is; by default it is the check command that
 ``quality_check`` finds from the current folder.
 
-It prints nothing read from a transcript except the agent type and numbers.
+It prints nothing read from a transcript except the agent type and numbers. When a transcript cannot
+be read, it writes one line to stderr naming the error's type and the file, never the error's
+message, and exits with 1.
 
 Sections:
     TOKEN_WEIGHTS          — input-equivalent weight of each token type.
@@ -21,6 +23,7 @@ Sections:
     TranscriptCosts         — what one transcript cost.
     default_check_pattern() — what a run of the project's check looks like.
     read_transcript()       — measures one transcript, its tool calls counted by a private tally.
+    TranscriptReadError    — a transcript, or its subagent's meta.json, could not be read.
     find_transcripts()     — lists the transcripts of a folder with their role.
     RoleCosts              — what every transcript of one role cost together.
     RunCosts               — what a run cost per role, and its busiest orchestrator session.
@@ -39,6 +42,7 @@ import re
 import statistics
 import sys
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -254,9 +258,35 @@ def read_transcript(path: Path, check_pattern: re.Pattern[str] | None = None) ->
     return costs
 
 
+class TranscriptReadError(Exception):
+    """A transcript, or its subagent's meta.json, could not be read.
+
+    Its message is only the file's path: the original error, whose message can repeat what the file
+    holds (a timestamp, a line of JSON), stays in ``__cause__`` and is never printed.
+
+    Attributes:
+        path: The file that could not be read.
+    """
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(str(path))
+        self.path = path
+
+
+@contextmanager
+def _reading(path: Path) -> Iterator[None]:
+    """Turns any error raised inside the block into a TranscriptReadError for `path`."""
+    try:
+        yield
+    # Every error, current or future, so that none can carry the file's content to the output.
+    except Exception as error:
+        raise TranscriptReadError(path) from error
+
+
 def _subagent_role(transcript: Path) -> str:
     meta_path = transcript.with_suffix(".meta.json")
-    return str(json.loads(meta_path.read_text(encoding="utf-8"))["agentType"])
+    with _reading(meta_path):
+        return str(json.loads(meta_path.read_text(encoding="utf-8"))["agentType"])
 
 
 def find_transcripts(folder: Path) -> Iterator[tuple[str, Path]]:
@@ -270,6 +300,10 @@ def find_transcripts(folder: Path) -> Iterator[tuple[str, Path]]:
         ``(role, path)`` for every session transcript (role ``orchestrator``) and every subagent
         transcript (the agentType of its meta.json). Other files, such as ``*.meta.json`` and
         ``*.prefix.json``, are skipped.
+
+    Raises:
+        TranscriptReadError: If a subagent's meta.json cannot be read, is not JSON or names no
+            agentType.
     """
     for session in sorted(folder.glob("*.jsonl")):
         yield ORCHESTRATOR_ROLE, session
@@ -351,14 +385,15 @@ def collect_run_costs(folders: list[Path], check_pattern: re.Pattern[str] | None
         The run's costs per role and its busiest orchestrator session.
 
     Raises:
-        OSError: If a transcript or a subagent's meta.json cannot be read.
-        ValueError: If one is not valid JSON.
-        KeyError: If a subagent's meta.json names no agentType.
+        TranscriptReadError: If a transcript or a subagent's meta.json cannot be read or measured,
+            whatever the error; the original error is its ``__cause__``.
     """
     run = RunCosts()
     for folder in folders:
         for role, transcript in find_transcripts(folder):
-            run.add(role, read_transcript(transcript, check_pattern))
+            with _reading(transcript):
+                costs = read_transcript(transcript, check_pattern)
+            run.add(role, costs)
     return run
 
 
@@ -383,7 +418,7 @@ def format_role_table(costs_by_role: dict[str, RoleCosts]) -> list[str]:
     """Renders the per-role table, one line per role under a header of column names.
 
     Args:
-        costs_by_role: Each role's costs, as collect_role_costs returns them.
+        costs_by_role: Each role's costs, as RunCosts.costs_by_role holds them.
 
     Returns:
         The header line and one line per role, columns separated by whitespace. ``share`` is the
@@ -476,7 +511,9 @@ def main(argv: list[str] | None = None) -> int:
         argv: Command-line arguments without the program name; ``sys.argv[1:]`` when None.
 
     Returns:
-        0. argparse exits with 2 on a usage error.
+        0, or 1 when a transcript cannot be read: then stderr gets one line with the error's type
+        and the file's path, never the error's message nor a traceback, and stdout gets nothing.
+        argparse exits with 2 on a usage error.
     """
     parser = argparse.ArgumentParser(description="konundrm-eng session costs per role")
     parser.add_argument("folders", nargs="+", type=Path, help="project transcript folders of one run")
@@ -489,7 +526,11 @@ def main(argv: list[str] | None = None) -> int:
     check_pattern = arguments.check_pattern
     if check_pattern is None:
         check_pattern = default_check_pattern(Path.cwd())
-    run = collect_run_costs(arguments.folders, check_pattern)
+    try:
+        run = collect_run_costs(arguments.folders, check_pattern)
+    except TranscriptReadError as error:
+        sys.stderr.write(f"session_costs: cannot read {error.path}: {type(error.__cause__).__name__}\n")
+        return 1
     lines = [*format_role_table(run.costs_by_role), *format_busiest_orchestrator(run.busiest_orchestrator)]
     sys.stdout.write("\n".join(lines) + "\n")
     return 0
