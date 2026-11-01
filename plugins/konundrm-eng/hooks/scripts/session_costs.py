@@ -8,6 +8,8 @@ transcript ``<folder>/<session-id>/subagents/agent-<id>.jsonl`` belongs to the `
 turns, input, cache-write, cache-read and output tokens, weighted tokens, the role's share of all
 weighted tokens, its active minutes (median and total over its transcripts), its check runs with
 their total minutes, its test runs and its messages that dispatched two or more subagents at once.
+After the table comes the session transcript with the most turns: its turns and the context of
+its turns (first, median, 90th percentile by nearest rank, maximum).
 ``--check-pattern REGEX`` says what a check run is; by default it is the check command that
 ``quality_check`` finds from the current folder.
 
@@ -21,8 +23,10 @@ Sections:
     read_transcript()       — measures one transcript, its tool calls counted by a private tally.
     find_transcripts()     — lists the transcripts of a folder with their role.
     RoleCosts              — what every transcript of one role cost together.
-    collect_role_costs()   — measures every transcript of the given folders, per role.
+    RunCosts               — what a run cost per role, and its busiest orchestrator session.
+    collect_run_costs()    — measures every transcript of the given folders as one run.
     format_role_table()    — renders the per-role table.
+    format_busiest_orchestrator() — renders the busiest orchestrator's turns and context per turn.
     main()                 — CLI.
 """
 
@@ -57,6 +61,9 @@ USAGE_FIELDS = {
 }
 """The API usage field that holds each token type."""
 
+CONTEXT_TOKEN_TYPES = ("input", "cache_write", "cache_read")
+"""Token types that make up the context a turn was sent with; its output is not part of it."""
+
 TOKEN_WEIGHTS = {"input": 1.0, "cache_write": 1.25, "cache_read": 0.1, "output": 5.0}
 """Input-equivalent weight of each token type, the ratio of their prices."""
 
@@ -89,6 +96,8 @@ class TranscriptCosts:
         check_minutes: Time from each check run's call to its result, summed.
         test_runs: Simple commands, other than the check, that ran tests.
         parallel_dispatch_messages: Messages that dispatched two or more subagents.
+        turn_contexts: Context of each turn (its input, cache-write and cache-read tokens), in the
+            order the turns are first written.
     """
 
     turns: int = 0
@@ -98,6 +107,7 @@ class TranscriptCosts:
     check_minutes: float = 0.0
     test_runs: int = 0
     parallel_dispatch_messages: int = 0
+    turn_contexts: list[int] = field(default_factory=list)
 
 
 def _parse_timestamp(text: str) -> datetime:
@@ -206,8 +216,9 @@ def read_transcript(path: Path, check_pattern: re.Pattern[str] | None = None) ->
         check_pattern: Searched in each simple command's text; None counts no check runs.
 
     Returns:
-        Its turns, tokens per type, active minutes, check runs and their minutes, test runs and
-        parallel-dispatch messages. A transcript without assistant lines has 0 turns and 0 tokens.
+        Its turns, tokens per type, active minutes, check runs and their minutes, test runs,
+        parallel-dispatch messages and each turn's context. A transcript without assistant lines
+        has 0 turns and 0 tokens.
 
     Raises:
         OSError: If the file cannot be read.
@@ -233,9 +244,11 @@ def read_transcript(path: Path, check_pattern: re.Pattern[str] | None = None) ->
         # Each later line of a message overwrites the earlier ones, so its last line's usage wins.
         usage_by_message_id[message.get("id")] = message.get("usage", {})
     costs.turns = len(usage_by_message_id)
+    # A dict keeps each message where its first line put it, so the turns stay in written order.
     for usage in usage_by_message_id.values():
         for token_type, usage_field in USAGE_FIELDS.items():
             costs.tokens[token_type] += usage.get(usage_field, 0)
+        costs.turn_contexts.append(sum(usage.get(USAGE_FIELDS[token_type], 0) for token_type in CONTEXT_TOKEN_TYPES))
     costs.active_minutes = _active_minutes(sorted(moments))
     tool_calls.finish()
     return costs
@@ -306,26 +319,47 @@ class RoleCosts:
         return sum(self.tokens[token_type] * TOKEN_WEIGHTS[token_type] for token_type in TOKEN_TYPES)
 
 
-def collect_role_costs(folders: list[Path], check_pattern: re.Pattern[str] | None = None) -> dict[str, RoleCosts]:
-    """Measures every transcript of the given folders and adds them up per role.
+@dataclass
+class RunCosts:
+    """What one run cost: per role, and the orchestrator session that took the most turns.
+
+    Attributes:
+        costs_by_role: Each role's costs, keyed by role, in the order roles were first found.
+        busiest_orchestrator: The session transcript with the most turns (the first found on a
+            tie), or None when no session has a turn. Subagent transcripts are never it.
+    """
+
+    costs_by_role: dict[str, RoleCosts] = field(default_factory=dict)
+    busiest_orchestrator: TranscriptCosts | None = None
+
+    def add(self, role: str, transcript: TranscriptCosts) -> None:
+        """Adds one transcript of `role` to the run."""
+        self.costs_by_role.setdefault(role, RoleCosts()).add(transcript)
+        busiest_turns = self.busiest_orchestrator.turns if self.busiest_orchestrator else 0
+        if role == ORCHESTRATOR_ROLE and transcript.turns > busiest_turns:
+            self.busiest_orchestrator = transcript
+
+
+def collect_run_costs(folders: list[Path], check_pattern: re.Pattern[str] | None = None) -> RunCosts:
+    """Measures every transcript of the given folders as one run.
 
     Args:
         folders: Project transcript folders, read as one run.
         check_pattern: What a check run looks like, as read_transcript takes it.
 
     Returns:
-        Each role's costs, keyed by role, in the order roles were first found.
+        The run's costs per role and its busiest orchestrator session.
 
     Raises:
         OSError: If a transcript or a subagent's meta.json cannot be read.
         ValueError: If one is not valid JSON.
         KeyError: If a subagent's meta.json names no agentType.
     """
-    costs_by_role: dict[str, RoleCosts] = {}
+    run = RunCosts()
     for folder in folders:
         for role, transcript in find_transcripts(folder):
-            costs_by_role.setdefault(role, RoleCosts()).add(read_transcript(transcript, check_pattern))
-    return costs_by_role
+            run.add(role, read_transcript(transcript, check_pattern))
+    return run
 
 
 ROLE_TABLE_COLUMNS = (
@@ -375,7 +409,55 @@ def format_role_table(costs_by_role: dict[str, RoleCosts]) -> list[str]:
                 str(costs.parallel_dispatch_messages),
             ]
         )
-    widths = [max(len(row[column]) for row in rows) for column in range(len(ROLE_TABLE_COLUMNS))]
+    return _align_columns(rows)
+
+
+BUSIEST_ORCHESTRATOR_TITLE = "busiest orchestrator session"
+"""Line that introduces the busiest orchestrator's block."""
+
+BUSIEST_ORCHESTRATOR_COLUMNS = ("turns", "context_first", "context_median", "context_p90", "context_max")
+"""Header of the busiest orchestrator's block."""
+
+
+def _nearest_rank_percentile(values: list[int], percent: int) -> int:
+    """Returns the sorted value at rank ceil(percent/100 · n), 1-based; `values` must not be empty."""
+    # Integer ceiling division: 0.9 * n in floats can land just above an integer and skip a rank.
+    rank = -(-percent * len(values) // 100)
+    return sorted(values)[rank - 1]
+
+
+def _format_count(value: float) -> str:
+    """Writes a token count without decimals when it is whole, as a median of two counts may not be."""
+    return str(int(value)) if value == int(value) else f"{value:.1f}"
+
+
+def format_busiest_orchestrator(busiest: TranscriptCosts | None) -> list[str]:
+    """Renders the turns and per-turn context of the orchestrator session with the most turns.
+
+    Args:
+        busiest: That session's costs, as RunCosts.busiest_orchestrator holds them.
+
+    Returns:
+        A title line, a header of column names and one line of values: its turns, and the context
+        of its first written turn, the median, the 90th percentile (nearest rank, always the
+        context of a real turn) and the maximum. No lines when `busiest` is None.
+    """
+    if busiest is None:
+        return []
+    contexts = busiest.turn_contexts
+    values = [
+        str(busiest.turns),
+        str(contexts[0]),
+        _format_count(statistics.median(contexts)),
+        str(_nearest_rank_percentile(contexts, 90)),
+        str(max(contexts)),
+    ]
+    return ["", BUSIEST_ORCHESTRATOR_TITLE, *_align_columns([list(BUSIEST_ORCHESTRATOR_COLUMNS), values])]
+
+
+def _align_columns(rows: list[list[str]]) -> list[str]:
+    """Joins each row's cells, every column padded to its widest cell and separated by two spaces."""
+    widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
     return ["  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip() for row in rows]
 
 
@@ -388,7 +470,7 @@ def _compile_pattern(text: str) -> re.Pattern[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Prints the per-role cost table of the transcripts in the given folders.
+    """Prints the per-role cost table of the given folders' transcripts and their busiest orchestrator.
 
     Args:
         argv: Command-line arguments without the program name; ``sys.argv[1:]`` when None.
@@ -407,7 +489,8 @@ def main(argv: list[str] | None = None) -> int:
     check_pattern = arguments.check_pattern
     if check_pattern is None:
         check_pattern = default_check_pattern(Path.cwd())
-    lines = format_role_table(collect_role_costs(arguments.folders, check_pattern))
+    run = collect_run_costs(arguments.folders, check_pattern)
+    lines = [*format_role_table(run.costs_by_role), *format_busiest_orchestrator(run.busiest_orchestrator)]
     sys.stdout.write("\n".join(lines) + "\n")
     return 0
 

@@ -390,6 +390,10 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Files: `P/hooks/scripts/session_costs.py`
   - Verify: `... -k test_reports_the_busiest_orchestrators_context_per_turn`
   - Depends on: T33
+  - Decision: Option A (recommended) — cómo se calcula el percentil 90 del contexto por turno
+    - Option A: rango más cercano, el valor en la posición ceil(0,9 × n) en orden ascendente · pros: siempre es el contexto de un turno real; simple de explicar · cons: salta de un turno a otro con pocas muestras
+    - Option B: interpolación lineal (`statistics.quantiles(method="inclusive")`) · pros: más suave con pocas muestras · cons: da un valor que ningún turno tuvo
+    - Recommendation: A.
 
 ### Partitions
 

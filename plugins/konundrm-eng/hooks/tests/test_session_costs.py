@@ -290,6 +290,59 @@ def build_tool_transcripts(folder: Path) -> None:
     )
 
 
+# Context (input + cache-write + cache-read tokens) of each turn of the busiest orchestrator, in the
+# order its turns are written. Sorted: 100 200 300 400 500 700 800 900 1000 5000. First 500 (the
+# smallest is 100); median 600 (mean 990); p90 by nearest rank, rank ceil(0.9 * 10) = 9, is 1000
+# (linear interpolation gives 1400, the exclusive method 4600, the max is 5000).
+BUSIEST_CONTEXTS = (500, 100, 900, 300, 1000, 200, 700, 400, 800, 5000)
+# Lines each of those turns is written on: one counted per line would add two 500s and one 5000.
+BUSIEST_BLOCKS = (3, 1, 1, 1, 1, 1, 1, 1, 1, 2)
+# Output tokens of every turn: large enough that adding them to the context changes every value.
+TURN_OUTPUT_TOKENS = 77
+
+
+def context_usage(context: int) -> tuple[int, int, int, int]:
+    """Splits a turn's context across input, cache-write and cache-read tokens, all three non-zero."""
+    cache_read = context // 2
+    return 10, context - 10 - cache_read, cache_read, TURN_OUTPUT_TOKENS
+
+
+def build_busiest_transcripts(folder: Path, second_folder: Path) -> None:
+    """Writes a busy session in the second folder and decoys that beat it on everything but turns.
+
+    The first folder's session has 6 turns, each on three lines (18 lines against the busiest's
+    13), 100 times the busiest's tokens and about 20 active minutes; its subagent has 12 turns. The
+    second folder's session has 10 turns over less than a minute.
+    """
+    decoy_id = "sess-a"
+    decoy_lines = [user_line(0, False, session_id=decoy_id)]
+    for turn in range(6):
+        decoy_lines += assistant_lines(
+            4 * (turn + 1), f"msg-decoy-{turn}", context_usage(100000), 3, False, session_id=decoy_id
+        )
+    write_jsonl(folder / f"{decoy_id}.jsonl", decoy_lines)
+    subagent_lines = [user_line(100, True)]
+    for turn in range(12):
+        subagent_lines += assistant_lines(100 + turn / 10, f"msg-sub-{turn}", context_usage(70), 1, True)
+    write_subagent(folder / decoy_id / "subagents", "d1", TEST_WRITER, subagent_lines)
+
+    busiest_id = "sess-b"
+    busiest_lines = [user_line(200, False, session_id=busiest_id)]
+    for turn, (context, blocks) in enumerate(zip(BUSIEST_CONTEXTS, BUSIEST_BLOCKS, strict=True)):
+        moment = 200 + (turn + 1) / 20
+        busiest_lines += assistant_lines(
+            moment, f"msg-busy-{turn}", context_usage(context), blocks, False, session_id=busiest_id
+        )
+    write_jsonl(second_folder / f"{busiest_id}.jsonl", busiest_lines)
+
+
+def read_busiest_block(stdout: str) -> dict[str, str]:
+    """Returns the busiest-orchestrator block: its header line of field names, zipped with the next line."""
+    lines = [line.split() for line in stdout.splitlines() if line.strip()]
+    header_index = next(index for index, tokens in enumerate(lines) if "context_first" in tokens)
+    return dict(zip(lines[header_index], lines[header_index + 1], strict=True))
+
+
 def run_session_costs(folder: Path, project: Path, *extra: str) -> subprocess.CompletedProcess[str]:
     """Runs the CLI from `project`, with no KONUNDRM_CHECK_CMD override in its environment."""
     environment = {name: value for name, value in os.environ.items() if name != "KONUNDRM_CHECK_CMD"}
@@ -424,6 +477,23 @@ class SessionCostsTest(unittest.TestCase):
             self.assertLessEqual({COLUMNS[key] for key in keys}, set(rows[ORCHESTRATOR]), completed.stdout)
             actual = {role: {key: number(rows[role], key) for key in keys} for role in expected}
             self.assertEqual(actual, expected, completed.stdout)
+
+    # R6.2 (T35): for the orchestrator session with the most turns, its turns and its context per
+    # turn: the first, the median, the 90th percentile (nearest rank) and the maximum.
+    def test_reports_the_busiest_orchestrators_context_per_turn(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary) / "project"
+            second_folder = Path(temporary) / "project-2"
+            build_busiest_transcripts(folder, second_folder)
+
+            completed = run_session_costs(folder, Path(temporary), str(second_folder))
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("context_first", completed.stdout.split(), completed.stdout)
+        block = read_busiest_block(completed.stdout)
+        expected = {"turns": 10, "context_first": 500, "context_median": 600, "context_p90": 1000, "context_max": 5000}
+        actual = {name: float(block[name]) for name in expected if name in block}
+        self.assertEqual(actual, expected, completed.stdout)
 
 
 if __name__ == "__main__":
