@@ -1,7 +1,7 @@
 # Flujo más eficiente: una sesión por slice, un check por tarea y revisiones en paralelo
 
 - **Spec:** 002-efficient-feature-flow
-- **Status:** Approved <!-- Draft → Approved → Done -->
+- **Status:** Done <!-- Draft → Approved → Done -->
 - **Date:** 2026-10-30
 
 ## Problem
@@ -181,7 +181,12 @@ antes y después de cada cambio con datos y no con impresiones.
 - `R6.3` THE SYSTEM SHALL mostrar solo conteos, tiempos y totales de tokens, nunca el contenido de
   mensajes, comandos ni resultados.
 - `R6.4` IF una línea de una transcripción no es JSON válido o le faltan campos, THEN THE SYSTEM
-  SHALL saltarla y contar las saltadas en el informe.
+  SHALL saltarla y contar las saltadas en el informe. Quedan fuera dos líneas que Claude Code no
+  escribe: una cuyo `type` no es texto y un JSON anidado más allá del límite de recursión de Python;
+  esas pueden detener el informe con una línea fija y exit 1, sin contenido. <!-- 2026-11-01, Fase
+  4: tras T43, la re-revisión de spec de la feature completa encontró esos dos casos; el usuario
+  eligió acotar R6.4 ("Acotar R6.4") en vez de una tarea más; el changelog [0.7.0] los lista en
+  Known limitations. -->
 - `R6.5` THE SYSTEM SHALL leer transcripciones cuya ruta supera los 260 caracteres en Windows.
 - `R6.6` WHEN se pide el informe de impacto de un proyecto indicando dónde están sus
   transcripciones, THE SYSTEM SHALL incluir este informe junto al de entrega.

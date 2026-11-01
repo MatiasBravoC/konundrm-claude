@@ -1,7 +1,7 @@
 # Design: Flujo más eficiente
 
 - **Spec:** [requirements.md](requirements.md)
-- **Status:** Approved <!-- Draft → Approved → Done -->
+- **Status:** Done <!-- Draft → Approved → Done -->
 
 Rutas relativas a la raíz del repositorio; `P` = `plugins/konundrm-eng`.
 

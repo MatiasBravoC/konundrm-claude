@@ -110,7 +110,9 @@ flow is the comparison. Requires Claude Code 2.1.295 or later, as 0.6.0 did.
 - `session_costs.py`: a folder that does not exist gives an empty table without a warning;
   subagents that workflows start (`subagents/workflows/`) are not read; a `--check-pattern` is
   searched anywhere in a command, so start it with `^`; test runs count only `python -m unittest`,
-  `python -m pytest`, `pytest`, `npm test` and `npm run test`.
+  `python -m pytest`, `pytest`, `npm test` and `npm run test`; two kinds of line Claude Code does
+  not write, one whose `type` is not text and JSON nested past Python's recursion limit, still stop
+  the report (one fixed line, exit 1, no content).
 
 ### Upgrading
 
