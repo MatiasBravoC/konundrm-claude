@@ -504,17 +504,19 @@ R6.4. El usuario aprobó esta tarea ("Tarea nueva T43 (Recomendado)"). La compar
 recortado (`npm run check 2>&1 | tail`), el hook no lo registra a propósito y el commit lo repite en
 3 de 4 corridas, contra R2.4–R2.5; el usuario aprobó T44 ("T44 sin medir de nuevo"). -->
 
-- [ ] **T43** `session_costs.py` salta y cuenta las líneas con un bloque de herramienta mal formado o una hora sin zona, en vez de detener el informe · `behavior` · Risk: low · Covers: R6.4
+- [x] **T43** `session_costs.py` salta y cuenta las líneas con un bloque de herramienta mal formado o una hora sin zona, en vez de detener el informe · `behavior` · Risk: low · Covers: R6.4
   - Test: `P/hooks/tests/test_session_costs.py::test_skips_and_counts_lines_with_a_malformed_tool_block_or_a_time_without_a_zone` (junto a líneas válidas con hora UTC: líneas assistant con un `tool_use` cuyo `input` es `null`, un texto o una lista, o cuyo `name` es una lista, y una línea user y una assistant con hora sin zona, como `2026-10-30T10:03:00` y `2026-01-01` → sale con 0, `skipped lines` cuenta esas líneas y los totales son los de las líneas válidas)
   - Files: `P/hooks/scripts/session_costs.py`; `P/CHANGELOG.md` (la entrada [0.7.0] deja de listar esos dos casos en Known limitations)
   - Verify: `... -k test_skips_and_counts_lines_with_a_malformed_tool_block_or_a_time_without_a_zone`
   - Depends on: T37
+  - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T44** El implementer y el orquestador corren el check tal cual, solo en su llamada, para que su pase quede registrado y el commit lo reutilice · `behavior` · Risk: low · Covers: R2.4, R2.5
+- [x] **T44** El implementer y el orquestador corren el check tal cual, solo en su llamada, para que su pase quede registrado y el commit lo reutilice · `behavior` · Risk: low · Covers: R2.4, R2.5
   - Test: `P/hooks/tests/contract/test_flows.py::test_the_check_runs_alone_so_its_pass_is_recorded` (el paso del check de `agents/implementer.md` y, en `develop-feature`, la línea base de la Fase 0 y el gate del paso 6 dicen correr el comando del check tal cual, solo en su llamada, sin tubería, redirección ni otro comando, porque el hook no registra un check recortado y el gate lo vuelve a correr)
   - Files: `P/agents/implementer.md`, `P/skills/develop-feature/SKILL.md`; `P/CHANGELOG.md` (la entrada [0.7.0] lo dice en Changed)
   - Verify: `... -k test_the_check_runs_alone_so_its_pass_is_recorded`
   - Depends on: T19, T24
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
