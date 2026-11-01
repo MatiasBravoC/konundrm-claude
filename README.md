@@ -29,7 +29,7 @@ konundrm-claude/
     ├── skills/                            17 skills (ver tabla)
     ├── agents/                            8 subagentes (ver tabla)
     ├── hooks/hooks.json                   controles automáticos (ver tabla)
-    ├── hooks/run.sh                       lanzador: encuentra Python 3.10+ y corre el script pedido
+    ├── hooks/run.sh                       lanzador: encuentra Python 3.10+ y corre el script pedido (sin Python si el comando no puede ser el check)
     ├── hooks/scripts/                     hooks y herramientas en Python (solo librería estándar), un módulo por responsabilidad
     ├── hooks/tests/                       tests unitarios, de integración y de los scripts de las plantillas
     └── evals/                             evals de activación, de no activación y de comportamiento
@@ -135,9 +135,20 @@ rol, edita el frontmatter de su agente.
   mal, explica la correcta con archivo y líneas. Espera tu visto bueno, que nunca depende de las
   respuestas; lo que pidas cambiar ahí pasa a ser tareas nuevas o un cambio de plan aprobado antes
   de la entrega siguiente. Con `- **Checkpoints:** pre-approved` en el encabezado de `tasks.md`
-  (queda así si apruebas las pausas al pedir la feature o con el plan) escribe el resumen y sigue
-  sin detenerse. Aprobar las pausas no aprueba las decisiones: sin `- **Decisions:** pre-approved`,
-  una decisión abierta sigue pausando su tarea.
+  (queda así si apruebas las pausas al pedir la feature o con el plan) escribe el resumen y pasa a
+  la entrega siguiente sin detenerse ni preguntarte. Aprobar las pausas no aprueba las decisiones:
+  sin `- **Decisions:** pre-approved`, una decisión abierta sigue pausando su tarea.
+- **Una sesión nueva por entrega.** Terminada la pausa, la feature sigue en una sesión nueva por
+  entrega, que retoma desde el plan y el repositorio, así el costo de cada turno no crece con la
+  feature. En la app de escritorio el orquestador la abre en la misma carpeta; en otro lado, la
+  sesión termina con el comando exacto para seguir:
+  `claude "/konundrm-eng:develop-feature specs/<NNN-slug>"`. Si quedan archivos sin commitear, se
+  detiene con una línea `BLOCKED:` que los nombra. Con `- **Sessions:** single` en el encabezado de
+  `tasks.md` (si lo pides al pedir la feature, al aprobar el plan o en una pausa) la feature sigue
+  en la misma sesión; `per-slice` es el valor por defecto.
+- **Un check por tarea y revisiones a la vez.** Cada tarea corre el check completo una vez, salvo
+  que algo cambie después de pasar, y sus revisiones de spec, de código y de seguridad corren al
+  mismo tiempo, con una sola ronda de arreglo para todos sus hallazgos.
 - **Resumen de la feature.** Al final escribe `specs/<NNN-slug>/summary.md`: el problema, qué
   módulo es dueño de qué, los resúmenes de cada entrega, las decisiones, los requisitos con sus
   tests y evidencia, los replanteos, los hallazgos refutados, las sugerencias no aplicadas y cómo
@@ -167,16 +178,19 @@ rol, edita el frontmatter de su agente.
 | `format_and_lint.py` | Después de cada edición | Formatea y pasa el linter al archivo con las herramientas que el proyecto ya usa (ruff, biome, prettier, eslint) y devuelve a Claude los errores que quedan |
 | `gate_git_commit.py` | Antes de cada comando Bash/PowerShell | Bloquea `git commit` si el check falla, si intenta saltarse los hooks, si lo hace un subagente o si los cambios agregan un silenciador sin motivo (`# noqa`, `# type: ignore`, `eslint-disable`, un test saltado o enfocado). Pregunta si agregan algo con forma de credencial. Detecta el commit aunque venga envuelto (`env`, `sudo`, `&`, `bash -c`, `pwsh -Command`, `cmd /c`). Falla cerrado: si el propio hook se rompe, deniega el commit |
 | `guard_new_dependencies.py` | Antes de cada comando Bash/PowerShell | Contra el *slopsquatting* y las dependencias riesgosas: antes de instalar o ejecutar un paquete nuevo consulta el registro público y OSV.dev. Te pide confirmación, con todos los motivos, si no existe, tiene menos de 30 días, casi no se descarga, no se pudo verificar, su última versión tiene vulnerabilidades conocidas o su licencia falta o es copyleft fuerte o de red, propietaria o no libre. Si OSV reporta esa versión como malware, bloquea el comando |
-| `record_check_result.py` | Después de cada comando Bash/PowerShell | Si Claude corrió el `check` y pasó, lo recuerda: los gates no lo repiten mientras el contenido de los archivos sea el mismo |
+| `record_check_result.py` | Después de cada comando Bash/PowerShell | Si Claude corrió el `check` y pasó, lo recuerda: los gates no lo repiten mientras el contenido de los archivos sea el mismo. Para un comando que no puede ser el check, `run.sh` responde sin arrancar Python |
 | `quality_gate.py` | Al empezar y al terminar el turno | Si el turno cambió código, por cualquier vía, corre el check y busca silenciadores sin motivo que el turno haya agregado; si hay algo, Claude sigue trabajando (máximo 3 intentos). Ignora lo que ya estaba antes del turno |
 
 El turno puede terminar con problemas a propósito solo cuando el mensaje final tiene una línea
 `RED:` (entrega de TDD) o `BLOCKED:` (escalamiento a la persona).
 
-Las skills también usan tres herramientas del plugin: `find_duplicates.py` (bloques de seis o más
+Las skills también usan seis herramientas del plugin: `find_duplicates.py` (bloques de seis o más
 líneas que el cambio copió de otra parte del proyecto; `--all` para todo el repo),
-`metrics_report.py` (el informe de `measure-impact`) e `improvement_notes.py` (guarda las notas de
-mejora del `process-reviewer`, ver [Cómo avanza una feature](#cómo-avanza-una-feature)).
+`metrics_report.py` (el informe de `measure-impact`), `improvement_notes.py` (guarda las notas de
+mejora del `process-reviewer`, ver [Cómo avanza una feature](#cómo-avanza-una-feature)),
+`task_ledger.py` (la contabilidad del flujo en una llamada: la próxima tarea, el mensaje del commit
+de cada tarea y las casillas al cerrar una entrega), `run_slices.py` (encadena las sesiones de una
+feature, ver [Uso](#uso)) y `session_costs.py` (lo que costó una corrida, por rol).
 
 Los gates que bloquean, preguntan o restauran algo dejan un evento en un log local por proyecto
 (en los datos del plugin, nunca en el repo), que `/konundrm-eng:measure-impact` cruza con el
@@ -308,13 +322,36 @@ puede ver.
    y el plan, eligiendo en las decisiones de diseño que quedaron abiertas, y, si hace falta, dirás
    si construir en paralelo. Después el orquestador trabaja solo y se detiene tras cada entrega
    para mostrarte su resumen y hacerte unas preguntas, salvo que hayas aprobado las pausas de
-   antemano. Al final te pregunta antes de hacer push y te deja elegir entre un pull request
-   apilado por entrega o uno solo (ver [Cómo avanza una feature](#cómo-avanza-una-feature)).
-3. Para retomar una feature: `/konundrm-eng:develop-feature specs/003-google-login`.
-4. Para cada bug: `/konundrm-eng:fix-bug #123` o la descripción del problema.
-5. Para una migración grande: `/konundrm-eng:migrate-code pasar de Enzyme a Testing Library`.
-6. Cada semana, o como tarea programada: `/konundrm-eng:tidy-codebase`.
-7. Para ver si está sirviendo: `/konundrm-eng:measure-impact 30`.
+   antemano; la entrega siguiente sigue en una sesión nueva. Al final te pregunta antes de hacer
+   push y te deja elegir entre un pull request apilado por entrega o uno solo (ver
+   [Cómo avanza una feature](#cómo-avanza-una-feature)).
+3. Para retomar una feature, o seguirla en la sesión de su próxima entrega:
+   `/konundrm-eng:develop-feature specs/003-google-login`.
+4. Para construir sin supervisión un plan con `- **Checkpoints:** pre-approved`, encadena desde una
+   terminal las sesiones sin interfaz, una por entrega:
+
+   ```bash
+   sh plugins/konundrm-eng/hooks/run.sh run_slices.py specs/003-google-login
+   ```
+
+   Esa es la carpeta del plugin en este repositorio; en una copia instalada, la ruta está en el
+   `installPath` de `~/.claude/plugins/installed_plugins.json` (bajo
+   `~/.claude/plugins/cache/konundrm/konundrm-eng/<versión>`). Su última línea dice cómo terminó:
+   `DONE`, `BLOCKED:`, `RED:` (una decisión te espera), `FAILED:` o `STALLED:`.
+5. Para cada bug: `/konundrm-eng:fix-bug #123` o la descripción del problema.
+6. Para una migración grande: `/konundrm-eng:migrate-code pasar de Enzyme a Testing Library`.
+7. Cada semana, o como tarea programada: `/konundrm-eng:tidy-codebase`.
+8. Para ver si está sirviendo: `/konundrm-eng:measure-impact 30`. Para medir además cuánto costó
+   una corrida, por rol, en tokens y tiempo, agrega las carpetas de sus transcripciones de Claude
+   Code: viven en `~/.claude/projects/`, una por proyecto, con la ruta del proyecto y cada carácter
+   que no sea letra ni dígito cambiado por `-`. Una carpeta con espacios va entre comillas:
+
+   ```text
+   /konundrm-eng:measure-impact 30 "C:/Users/Ana Soto/.claude/projects/C--Users-Ana-Soto-src-tienda"
+   ```
+
+   Desde una terminal, `sh <carpeta del plugin>/hooks/run.sh session_costs.py <carpeta>...` da
+   el mismo informe de costos.
 
 Las demás skills también se activan solas cuando el pedido calza ("hagamos esto con TDD",
 "commitea esto", "abre un PR", "revisa el PR 42", "mejora los nombres").
@@ -342,7 +379,7 @@ python -m unittest discover -s plugins/konundrm-eng/hooks/tests -t plugins/konun
 
 Esos tests incluyen los de contrato de `hooks/tests/contract/`, que comprueban sin un modelo los
 acuerdos entre skills, agentes y plantillas: el modelo y el esfuerzo de cada rol, sus permisos,
-cada paso del flujo, la versión y el `CHANGELOG.md`. Cada uno nombra en su docstring los
+cada paso del flujo, la versión, el `CHANGELOG.md` y este README. Cada uno nombra en su docstring los
 requisitos que cubre.
 
 ```bash

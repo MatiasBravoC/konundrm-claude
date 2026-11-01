@@ -1,4 +1,7 @@
-"""Contract tests for what a release of the plugin ships beyond its skills and agents: evals, version and changelog."""
+"""Contract tests for what a release of the plugin ships beyond its skills and agents.
+
+That is its evals, its version and changelog, and the repository README that describes the release.
+"""
 
 from __future__ import annotations
 
@@ -216,6 +219,81 @@ class VersionAndChangelogTest(unittest.TestCase):
             shown = "not <x.y.z>" if manifest_version is None else ".".join(str(part) for part in manifest_version)
             gaps.append(f"plugin.json version {shown} is older than 0.7.0")
         gaps += _changelog_mechanism_gaps(entries, _CHANGELOG_002_VERSION, _CHANGELOG_002_MECHANISMS)
+
+        self.assertEqual(gaps, [])
+
+
+# The repository README (two levels above the plugin), in Spanish, where a slice is an "entrega".
+_README_PATH = PLUGIN_ROOT.parents[1] / "README.md"
+# What 0.7.0 adds to the README (R7.2), each looked for in the section a reader goes to for it, so the practices table
+# or the known limits cannot match by accident. Keyword patterns, not sentence grammars: "sesión" and "entrega" each
+# appear many times already, so the session pattern ties them together, and measuring needs the transcripts.
+_README_002_ITEMS = (
+    (
+        "### Cómo avanza una feature",
+        "a new session per slice",
+        re.compile(
+            r"\bsesi[oó]n(?:es)? (?:nuevas? |propias? )?(?:por|para cada|de cada) entrega\b"
+            r"|\bcada entrega\b(?: \w+){0,3} en (?:una|su) "
+            r"(?:sesi[oó]n nueva|nueva sesi[oó]n|sesi[oó]n propia|propia sesi[oó]n)\b"
+        ),
+    ),
+    (
+        "### Cómo avanza una feature",
+        "the tasks.md header line Sessions: single",
+        re.compile(r"\bsessions:\W{0,4}single\b"),
+    ),
+    ("## Uso", "run_slices.py given a specs/ folder", re.compile(r"\brun_slices\.py\s+specs/")),
+    (
+        "## Uso",
+        "measuring a run from its transcripts with session_costs.py or measure-impact",
+        re.compile(
+            r"transcripci.{0,160}?(?:\bsession_costs\.py\b|\bmeasure-impact\b)"
+            r"|(?:\bsession_costs\.py\b|\bmeasure-impact\b).{0,160}?transcripci"
+        ),
+    ),
+)
+
+
+def _read_markdown_section(path: Path, heading_line: str) -> str | None:
+    """Return the body of the section whose heading line is exactly `heading_line`, or None when there is none.
+
+    The body runs up to the next heading of the same or a higher level (`## ` ends a `### ` section, but not the other
+    way round). Lines are read with universal newlines.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    try:
+        start = lines.index(heading_line) + 1
+    except ValueError:
+        return None
+    level = len(heading_line) - len(heading_line.lstrip("#"))
+    ends_section = re.compile(rf"^#{{1,{level}}} ")
+    end = next((index for index in range(start, len(lines)) if ends_section.match(lines[index])), len(lines))
+    return "\n".join(lines[start:end])
+
+
+class ReadmeTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_readme_describes_sessions_per_slice_and_measuring_a_run(self) -> None:
+        """R7.2: 002 the README describes the new flow, how to chain sessions and how to measure a run.
+
+        `### Cómo avanza una feature` says each slice ("entrega") continues in a new session and names the tasks.md
+        header line `Sessions: single` that keeps it in one; `## Uso` runs `run_slices.py` on a `specs/` folder and
+        measures a run from its transcripts ("transcripción") with `session_costs.py` or `measure-impact`. Each section
+        is matched lowercased, without backticks and with whitespace collapsed, since the README wraps its lines.
+        """
+        gaps = []
+        for heading_line, label, pattern in _README_002_ITEMS:
+            body = _read_markdown_section(_README_PATH, heading_line)
+            if body is None:
+                gap = f"README.md: there is no '{heading_line}' section"
+                if gap not in gaps:
+                    gaps.append(gap)
+                continue
+            text = re.sub(r"\s+", " ", body.lower().replace("`", ""))
+            if not pattern.search(text):
+                gaps.append(f"README.md '{heading_line}': does not describe {label}")
 
         self.assertEqual(gaps, [])
 

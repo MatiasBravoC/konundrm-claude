@@ -478,6 +478,14 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Files: `README.md` (modify)
   - Verify: `... -k test_readme_describes_sessions_per_slice_and_measuring_a_run`
   - Depends on: T40
+  - Decision: Option A (recommended) — dónde busca la prueba cada parte
+    - Option A: la sesión por entrega y `Sessions: single` en `### Cómo avanza una feature`; encadenar sesiones y medir una corrida en `## Uso` · pros: cada palabra en la sección a la que va quien la busca; la tabla de prácticas y los límites no calzan por accidente · cons: hace falta un lector de secciones `###`
+    - Option B: todo el README · pros: más simple · cons: más coincidencias por accidente ("sesión" y "entrega" ya aparecen muchas veces)
+    - Recommendation: A.
+  - Decision: Option A (recommended) — qué cuenta como medir una corrida
+    - Option A: "transcripci" junto a `session_costs.py` o `measure-impact` · pros: el comando para la persona es measure-impact (R6.6) y el script sirve desde una terminal; las dos formas son válidas · cons: no obliga a nombrar el script
+    - Option B: exigir `session_costs.py` por nombre · pros: nombra la herramienta · cons: deja fuera la forma que usa la persona
+    - Recommendation: A.
 
 ### Partitions
 
