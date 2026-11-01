@@ -463,7 +463,7 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S12: versión 0.7.0
 
-- [ ] **T40** `plugin.json` dice 0.7.0 y el changelog de 0.7.0 nombra cada mecanismo nuevo · `behavior` · Risk: low · Covers: R7.1, R7.2
+- [x] **T40** `plugin.json` dice 0.7.0 y el changelog de 0.7.0 nombra cada mecanismo nuevo · `behavior` · Risk: low · Covers: R7.1, R7.2
   - Test: `P/hooks/tests/contract/test_release.py::test_0_7_0_changelog_names_each_mechanism` (sesión por slice, un check por tarea, revisiones en paralelo, `task_ledger.py`, camino rápido de `run.sh`, `run_slices.py`, `session_costs.py`)
   - Files: `P/.claude-plugin/plugin.json`, `P/CHANGELOG.md` (modify)
   - Verify: `... -k test_0_7_0_changelog_names_each_mechanism`
@@ -472,8 +472,9 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
     - Option A: 0.7.0 o posterior, comparada como números, más una entrada [0.7.0] del changelog buscada por versión; la prueba de la 0.6.0 ya ata `plugin.json` a la primera entrada publicada · pros: la próxima versión no la rompe, como la prueba de la 0.6.0 · cons: no fija el texto exacto "0.7.0" después de otra subida
     - Option B: exactamente "0.7.0" · pros: fija el texto de la tarea · cons: se rompe en la próxima versión
     - Recommendation: A.
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T41** El README describe el flujo nuevo, cómo encadenar sesiones y cómo medir una corrida · `behavior` · Risk: low · Covers: R7.2
+- [x] **T41** El README describe el flujo nuevo, cómo encadenar sesiones y cómo medir una corrida · `behavior` · Risk: low · Covers: R7.2
   - Test: `P/hooks/tests/contract/test_release.py::test_readme_describes_sessions_per_slice_and_measuring_a_run`
   - Files: `README.md` (modify)
   - Verify: `... -k test_readme_describes_sessions_per_slice_and_measuring_a_run`
@@ -486,6 +487,7 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
     - Option A: "transcripci" junto a `session_costs.py` o `measure-impact` · pros: el comando para la persona es measure-impact (R6.6) y el script sirve desde una terminal; las dos formas son válidas · cons: no obliga a nombrar el script
     - Option B: exigir `session_costs.py` por nombre · pros: nombra la herramienta · cons: deja fuera la forma que usa la persona
     - Recommendation: A.
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
