@@ -366,6 +366,10 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Files: `P/hooks/scripts/session_costs.py` (new)
   - Verify: `... -k test_reports_tokens_weights_shares_and_active_time_per_role`
   - Depends on: —
+  - Decision: Option A (recommended) — qué cuenta como despacho del orquestador
+    - Option A: cada transcripción de sesión del orquestador · pros: igual que en un subagente (una transcripción, un despacho); dice cuántas sesiones tomó la corrida · cons: no dice cuánto delegó, aunque eso ya suman las filas de los subagentes
+    - Option B: cada llamada del orquestador al tool Agent · pros: mide cuánto delega · cons: repite la suma de los despachos de los subagentes y deja sin contar las sesiones
+    - Recommendation: A, que la prueba de T33 fija con dos carpetas y dos sesiones.
 
 - [ ] **T34** `session_costs.py` cuenta corridas del check con su tiempo, corridas de tests y mensajes con despachos en paralelo · `behavior` · Risk: low · Covers: R6.1
   - Test: `P/hooks/tests/test_session_costs.py::test_counts_check_runs_test_runs_and_parallel_dispatches`
