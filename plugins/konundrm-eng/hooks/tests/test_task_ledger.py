@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import quality_check
 import task_ledger
-from task_commits import task_commits
+from task_commits import NOTES_REF, task_commits
 from working_tree import snapshot_tree
 
 TASK_LEDGER = Path(__file__).resolve().parents[1] / "scripts" / "task_ledger.py"
@@ -802,6 +802,129 @@ class CloseSliceTest(LedgerRepositoryTest):
                     self.assertTrue(original_line.startswith(b"- [ ] "), f"{context}\n{closed_line!r}")
                     self.assertEqual(closed_line, b"- [x] " + original_line[len(b"- [ ] ") :], context)
                     self.assertIn(number, COMMITTED_NUMBERS, f"{context}\n{closed_line!r}")
+
+
+class RecordTest(LedgerRepositoryTest):
+    def run_record(self) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            [sys.executable, str(TASK_LEDGER), "record"],
+            cwd=self.root,
+            env=self.environment,
+            capture_output=True,
+            check=False,
+        )
+
+    def pending_path(self, name: str) -> Path:
+        return (self.root / git(self.root, "rev-parse", "--git-path", name)).resolve()
+
+    def notes(self) -> str:
+        """Every note under the konundrm ref, as `git notes list` prints them (empty when none)."""
+        return git(self.root, "notes", f"--ref={NOTES_REF}", "list")
+
+    def notes_ref(self) -> str:
+        """The konundrm notes ref and the commit it points at (empty when the ref does not exist)."""
+        return git(self.root, "for-each-ref", NOTES_REF)
+
+    def assert_refused(self, case: str) -> None:
+        """Run `record` and assert it exits 1 with a reason, leaving notes and pending files untouched."""
+        pending = (self.pending_path("KONUNDRM_TASK_MSG"), self.pending_path("KONUNDRM_TASK_NOTE"))
+        files_before = {path: path.read_bytes() if path.exists() else None for path in pending}
+        notes_before = (self.notes_ref(), self.notes())
+
+        completed = self.run_record()
+
+        stderr = completed.stderr.decode("utf-8", "replace")
+        self.assertEqual(completed.returncode, 1, f"{case}: {stderr}")
+        self.assertNotIn("Traceback", stderr, case)
+        self.assertTrue(stderr.strip(), f"{case}: no reason on stderr")
+        self.assertEqual((self.notes_ref(), self.notes()), notes_before, case)
+        files_after = {path: path.read_bytes() if path.exists() else None for path in pending}
+        self.assertEqual(files_after, files_before, case)
+
+    # R6.2, R6.4: `record` attaches the pending note to the commit just made from the pending
+    # message, only when HEAD's subject is that message's subject, and then deletes both pending
+    # files. With no pending note, or when HEAD has another subject, it exits 1 with the reason on
+    # stderr and changes nothing: no note is added and both pending files stay as they were.
+    def test_record_attaches_the_pending_note_to_the_commit_made_from_it(self) -> None:
+        commit(self.root, "chore: start the feature branch\n")
+        message_file = self.pending_path("KONUNDRM_TASK_MSG")
+        note_file = self.pending_path("KONUNDRM_TASK_NOTE")
+        subject = "feat(hooks): record the pending note"
+        message_file.write_text(f"{subject}\n\nWhy it changes.\n", encoding="utf-8", newline="\n")
+        note = "Task: T2 · Covers: R1.1\nRounds: spec 1 · code 1 · escalations 0\n"
+
+        with self.subTest("no pending note"):
+            (self.root / "a.txt").write_text("a\n", encoding="utf-8")
+            git(self.root, "add", "-A")
+            git(self.root, "commit", "-q", "-F", str(message_file))
+            self.assert_refused("no pending note")
+            self.assertEqual(self.notes(), "")
+            self.assertFalse(note_file.exists())
+
+        note_file.write_text(note, encoding="utf-8", newline="\n")
+        with self.subTest("HEAD has another subject"):
+            (self.root / "b.txt").write_text("b\n", encoding="utf-8")
+            commit(self.root, "feat(hooks): some other change\n")
+            self.assert_refused("HEAD has another subject")
+            self.assertEqual(self.notes(), "")
+            self.assertTrue(note_file.exists())
+
+        with self.subTest("HEAD made from the pending message"):
+            (self.root / "c.txt").write_text("c\n", encoding="utf-8")
+            git(self.root, "add", "-A")
+            git(self.root, "commit", "-q", "-F", str(message_file))
+
+            completed = self.run_record()
+
+            self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8", "replace"))
+            attached = git(self.root, "notes", f"--ref={NOTES_REF}", "show", "HEAD")
+            self.assertEqual(attached.splitlines(), note.splitlines())
+            self.assertEqual(len(self.notes().splitlines()), 1)
+            self.assertFalse(message_file.exists())
+            self.assertFalse(note_file.exists())
+
+    # R6.2, R6.4 (invariant): over every combination of the four facts `record` depends on (pending
+    # message present, pending note present, HEAD's subject equal to the pending message's, HEAD
+    # already noted), it records exactly when the first three hold and the fourth does not; in the
+    # other 15 cases it exits 1 and leaves the notes ref and both pending files exactly as they were.
+    def test_record_changes_nothing_whenever_it_refuses_for_any_pending_state(self) -> None:
+        message_file = self.pending_path("KONUNDRM_TASK_MSG")
+        note_file = self.pending_path("KONUNDRM_TASK_NOTE")
+        cases = [
+            (has_message, has_note, subject_matches, head_noted)
+            for has_message in (True, False)
+            for has_note in (True, False)
+            for subject_matches in (True, False)
+            for head_noted in (True, False)
+        ]
+        for number, (has_message, has_note, subject_matches, head_noted) in enumerate(cases):
+            case = f"message={has_message} note={has_note} subject_matches={subject_matches} head_noted={head_noted}"
+            with self.subTest(case):
+                # Reset: a fresh HEAD per case (earlier cases' notes sit on older commits) and
+                # pending files written from scratch, unique per case so a stale file cannot pass.
+                subject = f"feat(hooks): pending change {number}"
+                message = f"{subject}\n\nWhy it changes.\n"
+                note = f"Task: T{number} · Covers: R6.2\nRounds: spec 1 · code 1 · escalations 0\n"
+                (self.root / f"case{number}.txt").write_text(f"{number}\n", encoding="utf-8")
+                commit(self.root, message if subject_matches else f"feat(hooks): other change {number}\n")
+                if head_noted:
+                    git(self.root, "notes", f"--ref={NOTES_REF}", "add", "-m", f"Task: T{number} earlier", "HEAD")
+                for path, text, present in ((message_file, message, has_message), (note_file, note, has_note)):
+                    if present:
+                        path.write_text(text, encoding="utf-8", newline="\n")
+                    else:
+                        path.unlink(missing_ok=True)
+
+                if has_message and has_note and subject_matches and not head_noted:
+                    completed = self.run_record()
+
+                    self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8", "replace"))
+                    attached = git(self.root, "notes", f"--ref={NOTES_REF}", "show", "HEAD")
+                    self.assertEqual(attached.splitlines(), note.splitlines())
+                    self.assertFalse(message_file.exists())
+                    self.assertFalse(note_file.exists())
+                else:
+                    self.assert_refused(case)
 
 
 if __name__ == "__main__":

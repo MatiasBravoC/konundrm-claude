@@ -11,16 +11,21 @@ task_commits reads back, under the Git directory, so the flow can ``git commit -
 with exit code 1, a task the plan lacks or one already built. ``close-slice`` does a slice
 pause's bookkeeping: it checks the boxes of the slice's built tasks and writes their rounds from
 their commits, keeping every other byte of the plan; it refuses, with exit code 1, a slice the
-plan lacks.
+plan lacks. ``record`` attaches the pending note (``KONUNDRM_TASK_NOTE`` under the Git
+directory) to HEAD under task_commits.NOTES_REF once HEAD was committed from the pending message,
+then deletes both pending files; it refuses, with exit code 1 and nothing changed, when there is
+no pending note or HEAD's subject is not the pending message's.
 
 Sections:
     UnreadablePlanError — the plan cannot answer, and where.
     RefusedTaskError    — ``message`` will not write for this task, and why.
     RefusedSliceError   — ``close-slice`` will not close this slice.
+    RefusedRecordError  — ``record`` will not attach the pending note to HEAD.
     status_lines()      — the ``key: value`` lines ``status`` prints.
     write_task_message() — writes a task's commit message under the Git directory.
     close_slice()       — checks a slice's built tasks and writes their rounds into the plan.
-    main()              — CLI: ``status``, ``message`` and ``close-slice``.
+    record_task_note()  — attaches the pending note to the commit made from the pending message.
+    main()              — CLI: ``status``, ``message``, ``close-slice`` and ``record``.
 """
 
 from __future__ import annotations
@@ -33,19 +38,22 @@ from pathlib import Path
 
 from project_paths import project_root
 from quality_check import green_tree
-from task_commits import GitError, TaskCommit, task_commits, task_key
+from task_commits import NOTES_REF, GitError, TaskCommit, task_commits, task_key
 from tasks_document import HTML_COMMENT, ROUNDS, SLICE_HEADING, TASK, Task, TasksDocument, next_tasks, read_tasks
-from working_tree import git_path, head_tree, snapshot_tree
+from working_tree import git_path, head_tree, run_git, snapshot_tree
 
 REFUSED_EXIT = 1
-"""Exit code when ``message`` refuses its task (not in the plan, or already committed) or
-``close-slice`` refuses its slice (not in the plan)."""
+"""Exit code when ``message`` refuses its task (not in the plan, or already committed),
+``close-slice`` refuses its slice (not in the plan) or ``record`` refuses to attach the note."""
 
 UNREADABLE_PLAN_EXIT = 2
 """Exit code, for any subcommand, when the plan cannot be read or names no usable base commit."""
 
 TASK_MESSAGE_FILE = "KONUNDRM_TASK_MSG"
 """Name, under the Git directory, of the commit message ``message`` writes."""
+
+TASK_NOTE_FILE = "KONUNDRM_TASK_NOTE"
+"""Name, under the Git directory, of the pending note ``record`` attaches to the task's commit."""
 
 _OPEN_BOX = "- [ ] "
 _CHECKED_BOX = "- [x] "
@@ -67,6 +75,13 @@ class RefusedTaskError(Exception):
 
 class RefusedSliceError(Exception):
     """No slice heading of the plan names the slice; its message starts with the slice ID as given."""
+
+
+class RefusedRecordError(Exception):
+    """``record`` cannot attach the pending note; its message says why.
+
+    None is pending, HEAD was committed from another message, or Git failed.
+    """
 
 
 def status_lines(root: Path, plan: Path) -> list[str]:
@@ -317,6 +332,54 @@ def _line_ending(line: str) -> str:
     return "\n" if line.endswith("\n") else ""
 
 
+def record_task_note(root: Path) -> str:
+    """Attaches the pending note to HEAD when HEAD was committed from the pending message.
+
+    HEAD counts as made from the pending message when its subject (the first line of its message)
+    equals the first line of ``<git-dir>/KONUNDRM_TASK_MSG``. The note is added without ``-f``, so
+    a HEAD that already has a note under NOTES_REF is refused rather than overwritten.
+
+    Args:
+        root: Directory inside the Git repository whose HEAD is the task's commit.
+
+    Returns:
+        ``recorded: <short sha> <first line of the note>``.
+
+    Raises:
+        RefusedRecordError: When there is no pending note or message, HEAD's subject differs from
+            the pending message's, or Git cannot read HEAD or add the note.
+
+    Side effects:
+        Unless it raises, adds a note to HEAD under NOTES_REF and deletes both pending files.
+        When it raises, no note and no pending file has changed.
+    """
+    message_path = git_path(root, TASK_MESSAGE_FILE)
+    note_path = git_path(root, TASK_NOTE_FILE)
+    if message_path is None or note_path is None:
+        raise RefusedRecordError("not inside a Git repository")
+    if not note_path.is_file() or not message_path.is_file():
+        raise RefusedRecordError(f"no pending note: {note_path.as_posix()} or {message_path.as_posix()} is missing")
+    pending_subject = _first_line(message_path.read_bytes())
+    head = run_git(["log", "-1", "--format=%h%n%B", "HEAD"], root)
+    if head is None:
+        raise RefusedRecordError("cannot read HEAD")
+    short_sha, _, head_message = head.partition(b"\n")
+    if _first_line(head_message) != pending_subject:
+        raise RefusedRecordError(f"HEAD {short_sha.decode()} was not committed from {message_path.as_posix()}")
+    # -F hands Git the note file's bytes as they are, so its UTF-8 `·` survives any locale.
+    if run_git(["notes", f"--ref={NOTES_REF}", "add", "-F", str(note_path), "HEAD"], root) is None:
+        raise RefusedRecordError(f"git notes add failed for HEAD {short_sha.decode()}; does it already have a note?")
+    note_summary = _first_line(note_path.read_bytes())
+    note_path.unlink()
+    message_path.unlink()
+    return f"recorded: {short_sha.decode()} {note_summary}"
+
+
+def _first_line(text: bytes) -> str:
+    """The first line of UTF-8 bytes, without its line ending; undecodable bytes stay escaped."""
+    return text.decode("utf-8", errors="surrogateescape").split("\n", 1)[0].rstrip("\r")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Runs one subcommand and prints its answer to stdout as UTF-8.
 
@@ -327,12 +390,14 @@ def main(argv: list[str] | None = None) -> int:
         ``status <tasks.md>`` prints status_lines(). ``message <tasks.md> T<n> --subject S
         --rounds R [--body B]`` runs write_task_message() and prints only the file's path.
         ``close-slice <tasks.md> S<k>`` runs close_slice() and prints ``not committed: <ids>``
-        (comma-separated, or ``none``). Every line ends in a bare line feed, so ``msg=$(…)``
+        (comma-separated, or ``none``). ``record`` runs record_task_note() and prints its line.
+        Every line ends in a bare line feed, so ``msg=$(…)``
         keeps no carriage return on Windows.
 
     Returns:
         0 on success; ``REFUSED_EXIT`` (1) with the reason on stderr when ``message`` refuses
-        an unknown or already committed task or ``close-slice`` an unknown slice;
+        an unknown or already committed task, ``close-slice`` an unknown slice, or ``record``
+        finds no pending note or a HEAD made from another message;
         ``UNREADABLE_PLAN_EXIT`` (2) with the plan's
         ``<file>:<line>`` on stderr when the plan cannot be read. On 1 or 2 nothing reaches stdout
         and nothing is written. argparse exits with 2 on a usage error.
@@ -353,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
     close = subcommands.add_parser("close-slice", help="check a slice's built tasks and write their rounds")
     close.add_argument("plan", type=Path, help="the feature's tasks.md")
     close.add_argument("slice_id", metavar="S<k>", help="the slice to close")
+    subcommands.add_parser("record", help="attach the pending note to the commit made from the pending message")
     arguments = parser.parse_args(argv)
     root = project_root({"cwd": os.getcwd()})
     try:
@@ -360,7 +426,7 @@ def main(argv: list[str] | None = None) -> int:
     except UnreadablePlanError as error:
         sys.stderr.write(f"task_ledger.py: {error}\n")
         return UNREADABLE_PLAN_EXIT
-    except (RefusedTaskError, RefusedSliceError) as error:
+    except (RefusedTaskError, RefusedSliceError, RefusedRecordError) as error:
         sys.stderr.write(f"task_ledger.py: {error}\n")
         return REFUSED_EXIT
     sys.stdout.write("".join(f"{line}\n" for line in lines))
@@ -377,6 +443,8 @@ def _run_subcommand(root: Path, arguments: argparse.Namespace) -> list[str]:
     if arguments.subcommand == "close-slice":
         not_committed = close_slice(root, arguments.plan, arguments.slice_id)
         return [f"not committed: {', '.join(not_committed) or 'none'}"]
+    if arguments.subcommand == "record":
+        return [record_task_note(root)]
     return status_lines(root, arguments.plan)
 
 
