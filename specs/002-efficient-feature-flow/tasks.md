@@ -406,7 +406,7 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S11: la medición no filtra contenido y se ofrece desde el informe de impacto
 
-- [ ] **T36** `session_costs.py` nunca imprime contenido de mensajes, comandos ni resultados · `behavior` · Risk: high · Covers: R6.3
+- [x] **T36** `session_costs.py` nunca imprime contenido de mensajes, comandos ni resultados · `behavior` · Risk: high · Covers: R6.3
   - Test: `P/hooks/tests/test_session_costs.py::test_never_prints_message_command_or_result_content` (transcripciones con un correo, una clave con forma real y código en mensajes, comandos y resultados; ninguno aparece en la salida ni en stderr)
   - Files: `P/hooks/scripts/session_costs.py`
   - Invariants: toda línea de salida es un encabezado fijo, un nombre de rol o de modelo, o números.
@@ -419,8 +419,9 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
     - Option A: `main()` atrapa el error y escribe en stderr una sola línea fija con el tipo del error y la ruta de la transcripción, nunca el mensaje del error ni un traceback, y sale con 1 · pros: un solo control en la frontera vale para todo error, actual o futuro; dice qué archivo falló · cons: sin traceback para depurar
     - Option B: cada error se lanza sin el texto que leyó (por ejemplo, `_parse_timestamp` relanza un ValueError fijo) y el traceback sigue saliendo · pros: el cambio más chico; conserva el traceback · cons: cada error nuevo que copie su entrada vuelve a filtrar; el control queda repartido
     - Recommendation: A.
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T37** `session_costs.py` salta las líneas inválidas y las cuenta · `behavior` · Risk: low · Covers: R6.4
+- [x] **T37** `session_costs.py` salta las líneas inválidas y las cuenta · `behavior` · Risk: low · Covers: R6.4
   - Test: `P/hooks/tests/test_session_costs.py::test_skips_and_counts_invalid_lines`
   - Files: `P/hooks/scripts/session_costs.py`
   - Verify: `... -k test_skips_and_counts_invalid_lines`
@@ -434,8 +435,9 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
     - Option B: saltar la transcripción entera y contar sus líneas como saltadas · pros: sin rol nuevo · cons: pierde costos reales y cuenta líneas válidas como inválidas
     - Option C: dejarlo como error (la línea de T36, sale con 1) · pros: no esconde nada · cons: 3 de las 1.263 transcripciones de subagentes de esta máquina no tienen `meta.json`, así que el informe de todo un proyecto se detiene
     - Recommendation: A.
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T38** `session_costs.py` lee transcripciones con rutas de más de 260 caracteres en Windows · `behavior` · Risk: low · Covers: R6.5
+- [x] **T38** `session_costs.py` lee transcripciones con rutas de más de 260 caracteres en Windows · `behavior` · Risk: low · Covers: R6.5
   - Test: `P/hooks/tests/test_session_costs.py::test_reads_transcripts_past_the_windows_path_limit`
   - Files: `P/hooks/scripts/session_costs.py`
   - Verify: `... -k test_reads_transcripts_past_the_windows_path_limit`
@@ -444,12 +446,14 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
     - Option A: solo en Windows, cada carpeta de la línea de comandos se vuelve ruta absoluta y recibe `\\?\` (o `\\?\UNC\` para `\\servidor\recurso`) una vez, antes de listar y leer; toda ruta que se imprime (la línea de error de T36) sale sin el prefijo, como la dio la persona · pros: un solo lugar; nada cambia en otras plataformas; funciona diga lo que diga el registro · cons: hay que quitar el prefijo donde se imprime una ruta
     - Option B: agregar el prefijo solo a las rutas de 260 caracteres o más · pros: las rutas comunes no cambian · cons: el límite tiene bordes (248 para carpetas, el 260 cuenta el nulo final) y deja dos caminos que probar
     - Recommendation: A.
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T39** El informe de impacto incluye el de costos cuando se le indican las transcripciones · `behavior` · Risk: low · Covers: R6.6
+- [x] **T39** El informe de impacto incluye el de costos cuando se le indican las transcripciones · `behavior` · Risk: low · Covers: R6.6
   - Test: `P/hooks/tests/contract/test_skills.py::test_measure_impact_adds_session_costs_when_given_transcripts`
   - Files: `P/skills/measure-impact/SKILL.md` (modify)
   - Verify: `... -k test_measure_impact_adds_session_costs_when_given_transcripts`
   - Depends on: T36
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
