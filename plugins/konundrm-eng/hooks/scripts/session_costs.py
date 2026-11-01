@@ -4,26 +4,32 @@ A person runs it as ``sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" session_costs.py <
 each folder holds a project's transcripts (``~/.claude/projects/<project>/``). Every session
 transcript ``<folder>/<session-id>.jsonl`` belongs to the role ``orchestrator``; every subagent
 transcript ``<folder>/<session-id>/subagents/agent-<id>.jsonl`` belongs to the ``agentType`` of its
-``agent-<id>.meta.json``. The per-role table it prints has, for each role: dispatches (transcripts),
-turns, input, cache-write, cache-read and output tokens, weighted tokens, the role's share of all
-weighted tokens, its active minutes (median and total over its transcripts), its check runs with
-their total minutes, its test runs and its messages that dispatched two or more subagents at once.
+``agent-<id>.meta.json``, or to the role ``unknown`` when that file is missing, is not JSON or
+names no agentType made only of letters, digits and ``_.:-``. The per-role table it prints has, for
+each role: dispatches (transcripts), turns, input, cache-write, cache-read and output tokens,
+weighted tokens, the role's share of all weighted tokens, its active minutes (median and total over
+its transcripts), its check runs with their total minutes, its test runs and its messages that
+dispatched two or more subagents at once.
 After the table comes the session transcript with the most turns: its turns and the context of
-its turns (first, median, 90th percentile by nearest rank, maximum).
+its turns (first, median, 90th percentile by nearest rank, maximum). The last line is
+``skipped lines: <n>``: the lines left out of every count because they are not UTF-8, not a JSON
+object, carry a timestamp that is not ISO 8601, or are user or assistant lines missing a field the
+report reads.
 ``--check-pattern REGEX`` says what a check run is; by default it is the check command that
 ``quality_check`` finds from the current folder.
 
-It prints nothing read from a transcript except the agent type and numbers. When a transcript cannot
-be read, it writes one line to stderr naming the error's type and the file, never the error's
-message, and exits with 1.
+It prints nothing read from a transcript except role names and numbers. When a transcript cannot be
+read or measured (other than an invalid line), it writes one line to stderr naming the error's type
+and the file, never the error's message, and exits with 1.
 
 Sections:
     TOKEN_WEIGHTS          — input-equivalent weight of each token type.
     TEST_RUN                — what a test run looks like.
     TranscriptCosts         — what one transcript cost.
     default_check_pattern() — what a run of the project's check looks like.
-    read_transcript()       — measures one transcript, its tool calls counted by a private tally.
-    TranscriptReadError    — a transcript, or its subagent's meta.json, could not be read.
+    read_transcript()       — measures one transcript's valid lines, its tool calls counted by a
+                              private tally, and counts the lines it skips.
+    TranscriptReadError    — a transcript, or its subagent's meta.json, could not be read or measured.
     find_transcripts()     — lists the transcripts of a folder with their role.
     RoleCosts              — what every transcript of one role cost together.
     RunCosts               — what a run cost per role, and its busiest orchestrator session.
@@ -53,6 +59,12 @@ from shell_commands import iter_commands
 
 ORCHESTRATOR_ROLE = "orchestrator"
 """Role of every session transcript, the session that dispatches the subagents."""
+
+UNKNOWN_ROLE = "unknown"
+"""Role of a subagent transcript whose meta.json is missing, is not JSON or names no usable agentType."""
+
+ROLE_NAME = re.compile(r"[A-Za-z0-9_.:-]+")
+"""An agentType printed as a role; any other agentType, possibly free text, is never printed."""
 
 TOKEN_TYPES = ("input", "cache_write", "cache_read", "output")
 """Token types in table order."""
@@ -102,6 +114,7 @@ class TranscriptCosts:
         parallel_dispatch_messages: Messages that dispatched two or more subagents.
         turn_contexts: Context of each turn (its input, cache-write and cache-read tokens), in the
             order the turns are first written.
+        skipped_lines: Non-blank lines left out of every other count because they are invalid.
     """
 
     turns: int = 0
@@ -112,11 +125,59 @@ class TranscriptCosts:
     test_runs: int = 0
     parallel_dispatch_messages: int = 0
     turn_contexts: list[int] = field(default_factory=list)
+    skipped_lines: int = 0
 
 
-def _parse_timestamp(text: str) -> datetime:
-    # Python 3.10's fromisoformat does not accept the trailing "Z" Claude Code writes.
-    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+def _timestamp_moment(value: object) -> datetime | None:
+    """Returns the moment an ISO 8601 timestamp text names, or None when `value` is not one."""
+    if not isinstance(value, str):
+        return None
+    try:
+        # Python 3.10's fromisoformat does not accept the trailing "Z" Claude Code writes.
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _is_token_count(value: object) -> bool:
+    # bool is an int subclass, and json.loads reads NaN and Infinity as floats.
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _has_report_fields(entry: JsonObject) -> bool:
+    """Tells whether a user or assistant line holds every field the report reads; other lines always do."""
+    entry_type = entry.get("type")
+    if entry_type not in {"user", "assistant"}:
+        return True
+    message = entry.get("message")
+    if "timestamp" not in entry or not isinstance(message, dict):
+        return False
+    if entry_type == "user":
+        return True
+    usage = message.get("usage")
+    return (
+        isinstance(message.get("id"), str)
+        and isinstance(usage, dict)
+        and all(_is_token_count(usage.get(usage_field, 0)) for usage_field in USAGE_FIELDS.values())
+    )
+
+
+def _parse_line(raw_line: bytes) -> tuple[JsonObject, datetime | None] | None:
+    """Returns one transcript line with the moment it was written, or None when it is invalid.
+
+    A line is invalid when it is not UTF-8, not a JSON object, has a timestamp that is not ISO 8601
+    text, or is a user or assistant line missing a field the report reads (_has_report_fields).
+    """
+    try:
+        entry = json.loads(raw_line.decode("utf-8"))
+    except ValueError:  # UnicodeDecodeError and JSONDecodeError are both ValueErrors.
+        return None
+    if not isinstance(entry, dict) or not _has_report_fields(entry):
+        return None
+    if "timestamp" not in entry:
+        return entry, None
+    moment = _timestamp_moment(entry["timestamp"])
+    return (entry, moment) if moment is not None else None
 
 
 def _active_minutes(moments: list[datetime]) -> float:
@@ -215,28 +276,37 @@ def read_transcript(path: Path, check_pattern: re.Pattern[str] | None = None) ->
     command that runs ``python -m unittest``, ``python -m pytest``, ``pytest``, ``npm test`` or
     ``npm run test`` is a test run.
 
+    Lines end only at a line feed and each is decoded on its own, so U+2028, U+2029 and U+0085 inside a
+    JSON string do not split a line, and one line that is not UTF-8 spoils only itself. Blank lines
+    are ignored. An invalid line (not UTF-8, not a JSON object, a timestamp that is not ISO 8601
+    text, or a user or assistant line without a timestamp and a ``message`` object, or an assistant
+    line without a text ``message.id`` and a ``message.usage`` object whose counts are non-negative
+    integers) is left out of every count and counted as skipped. A missing usage count is 0.
+
     Args:
         path: A JSON Lines transcript.
         check_pattern: Searched in each simple command's text; None counts no check runs.
 
     Returns:
         Its turns, tokens per type, active minutes, check runs and their minutes, test runs,
-        parallel-dispatch messages and each turn's context. A transcript without assistant lines
-        has 0 turns and 0 tokens.
+        parallel-dispatch messages, each turn's context and its skipped lines. A transcript without
+        valid assistant lines has 0 turns and 0 tokens.
 
     Raises:
         OSError: If the file cannot be read.
-        ValueError: If a line is not JSON or a timestamp is not ISO 8601.
     """
     costs = TranscriptCosts()
     tool_calls = _ToolCallTally(costs, check_pattern)
-    usage_by_message_id: dict[str | None, dict[str, int]] = {}
+    usage_by_message_id: dict[str, dict[str, int]] = {}
     moments: list[datetime] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
+    for raw_line in path.read_bytes().split(b"\n"):
+        if not raw_line.strip():
             continue
-        entry = json.loads(line)
-        moment = _parse_timestamp(entry["timestamp"]) if "timestamp" in entry else None
+        line = _parse_line(raw_line)
+        if line is None:
+            costs.skipped_lines += 1
+            continue
+        entry, moment = line
         if moment is not None:
             moments.append(moment)
         if entry.get("type") == "user":
@@ -244,9 +314,9 @@ def read_transcript(path: Path, check_pattern: re.Pattern[str] | None = None) ->
         if entry.get("type") != "assistant":
             continue
         tool_calls.add_tool_uses(entry, moment)
-        message = entry.get("message", {})
+        message = entry["message"]
         # Each later line of a message overwrites the earlier ones, so its last line's usage wins.
-        usage_by_message_id[message.get("id")] = message.get("usage", {})
+        usage_by_message_id[message["id"]] = message["usage"]
     costs.turns = len(usage_by_message_id)
     # A dict keeps each message where its first line put it, so the turns stay in written order.
     for usage in usage_by_message_id.values():
@@ -259,10 +329,10 @@ def read_transcript(path: Path, check_pattern: re.Pattern[str] | None = None) ->
 
 
 class TranscriptReadError(Exception):
-    """A transcript, or its subagent's meta.json, could not be read.
+    """A transcript, or its subagent's meta.json, could not be read or measured.
 
     Its message is only the file's path: the original error, whose message can repeat what the file
-    holds (a timestamp, a line of JSON), stays in ``__cause__`` and is never printed.
+    holds, stays in ``__cause__`` and is never printed.
 
     Attributes:
         path: The file that could not be read.
@@ -284,9 +354,17 @@ def _reading(path: Path) -> Iterator[None]:
 
 
 def _subagent_role(transcript: Path) -> str:
+    """Returns the agentType of a subagent transcript's meta.json when it is a role name, else UNKNOWN_ROLE."""
     meta_path = transcript.with_suffix(".meta.json")
     with _reading(meta_path):
-        return str(json.loads(meta_path.read_text(encoding="utf-8"))["agentType"])
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):  # Missing, not UTF-8 or not JSON: its role is unknown.
+            return UNKNOWN_ROLE
+    agent_type = meta.get("agentType") if isinstance(meta, dict) else None
+    if isinstance(agent_type, str) and ROLE_NAME.fullmatch(agent_type):
+        return agent_type
+    return UNKNOWN_ROLE
 
 
 def find_transcripts(folder: Path) -> Iterator[tuple[str, Path]]:
@@ -298,12 +376,12 @@ def find_transcripts(folder: Path) -> Iterator[tuple[str, Path]]:
 
     Yields:
         ``(role, path)`` for every session transcript (role ``orchestrator``) and every subagent
-        transcript (the agentType of its meta.json). Other files, such as ``*.meta.json`` and
-        ``*.prefix.json``, are skipped.
+        transcript (the agentType of its meta.json when it matches ROLE_NAME; ``unknown`` when the
+        meta.json is missing, is not UTF-8 JSON or names no such agentType). Other files, such as
+        ``*.meta.json`` and ``*.prefix.json``, are skipped.
 
     Raises:
-        TranscriptReadError: If a subagent's meta.json cannot be read, is not JSON or names no
-            agentType.
+        TranscriptReadError: If a subagent's meta.json exists but cannot be read as a file.
     """
     for session in sorted(folder.glob("*.jsonl")):
         yield ORCHESTRATOR_ROLE, session
@@ -361,14 +439,17 @@ class RunCosts:
         costs_by_role: Each role's costs, keyed by role, in the order roles were first found.
         busiest_orchestrator: The session transcript with the most turns (the first found on a
             tie), or None when no session has a turn. Subagent transcripts are never it.
+        skipped_lines: Invalid lines skipped over every transcript.
     """
 
     costs_by_role: dict[str, RoleCosts] = field(default_factory=dict)
     busiest_orchestrator: TranscriptCosts | None = None
+    skipped_lines: int = 0
 
     def add(self, role: str, transcript: TranscriptCosts) -> None:
         """Adds one transcript of `role` to the run."""
         self.costs_by_role.setdefault(role, RoleCosts()).add(transcript)
+        self.skipped_lines += transcript.skipped_lines
         busiest_turns = self.busiest_orchestrator.turns if self.busiest_orchestrator else 0
         if role == ORCHESTRATOR_ROLE and transcript.turns > busiest_turns:
             self.busiest_orchestrator = transcript
@@ -382,11 +463,12 @@ def collect_run_costs(folders: list[Path], check_pattern: re.Pattern[str] | None
         check_pattern: What a check run looks like, as read_transcript takes it.
 
     Returns:
-        The run's costs per role and its busiest orchestrator session.
+        The run's costs per role, its busiest orchestrator session and its skipped lines.
 
     Raises:
-        TranscriptReadError: If a transcript or a subagent's meta.json cannot be read or measured,
-            whatever the error; the original error is its ``__cause__``.
+        TranscriptReadError: If a transcript or an existing subagent's meta.json cannot be read or
+            measured, whatever the error (invalid lines are skipped, not errors); the original
+            error is its ``__cause__``.
     """
     run = RunCosts()
     for folder in folders:
@@ -496,6 +578,10 @@ def _align_columns(rows: list[list[str]]) -> list[str]:
     return ["  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip() for row in rows]
 
 
+SKIPPED_LINES_LABEL = "skipped lines:"
+"""Start of the report's last line, followed by the number of invalid lines skipped."""
+
+
 def _compile_pattern(text: str) -> re.Pattern[str]:
     try:
         return re.compile(text)
@@ -507,12 +593,15 @@ def _compile_pattern(text: str) -> re.Pattern[str]:
 def main(argv: list[str] | None = None) -> int:
     """Prints the per-role cost table of the given folders' transcripts and their busiest orchestrator.
 
+    The last stdout line is always ``skipped lines: <n>``, the invalid lines left out (0 included).
+
     Args:
         argv: Command-line arguments without the program name; ``sys.argv[1:]`` when None.
 
     Returns:
-        0, or 1 when a transcript cannot be read: then stderr gets one line with the error's type
-        and the file's path, never the error's message nor a traceback, and stdout gets nothing.
+        0, or 1 when a transcript cannot be read or measured (an invalid line is skipped instead):
+        then stderr gets one line with the error's type and the file's path, never the error's
+        message nor a traceback, and stdout gets nothing.
         argparse exits with 2 on a usage error.
     """
     parser = argparse.ArgumentParser(description="konundrm-eng session costs per role")
@@ -531,7 +620,12 @@ def main(argv: list[str] | None = None) -> int:
     except TranscriptReadError as error:
         sys.stderr.write(f"session_costs: cannot read {error.path}: {type(error.__cause__).__name__}\n")
         return 1
-    lines = [*format_role_table(run.costs_by_role), *format_busiest_orchestrator(run.busiest_orchestrator)]
+    lines = [
+        *format_role_table(run.costs_by_role),
+        *format_busiest_orchestrator(run.busiest_orchestrator),
+        "",
+        f"{SKIPPED_LINES_LABEL} {run.skipped_lines}",
+    ]
     sys.stdout.write("\n".join(lines) + "\n")
     return 0
 

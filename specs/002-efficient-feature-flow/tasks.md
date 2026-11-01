@@ -425,6 +425,15 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Files: `P/hooks/scripts/session_costs.py`
   - Verify: `... -k test_skips_and_counts_invalid_lines`
   - Depends on: T36
+  - Decision: Option A (recommended) — qué es una línea a la que le faltan campos
+    - Option A: se salta y se cuenta la línea que no es UTF-8, no es JSON, no es un objeto o trae un `timestamp` que no es ISO 8601 (de cualquier tipo); y la línea user o assistant a la que le falta lo que lee el informe: `timestamp`, un objeto `message` y, en assistant, un `message.id` de texto y un objeto `message.usage` cuyos conteos, si están, son enteros no negativos (ni bool, float, NaN ni Infinity); un conteo ausente vale 0; las líneas de otros tipos nunca se cuentan por campos faltantes · pros: revisa cada campo que usa el informe, así ninguna línea detiene la corrida ni corrompe un total · cons: más comprobaciones que mantener al día con lo que lee el informe
+    - Option B: saltar solo las líneas que no son JSON o no son objetos; un campo faltante o erróneo sigue deteniendo el informe con la línea de error de T36 · pros: el cambio más chico · cons: no cumple "le faltan campos"; una línea rara sigue deteniendo la corrida
+    - Recommendation: A.
+  - Decision: Option A (recommended) — qué pasa con una transcripción de subagente cuyo `meta.json` falta, no es JSON o no trae un `agentType` que sea un nombre (`[A-Za-z0-9_.:-]+`)
+    - Option A: sus líneas cuentan bajo el rol fijo `unknown` · pros: no se pierden tokens del total; el informe dice cuánto quedó sin atribuir; un `agentType` que no es un nombre nunca llega a la salida · cons: un nombre de rol fijo más
+    - Option B: saltar la transcripción entera y contar sus líneas como saltadas · pros: sin rol nuevo · cons: pierde costos reales y cuenta líneas válidas como inválidas
+    - Option C: dejarlo como error (la línea de T36, sale con 1) · pros: no esconde nada · cons: 3 de las 1.263 transcripciones de subagentes de esta máquina no tienen `meta.json`, así que el informe de todo un proyecto se detiene
+    - Recommendation: A.
 
 - [ ] **T38** `session_costs.py` lee transcripciones con rutas de más de 260 caracteres en Windows · `behavior` · Risk: low · Covers: R6.5
   - Test: `P/hooks/tests/test_session_costs.py::test_reads_transcripts_past_the_windows_path_limit`

@@ -23,6 +23,8 @@ SECOND_SESSION_ID = "sess-2"
 TEST_WRITER = "konundrm-eng:test-writer"
 IMPLEMENTER = "konundrm-eng:implementer"
 ORCHESTRATOR = "orchestrator"
+# Role of a subagent whose meta.json is missing or names no usable agentType (T37, decision 2 A).
+UNKNOWN_ROLE = "unknown"
 # The table's header names its columns; rows start with the role. Values are read by column name,
 # so later tasks may add columns or blocks without breaking this test.
 COLUMNS = {
@@ -452,9 +454,95 @@ def build_bad_timestamp_transcript(folder: Path) -> None:
     )
 
 
-# Generated transcripts for the output-shape property (R6.3, T36 invariant). U+2028, U+2029 and U+0085
-# are left out: read_transcript's splitlines() still splits on them (T37's concern), and the JSON
-# encoding below escapes every other non-ASCII character anyway.
+# Usage of every invalid line: if one is read instead of skipped, a million tokens show in the table.
+COSTLY_USAGE = (1_000_000, 0, 0, 1_000_000)
+# An agentType that is free text, not a name; the report must never print it.
+FREE_TEXT_AGENT_TYPE = "Free text agent zq9 with spaces"
+
+
+def encoded_line(line: object, ending: bytes = b"\n") -> bytes:
+    """Returns one transcript line as UTF-8 bytes, non-ASCII characters written raw, not escaped."""
+    return json.dumps(line, ensure_ascii=False).encode("utf-8") + ending
+
+
+def costly_assistant(minutes: float, message_id: str) -> dict:
+    """Returns one assistant line with COSTLY_USAGE, written `minutes` after START."""
+    return assistant_lines(minutes, message_id, COSTLY_USAGE, 1, False)[0]
+
+
+def with_usage(line: dict, **fields: object) -> dict:
+    """Overwrites fields of an assistant line's usage."""
+    line["message"]["usage"].update(fields)
+    return line
+
+
+def build_invalid_line_transcripts(folder: Path) -> None:
+    """Writes a session and three subagents mixing valid lines with 15 invalid ones (R6.4, T37).
+
+    Valid lines sit at minutes 0 to 3; every invalid line that has a valid timestamp sits between
+    3.25 and 5.5, within 5 minutes of them, so reading one adds active time as well as a million
+    tokens and a turn.
+    """
+    # Built with chr so the source holds no raw separator; encoded_line writes them raw in the JSON.
+    separator = chr(0x2028) + chr(0x2029) + chr(0x85)
+    separated = assistant_lines(2, "msg-v2", (200, 0, 0, 20), 1, False)[0]
+    separated["message"]["content"] = [{"type": "text", "text": f"one{separator}two"}]
+
+    no_id = costly_assistant(3.25, "unused")
+    del no_id["message"]["id"]
+    string_usage = costly_assistant(3.5, "msg-bad-string-usage")
+    string_usage["message"]["usage"] = "lots"
+    bad_timestamp = costly_assistant(3.75, "msg-bad-timestamp")
+    bad_timestamp["timestamp"] = "not a date"
+    string_message = user_line(4, False)
+    string_message["message"] = "plain text instead of an object"
+    utf8_source = encoded_line(costly_assistant(5.25, "msg-bad-utf8"))
+    partial = encoded_line(costly_assistant(5.5, "msg-bad-partial"), b"")
+
+    session = [
+        encoded_line(user_line(0, False)),
+        encoded_line(assistant_lines(1, "msg-v1", (100, 0, 0, 10), 1, False)[0]),
+        b"\n",  # A blank line in the middle: not counted.
+        encoded_line(separated),  # Raw U+2028, U+2029 and U+0085 inside a string: one valid line.
+        encoded_line(assistant_lines(3, "msg-v3", (300, 0, 0, 30), 1, False)[0], b"\r\n"),  # Valid.
+        encoded_line({"type": "attachment", "attachment": {"kind": "file"}}),  # No timestamp: valid.
+        # Invalid lines, skipped and counted:
+        encoded_line([1, 2]),  # 1: a JSON array.
+        encoded_line("just text"),  # 2: a bare JSON string.
+        encoded_line({"type": "attachment", "timestamp": "yesterday"}),  # 3: other type, bad timestamp.
+        encoded_line(bad_timestamp),  # 4: assistant whose timestamp is not a date.
+        encoded_line(no_id),  # 5: assistant without message.id.
+        encoded_line(string_usage),  # 6: usage is a string.
+        encoded_line(string_message),  # 7: user line whose message is a string.
+        encoded_line(with_usage(costly_assistant(4.25, "msg-bad-nan"), output_tokens=float("nan"))),  # 8: NaN.
+        encoded_line(with_usage(costly_assistant(4.5, "msg-bad-inf"), output_tokens=float("inf"))),  # 9: Infinity.
+        encoded_line(with_usage(costly_assistant(4.75, "msg-bad-negative"), output_tokens=-1_000_000)),  # 10.
+        encoded_line(with_usage(costly_assistant(5, "msg-bad-float"), output_tokens=1_000_000.5)),  # 11: float.
+        encoded_line(with_usage(costly_assistant(5.1, "msg-bad-bool"), cache_read_input_tokens=True)),  # 12: bool.
+        utf8_source.replace(b'"text": "x"', b'"text": "\xff\xfe"'),  # 13: invalid UTF-8 bytes.
+        partial[:-1],  # 14: a partial last line, no closing brace and no final newline.
+    ]
+    (folder / f"{SESSION_ID}.jsonl").parent.mkdir(parents=True, exist_ok=True)
+    (folder / f"{SESSION_ID}.jsonl").write_bytes(b"".join(session))
+
+    subagents = folder / SESSION_ID / "subagents"
+    # Test-writer: one valid turn active 2 min, then 15: a line that is not JSON, then a trailing newline.
+    writer_lines = [user_line(10, True), *assistant_lines(12, "msg-w1", (40, 0, 0, 4), 1, True)]
+    write_subagent(subagents, "w1", TEST_WRITER, writer_lines)
+    with (subagents / "agent-w1.jsonl").open("ab") as transcript:
+        transcript.write(b"not json at all {\n")
+    # Two subagents of role unknown: one without meta.json (active 1 min), one whose agentType is free
+    # text (active 3 min).
+    no_meta_lines = [user_line(20, True), *assistant_lines(21, "msg-u1", (50, 0, 0, 5), 1, True)]
+    write_subagent(subagents, "u1", TEST_WRITER, no_meta_lines)
+    (subagents / "agent-u1.meta.json").unlink()
+    free_text_lines = [user_line(30, True), *assistant_lines(33, "msg-u2", (70, 0, 0, 7), 1, True)]
+    write_subagent(subagents, "u2", FREE_TEXT_AGENT_TYPE, free_text_lines)
+
+
+# Generated transcripts for the output-shape property (R6.3, T36 invariant). write_jsonl writes every
+# non-ASCII character as an ASCII escape, so U+2028, U+2029 and U+0085 are left out of the alphabet;
+# raw separators inside a valid line are covered by test_skips_and_counts_invalid_lines.
 PROPERTY_SEEDS = 24
 TEXT_ALPHABET = string.ascii_letters + string.digits + string.punctuation + " \t\n\\\"'" + "áéíóúñÜç€" + "🙂🚀"
 LOOKALIKE_TEXTS = (
@@ -685,7 +773,7 @@ def read_table(stdout: str) -> dict[str, dict[str, str]]:
     header = next(tokens for tokens in lines if tokens[0] == "role")
     rows = {}
     for tokens in lines:
-        if tokens[0] in {ORCHESTRATOR, TEST_WRITER, IMPLEMENTER} and len(tokens) == len(header):
+        if tokens[0] in {ORCHESTRATOR, TEST_WRITER, IMPLEMENTER, UNKNOWN_ROLE} and len(tokens) == len(header):
             rows[tokens[0]] = dict(zip(header, tokens, strict=True))
     return rows
 
@@ -921,6 +1009,36 @@ class SessionCostsTest(unittest.TestCase):
             "no subagent",
         }
         self.assertLessEqual(expected_features, drawn, "the generator covers its domain")
+
+    # R6.4 (T37, decisions 1 A and 2 A): a line that is not UTF-8, not JSON, not an object, has a bad
+    # timestamp or lacks a field the report reads is skipped and counted; a subagent without a usable
+    # agentType is read under role unknown; the report ends with "skipped lines: <n>".
+    def test_skips_and_counts_invalid_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary) / "transcripts"
+            build_invalid_line_transcripts(folder)
+
+            completed = run_session_costs(folder, Path(temporary))
+
+        context = f"exit {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        self.assertEqual(completed.returncode, 0, context)
+        self.assertEqual(completed.stderr, "", context)
+        # Skipped: 14 in the session (numbered in build_invalid_line_transcripts) + 1 in the test-writer.
+        self.assertEqual(completed.stdout.splitlines()[-1], "skipped lines: 15", context)
+        self.assertNotIn("zq9", completed.stdout, context)
+        rows = read_table(completed.stdout)
+        keys = ("dispatches", "turns", *("input", "cache_write", "cache_read", "output"))
+        keys += ("median_minutes", "total_minutes")
+        # Only valid lines count. Orchestrator: turns of 100+10, 200+20 (the line with raw separators)
+        # and 300+30 (the \r\n line), active 0 to 3 min. Unknown: 50+5 active 1 min, 70+7 active 3 min.
+        expected = {
+            ORCHESTRATOR: dict(zip(keys, (1, 3, 600, 0, 0, 60, 3, 3), strict=True)),
+            TEST_WRITER: dict(zip(keys, (1, 1, 40, 0, 0, 4, 2, 2), strict=True)),
+            UNKNOWN_ROLE: dict(zip(keys, (2, 2, 120, 0, 0, 12, 2, 4), strict=True)),
+        }
+        self.assertEqual(set(rows), set(expected), context)
+        actual = {role: {key: number(rows[role], key) for key in keys} for role in expected}
+        self.assertEqual(actual, expected, context)
 
 
 if __name__ == "__main__":
