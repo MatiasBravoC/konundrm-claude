@@ -1260,5 +1260,43 @@ class PushedHistoryRewriteTest(unittest.TestCase):
         self.assertEqual(gaps, [], "\n".join(gaps))
 
 
+_MEASURE_IMPACT = SKILLS_DIR / "measure-impact" / "SKILL.md"
+_RUN_SH = re.compile(r"\brun\.sh\b")
+_SESSION_COSTS = re.compile(r"\bsession_costs\.py\b")
+_METRICS_REPORT = re.compile(r"\bmetrics_report\.py\b")
+_TRANSCRIPT = re.compile(r"\btranscripts?\b")
+_COST = re.compile(r"\bcosts?\b")
+_NOT_IN_REPORT = re.compile(r"\bnot\b[^.:;]*\bin (?:this|the) report\b")
+
+
+class MeasureImpactCostsTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_measure_impact_adds_session_costs_when_given_transcripts(self) -> None:
+        """R6.6: 002 measure-impact's argument hint names the transcript folders; its `## Workflow` has a block that
+        runs session_costs.py through run.sh with the transcript folders it is given, and still runs metrics_report.py
+        through run.sh, so the costs report sits next to the delivery report instead of replacing it; and no sentence
+        of `## Limits to state when relevant` says the cost is not in the report unless it is about transcripts (the
+        case where none were given).
+        """
+        hint = read_frontmatter(_MEASURE_IMPACT).get("argument-hint", "").lower()
+        workflow = _section_blocks(_MEASURE_IMPACT, "Workflow")
+        limits = _section_blocks(_MEASURE_IMPACT, "Limits to state when relevant")
+
+        gaps = [] if _TRANSCRIPT.search(hint) else [f"argument-hint does not mention the transcript folders: {hint!r}"]
+        if not any(all(p.search(block) for p in (_RUN_SH, _SESSION_COSTS, _TRANSCRIPT)) for block in workflow):
+            gaps.append("Workflow has no block running session_costs.py through run.sh with the transcript folders")
+        if not any(_RUN_SH.search(block) and _METRICS_REPORT.search(block) for block in workflow):
+            gaps.append("Workflow no longer runs the delivery report (metrics_report.py) through run.sh")
+        gaps += [
+            f"Limits still says the cost is not in the report: {sentence!r}"
+            for block in limits
+            for sentence in _sentences(block)
+            if _COST.search(sentence) and _NOT_IN_REPORT.search(sentence) and not _TRANSCRIPT.search(sentence)
+        ]
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
 if __name__ == "__main__":
     unittest.main()
