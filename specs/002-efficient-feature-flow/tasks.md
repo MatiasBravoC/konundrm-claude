@@ -333,7 +333,7 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
 
 ## Slice S9: `run_slices.py`, sesiones encadenadas desde la terminal
 
-- [ ] **T31** `run_slices.py` corre una sesión headless por slice hasta que la feature termina, una sesión se bloquea o falla, y dice cuál pasó · `behavior` · Risk: high · Covers: R1.4
+- [x] **T31** `run_slices.py` corre una sesión headless por slice hasta que la feature termina, una sesión se bloquea o falla, y dice cuál pasó · `behavior` · Risk: high · Covers: R1.4
   - Test: `P/hooks/tests/test_run_slices.py::test_runs_one_session_per_slice_until_done_blocked_or_failed` (un `claude` falso por `--claude`: commitea y termina; imprime `BLOCKED:`; sale con 3; marca el plan `Done`)
   - Plan change (2026-11-01, aprobado por el usuario): también se detiene ante `RED:` (una sesión que espera una decisión), y R1.4 suma ese final; las revisiones de T31 agregaron además la negativa antes de la primera sesión (plan ilegible, no Approved o pausas no pre-approved) y las líneas `BLOCKED:`/`RED:` con formato Markdown que acepta el stop gate.
   - Files: `P/hooks/scripts/run_slices.py` (new), `P/skills/develop-feature/SKILL.md` (una línea: cuándo usarlo)
@@ -343,13 +343,15 @@ de T1 descarta hoy los comandos con `\` o `"`; para el invariante de T42 se ampl
   - Evidence: corrida con el `claude` falso en un repo de prueba de dos slices, salida en `evidence/T31.md`.
   - Verify: `... -k test_runs_one_session_per_slice_until_done_blocked_or_failed`
   - Depends on: T28
+  - Rounds: spec 2 · code 2 · escalations 1
 
-- [ ] **T32** `run_slices.py` se detiene cuando una sesión termina sin agregar commits · `behavior` · Risk: medium · Covers: R1.5
+- [x] **T32** `run_slices.py` se detiene cuando una sesión termina sin agregar commits · `behavior` · Risk: medium · Covers: R1.5
   - Test: `P/hooks/tests/test_run_slices.py::test_stops_when_a_session_adds_no_commit`
   - Files: `P/hooks/scripts/run_slices.py`
   - Invariants: nunca abre más sesiones que slices pendientes más una.
   - Verify: `... -k test_stops_when_a_session_adds_no_commit`
   - Depends on: T31
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
