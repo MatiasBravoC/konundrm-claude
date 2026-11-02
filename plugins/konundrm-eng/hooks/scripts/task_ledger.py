@@ -6,9 +6,10 @@ box in tasks.md says, so the next task is the first one in plan order without su
 while a slice's partitions run in parallel, the first such task of each partition of the wave in
 progress (tasks_document.next_tasks). A plan that cannot be read, has no usable base commit or
 names a base Git cannot find is reported as ``<file>:<line>`` on stderr with exit code 2.
-``message`` writes a task's commit message, ending in the ``Task:`` and ``Rounds:`` trailers that
-task_commits reads back, under the Git directory, so the flow can ``git commit -F`` it; it refuses,
-with exit code 1, a task the plan lacks or one already built. ``close-slice`` does a slice
+``message`` writes a task's commit message (subject and body only) under the Git directory, so the
+flow can ``git commit -F`` it, and the pending note with the ``Task:`` and ``Rounds:`` lines that
+task_commits reads back once ``record`` attaches it; it refuses, with exit code 1, a task the plan
+lacks or one already built. ``close-slice`` does a slice
 pause's bookkeeping: it checks the boxes of the slice's built tasks and writes their rounds from
 their commits, keeping every other byte of the plan; it refuses, with exit code 1, a slice the
 plan lacks. ``record`` attaches the pending note (``KONUNDRM_TASK_NOTE`` under the Git
@@ -22,7 +23,7 @@ Sections:
     RefusedSliceError   — ``close-slice`` will not close this slice.
     RefusedRecordError  — ``record`` will not attach the pending note to HEAD.
     status_lines()      — the ``key: value`` lines ``status`` prints.
-    write_task_message() — writes a task's commit message under the Git directory.
+    write_task_message() — writes a task's commit message and pending note under the Git directory.
     close_slice()       — checks a slice's built tasks and writes their rounds into the plan.
     record_task_note()  — attaches the pending note to the commit made from the pending message.
     main()              — CLI: ``status``, ``message``, ``close-slice`` and ``record``.
@@ -149,19 +150,20 @@ def _next_line(resume_tasks: tuple[Task, ...]) -> str:
 
 
 def write_task_message(root: Path, plan: Path, task_id: str, subject: str, rounds: str, body: str | None) -> Path:
-    """Writes the commit message for one task of the plan under the Git directory.
+    """Writes the commit message and the pending note for one task of the plan under the Git directory.
 
-    The message is the subject, then the body when given, then a final paragraph Git reads as the
-    trailer block: ``Task: <id> · Covers: <ids>`` with the covers that end the task's plan line,
-    and ``Rounds: <rounds>``.
+    The message is the subject, then the body when given, separated by a blank line. The pending
+    note, which ``record`` attaches to the task's commit, holds two lines:
+    ``Task: <id> · Covers: <ids>`` with the covers that end the task's plan line, and
+    ``Rounds: <rounds>``.
 
     Args:
         root: Project root inside the feature's Git repository.
         plan: The feature's tasks.md, absolute or relative to the current directory.
         task_id: ID of a task in the plan, such as ``T3``, matched by number (``T03`` is ``T3``).
         subject: The commit's subject line.
-        rounds: The Rounds trailer's value, ``spec <n> · code <n> · escalations <n>``.
-        body: Paragraphs between the subject and the trailers, or None for none.
+        rounds: The note's Rounds value, ``spec <n> · code <n> · escalations <n>``.
+        body: Paragraphs after the subject, or None for none.
 
     Returns:
         The message file's path, ``<git-path KONUNDRM_TASK_MSG>``.
@@ -173,8 +175,8 @@ def write_task_message(root: Path, plan: Path, task_id: str, subject: str, round
             already names it.
 
     Side effects:
-        Unless it raises, overwrites the message file, as UTF-8 with bare line feeds whatever the platform; nothing
-        in the working tree changes.
+        Unless it raises, overwrites the message file and ``<git-path KONUNDRM_TASK_NOTE>``, as
+        UTF-8 with bare line feeds whatever the platform; nothing in the working tree changes.
     """
     document, commits = _plan_and_task_commits(root, plan)
     key = task_key(task_id)
@@ -183,15 +185,21 @@ def write_task_message(root: Path, plan: Path, task_id: str, subject: str, round
         raise RefusedTaskError(f"{task_id}: no such task in {plan.as_posix()}")
     if key in commits:
         raise RefusedTaskError(f"{task_id}: already committed in {commits[key].sha}")
-    path = git_path(root, TASK_MESSAGE_FILE)
-    if path is None:
+    message_path = git_path(root, TASK_MESSAGE_FILE)
+    note_path = git_path(root, TASK_NOTE_FILE)
+    if message_path is None or note_path is None:
         raise UnreadablePlanError(f"{plan.as_posix()}: not inside a Git repository")
-    trailers = f"Task: {task.id} · Covers: {', '.join(task.covers)}\nRounds: {rounds}"
-    paragraphs = [subject, *([body] if body else []), trailers]
+    paragraphs = [subject, *([body] if body else [])]
+    _write_git_file(message_path, "\n\n".join(paragraphs) + "\n")
+    _write_git_file(note_path, f"Task: {task.id} · Covers: {', '.join(task.covers)}\nRounds: {rounds}\n")
+    return message_path
+
+
+def _write_git_file(path: Path, text: str) -> None:
+    """Overwrites a file under the Git directory with ``text`` as UTF-8 with bare line feeds."""
     # Under a C locale Python decodes non-ASCII argv bytes as surrogate escapes; surrogateescape
     # writes those bytes back as they came, so the `·` the caller typed stays UTF-8.
-    path.write_text("\n\n".join(paragraphs) + "\n", encoding="utf-8", errors="surrogateescape", newline="\n")
-    return path
+    path.write_text(text, encoding="utf-8", errors="surrogateescape", newline="\n")
 
 
 @dataclass(frozen=True)
@@ -409,12 +417,12 @@ def main(argv: list[str] | None = None) -> int:
     subcommands = parser.add_subparsers(dest="subcommand", required=True)
     status = subcommands.add_parser("status", help="show the base, built tasks, next task, tree and check")
     status.add_argument("plan", type=Path, help="the feature's tasks.md")
-    message = subcommands.add_parser("message", help="write a task's commit message and print its path")
+    message = subcommands.add_parser("message", help="write a task's commit message and pending note")
     message.add_argument("plan", type=Path, help="the feature's tasks.md")
     message.add_argument("task_id", metavar="T<n>", help="the task the commit builds")
     message.add_argument("--subject", required=True, help="the commit's subject line")
     message.add_argument("--rounds", required=True, help='"spec <n> · code <n> · escalations <n>"')
-    message.add_argument("--body", help="paragraphs between the subject and the trailers")
+    message.add_argument("--body", help="paragraphs after the subject")
     close = subcommands.add_parser("close-slice", help="check a slice's built tasks and write their rounds")
     close.add_argument("plan", type=Path, help="the feature's tasks.md")
     close.add_argument("slice_id", metavar="S<k>", help="the slice to close")
