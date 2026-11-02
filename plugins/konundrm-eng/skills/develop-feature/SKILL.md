@@ -100,6 +100,11 @@ so the extra effort goes only to work that has shown it needs it.
    - With `- **Publish:** live` in the `tasks.md` header, in the main session, stay on the slice
      branch as [Live publishing](#phase-3-task-loop) says, then first push the commits the remote
      does not have yet with `git push -u origin feat/<NNN-slug>-s<k>`, before the next task.
+     A finished slice (its summary commit exists) that has no pull request yet
+     (`gh pr list --head feat/<NNN-slug>-s<k> --state all` lists none) gets it first, before the
+     next task: once its branch is pushed with `git push -u origin feat/<NNN-slug>-s<k>`, so the
+     remote holds its summary, open its pull request as the [Slice checkpoint](#slice-checkpoint)
+     says.
    - Continue at the task `status` names as next (in a parallel wave, the main session still builds
      only the wave's first partition). When it prints `next: none` (every task is built and every
      slice has its summary commit), go on to [Phase 4](#phase-4-finish).
@@ -473,7 +478,8 @@ wave is integrated:
    `committing-changes` skill in its develop-feature mode, as
    `docs(<scope>): summarize <what it delivers>`. The commit that adds `summaries/S<k>.md` ends
    the slice's pull request, so the summary stays inside it. With `Publish: live`, push it with
-   `git push` as soon as it is made.
+   `git push` as soon as it is made, then open the slice's pull request as
+   [Live pull request](#slice-checkpoint) below says.
 3. Dispatch `konundrm-eng:process-reviewer` over the slice's flow record (its prompt is in
    [reference/dispatch-prompts.md](reference/dispatch-prompts.md)), then pass its report, the
    `IMPROVEMENT NOTES` block, on stdin to
@@ -488,7 +494,8 @@ wave is integrated:
 4. Stop and show the user the summary, with its reading order first: the files and line ranges to
    read, in order. When the slice's changed lines of code and tests go over the `Pull request
    budget` in `tasks.md`, warn the user first, with the number of lines and how much it went over
-   (`612 changed lines, over the 500-line budget by 112 lines`).
+   (`612 changed lines, over the 500-line budget by 112 lines`). With `Publish: live`, also show
+   the URLs of the feature's pull requests opened so far, in merge order (S1 first).
 5. Ask two or three short questions about the slice's code, each answerable from the summary and
    the files it points to. When the user answers wrong or says they don't know, explain the right
    answer, citing the file and the lines that show it.
@@ -512,11 +519,21 @@ wave is integrated:
    with the exact command that resumes it in a new session:
    `claude "/konundrm-eng:develop-feature specs/<NNN-slug>"`.
 
+**Live pull request.** With `Publish: live`, once the summary commit is pushed (step 2), the main
+session opens the slice's pull request without asking, since the plan's `Publish: live` is the
+yes: `gh pr create --base <base> --head feat/<NNN-slug>-s<k> --title "<title> (k/N)" --body-file <file>`,
+ready for review, never as a draft. Its base, title, description and label follow
+`opening-pull-requests` (steps 3 to 5), so S1 goes against the default branch and each later slice
+against the previous slice's branch. When `gh` cannot open the pull request, or fails, stop with a
+`BLOCKED:` line that quotes its error; the branch stays pushed. `gh` runs here and on resume,
+never per task.
+
 With `Checkpoints: pre-approved` in the `tasks.md` header, still write the summary, run `close-slice`,
 commit both and save the improvement notes (steps 1 to 3), then go on to the next slice as step 8
 says (in a new session, or here with `Sessions: single`) without stopping, asking questions or
 waiting. A slice over the budget still gets its warning: it stays in the summary's `## Size`
-and in the session's closing message. From a terminal, `run_slices.py` chains those sessions for a `Checkpoints: pre-approved`
+and in the session's closing message. With `Publish: live`, that closing message also lists the
+URLs of the feature's pull requests opened so far, in merge order. From a terminal, `run_slices.py` chains those sessions for a `Checkpoints: pre-approved`
 plan, headless and one per slice, and its last line says how it ended:
 `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" run_slices.py specs/<NNN-slug>`.
 
@@ -532,8 +549,7 @@ plan, headless and one per slice, and its last line says how it ended:
    otherwise give the user the exact steps.
 4. Write the feature summary from `templates/feature-summary.md` to `specs/<NNN-slug>/summary.md`,
    filling every section from the three documents, `summaries/`, `evidence/` and the feature's
-   commits. It goes into the final commit of step 7, which lands before any slice branch is cut
-   or pushed. A stacked slice whose branch ends at an earlier commit reaches the summary through
+   commits. It goes into the final commit of step 7, the feature's closing commit. A stacked slice whose branch ends at an earlier commit reaches the summary through
    its pull request's link, pinned to the SHA of that final commit (`opening-pull-requests`).
 5. Dispatch `konundrm-eng:process-reviewer` over the whole feature's flow record, then pass its
    report on stdin to `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" improvement_notes.py --project
@@ -544,12 +560,15 @@ plan, headless and one per slice, and its last line says how it ended:
    layer, an ownership rule), update that line in the same final commit, so the next session does
    not read stale instructions.
 7. Set the three documents to `Status: Done` and commit them with `summary.md` in a final
-   `docs(<scope>)` commit. With `Publish: live`, push it with `git push` as soon as it is made.
+   `docs(<scope>)` commit. With `Publish: live`, push it to the last slice's branch with
+   `git push` as soon as it is made.
 8. Report: commits made, a table mapping each requirement ID to its test(s) and evidence, the
    risk level of each task, Suggestions not applied, refuted findings, each rethink (its evidence
    file and the message of any stash it left), and anything escalated.
-   When any task was `high`, tell the user to read that diff before pushing. **Ask before
-   pushing** or opening pull requests. On a yes, offer two deliveries: one stacked pull request
+   With `Publish: live`, every slice already has its pull request, so list every pull request
+   URL of the feature in merge order instead of asking whether to push. In local mode (without
+   `Publish: live`), when any task was `high`, tell the user to read that diff before pushing,
+   and **ask before pushing** or opening pull requests. On a yes, offer two deliveries: one stacked pull request
    per slice (the default) or a single pull request with every slice. When any task is high risk,
    warn that with a single pull request `risk:high` will cover the whole feature. Then run the
    `opening-pull-requests` skill with the choice: each pull request carries its traceability

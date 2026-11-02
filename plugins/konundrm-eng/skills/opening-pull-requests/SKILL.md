@@ -12,7 +12,8 @@ clear enough that the reviewer knows what to check first (Standards → Git and 
 ## Contract
 
 - **Receives:** local commits on a branch that is not the default branch, and the user's yes to
-  push.
+  push. A feature built with `- **Publish:** live` has its slice branches pushed already, and
+  develop-feature opens each slice's pull request with steps 3 to 5 as its slice ends.
 - **Produces:** pushed branches and open pull requests, one per slice or one for the whole
   feature, with their URLs. Never a merge or an approval.
 
@@ -72,13 +73,20 @@ first mutation check.
    `Status: Done` commit to the last.
 3. Create a branch at each slice end: `git branch <branch>-s<k> <sha>` (the last slice keeps the
    feature branch). Base of S1: the default branch. Base of S<k>: the branch of S<k-1>.
+   The base of S<k> is the default branch instead only when the previous slice's pull request is
+   merged (`gh pr list --head <previous slice branch> --state merged` lists it) and that branch is
+   gone from the remote (`git ls-remote --exit-code --heads origin <previous slice branch>` finds
+   nothing). A branch that was never pushed, as in a local delivery before step 5, has no merged
+   pull request, so it stays the base of S<k>.
 
 Without slices (a fix, a small change) the branch is one pull request.
 
 ### 4. Title and description
 
 Title: the Conventional Commits header of the slice's main change (`feat(coupons): apply
-percentage coupons`), ≤ 72 characters. Description: the project's
+percentage coupons`), ≤ 72 characters. A stacked pull request's title ends with its position and
+the total, `(k/N)` (`feat(coupons): apply percentage coupons (2/5)`), within those 72 characters.
+`N` is the number of slices the plan in `tasks.md` has when the pull request opens. Description: the project's
 `.github/pull_request_template.md` when it exists, else these sections, filled from the spec,
 `tasks.md`, the commits and `specs/<NNN-slug>/evidence/`:
 
@@ -110,7 +118,11 @@ Spec and plan approved by <person>. Tests, code and reviews by Claude Code subag
 (konundrm-eng); every claim above was checked by running it. Needs a person's approval.
 ```
 
-For a stacked slice, start the description with `Stacked on #<number>: merge that one first.`
+Start each stacked pull request's description, on its first line before any section, with its
+merge order, `Merge order: <k> of <N>. Merge #<n> first.`, where `#<n>` is the previous slice's
+pull request (they open in order, so its number is known); the first slice's says
+`Merge order: 1 of <N>. Merge this one first.`
+
 For a fix-bug branch, the table has the `B1` criterion and the regression test, and "What and
 why" states the root cause and the escaped gate. Keep the attribution lines configured for the
 session.
@@ -126,7 +138,7 @@ them; a commit with neither (spec and plan, summary, `Status: Done`) shows `—`
 When `specs/<NNN-slug>/summaries/S<k>.md` exists, build that slice's description from it: its
 "What changed and why" feeds What and why, "Requirements covered" the table, "Risks and high-risk
 tasks" and "Reading order" Risk and where to look first, "Decisions" and the review rounds How it
-was built. Add what the summary lacks (evidence links, the check result, the stacked-on line, the
+was built. Add what the summary lacks (evidence links, the check result, the merge-order line, the
 attribution). The summary's links are relative to `summaries/` (`../requirements.md`), and GitHub
 resolves links in a pull request body against the pull request page, so rewrite them to
 repository paths.
@@ -147,11 +159,13 @@ yes. Then, per slice in order:
 - `git push -u origin <branch>` (never `--force`; after a rebase, `--force-with-lease` only with
   its own yes);
 - `gh pr create --base <base> --head <branch> --title "<title>" --body-file <file>`, with
-  `--draft` when the user wants CI first;
-- `gh pr edit <number> --add-label risk:high` only when that slice holds a high-risk task, so CI
-  repeats mutation testing on it and reviewers of the other slices are not asked to treat them as
-  high risk. If the label does not exist, ask before creating it
-  (`gh label create risk:high`): it changes the repository.
+  `--draft` when the user wants CI first. When the branch already has an open pull request
+  (`gh pr list --head <branch> --state open`), never open another one: keep the existing one;
+- `gh pr edit <number> --add-label risk:high` only when that slice holds a high-risk task and the
+  repository has the label (`gh label list --search risk:high`), so CI repeats mutation testing
+  on it and reviewers of the other slices are not asked to treat them as high risk. Never create
+  the label, which would change the repository: open the pull request without it and say so at
+  the slice's pause, or in the report (step 6).
 
 ### 6. Report
 
