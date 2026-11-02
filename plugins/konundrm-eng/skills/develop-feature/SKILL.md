@@ -56,7 +56,11 @@ so the extra effort goes only to work that has shown it needs it.
 ## Phase 0: Prepare
 
 1. If `$ARGUMENTS` points to an existing `specs/<NNN-slug>/`, **resume**, in this order:
-   - Read its files, skip stages whose documents are `Approved` and take the base commit from the
+   - First run `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py record`, before anything
+     else: when the last session stopped between a task's commit and its `record`, it attaches that
+     task's pending note to the commit. With nothing pending it exits 1 and changes nothing, so a
+     refusal here is harmless.
+   - Read the feature folder's files, skip stages whose documents are `Approved` and take the base commit from the
      `tasks.md` header.
    - When the plan is `Approved`, some slice has a wave of two or more partitions and `tasks.md`
      has no `- **Parallel:**` line yet (the session stopped between the approval and recording the
@@ -69,13 +73,14 @@ so the extra effort goes only to work that has shown it needs it.
      partition.
    - Run `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py status specs/<NNN-slug>/tasks.md`
      to learn which tasks have a commit and which is next. `status` counts only commits after the
-     plan's base (`<base>..HEAD`), so an earlier feature's `Task:` commits never count. A task with
+     plan's base (`<base>..HEAD`), so an earlier feature's task commits never count. A task with
      its commit counts as built whatever its box says: an unchecked box does not make it pending,
      and a checked box with no commit does not make it built.
    - In the main session, look for an unfinished wave before going on: run `git worktree list` and
      `git branch --list 'wave/*'`. A worktree or branch named `wave/<NNN-slug>-p<k>` means its wave
      is unfinished, so finish that wave first, before any other task. Finish or abort a cherry-pick
-     in progress, then judge what is integrated by each task's `Task:` commit (`status` for
+     in progress, and copy the note of each task commit picked here without one, as
+     [Parallel partitions](#parallel-partitions) step 5 says, then judge what is integrated by each task's `Task:` commit (`status` for
      commits here), never by boxes, SHAs or branch names: a task committed here is
      integrated; one committed only on its partition's branch is still to integrate; one with no
      commit is still being built. When the wave's first partition is built and every other
@@ -84,14 +89,14 @@ so the extra effort goes only to work that has shown it needs it.
      the wave-wide review ran: at [Parallel partitions](#parallel-partitions), run the check
      command (routing a red check as step 6 does), then step 7 again, then step 8.
      Otherwise resume at step 3, and for each partition whose branch still lacks its report commit
-     (`docs(<scope>): report partition P<k>`) and whose folder has no session open, start that
+     (the one that adds `evidence/P<k>.md`) and whose folder has no session open, start that
      session again there with the same `--partition P<k>` prompt (it resumes from its own
      commits). Never build another partition's tasks here.
-   - When every task of a slice has its commit here but the slice's commit
-     `docs(<scope>): summarize slice S<k>` is missing (the session stopped between the two), run
-     the [Slice checkpoint](#slice-checkpoint) for that slice before the next slice's first task.
-     Look for that commit with `git log -E --grep '^docs\(.+\): summarize slice S<k>$'` (anchored,
-     so S1 never matches S10).
+   - When every task of a slice has its commit here but no commit adds its summary
+     `specs/<NNN-slug>/summaries/S<k>.md` (the session stopped between the two), run the
+     [Slice checkpoint](#slice-checkpoint) for that slice before the next slice's first task.
+     Look for that commit with `git log --diff-filter=A --format=%h -- specs/<NNN-slug>/summaries/S<k>.md`: no
+     output means it is missing.
    - Continue at the task `status` names as next (in a parallel wave, the main session still builds
      only the wave's first partition). When it prints `next: none` (every task is built and every
      slice has its summary commit), go on to [Phase 4](#phase-4-finish).
@@ -111,10 +116,9 @@ table of the slice that holds `P<k>` lists them, and skip Phases 1, 2 and 4. Nev
 partition's tasks, and check no box nor write any Rounds line in `tasks.md`: commit each of your
 tasks as step 7 does, with `task_ledger.py message`. After the last task's commit, write a short
 report as `specs/<NNN-slug>/evidence/P<k>.md` with what the main session needs to integrate you:
-your branch, each task's commit SHA and subject, each task's rounds (from its commit) and the
-Suggestions not applied. Commit it as
-`docs(<scope>): report partition P<k>` with the last task's `Task:` line, then stop with that
-report. Never push nor open pull requests: the main session integrates your branch. A partition
+your branch, each task's commit SHA and subject, each task's rounds (from its note) and the
+Suggestions not applied. Commit it as `docs(<scope>): report <what its tasks built>`, then stop
+with that report. Never push nor open pull requests: the main session integrates your branch. A partition
 session never runs the [Slice checkpoint](#slice-checkpoint): the main session runs it once the
 slice's last wave is integrated. A PLAN CHANGE from a rethink is not yours to propose or write:
 stop with a `BLOCKED:` line for the main session that quotes its `Plan change:`. A fresh worktree may lack installed dependencies or local
@@ -182,8 +186,9 @@ When the `tasks.md` header says `**Parallel:** yes`, build each wave of two or m
 [Parallel partitions](#parallel-partitions) says. Otherwise build each slice's tasks here, in list
 order.
 
-Keep a tally per task: spec review rounds, code review rounds and escalations. It goes into the
-task's commit message as `--rounds` at step 7, never into `tasks.md`. Also count the task's failed
+Keep a tally per task: spec review rounds, code review rounds and escalations. It goes to the
+task's commit step as `--rounds` at step 7, which keeps it in the task's note, never into
+`tasks.md`. Also count the task's failed
 reviews in its todo item (a spec review FAIL, or a code or security review with a Critical finding
 no `finding-verifier` refuted), for example `T12 · failed: spec 1, code 2`: the fifth, or a third
 failure of the same review, sends the task to [Rethink](#rethink) instead of another fix round.
@@ -255,13 +260,14 @@ failure of the same review, sends the task to [Rethink](#rethink) instead of ano
    `high` tasks its security review, passed on its final code. Commit it in one call, with the
    task's tally as `--rounds` and the session's co-author trailer as `--trailer`, quoted as
    `committing-changes` says:
-   `msg=$(sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py message specs/<NNN-slug>/tasks.md T<n> --subject "<type>(<scope>): <summary>" --rounds "spec <n> · code <n> · escalations <n>") && git add -A && git commit -F "$msg" --trailer "Co-Authored-By: …"`.
-   `message` writes the subject, the optional `--body` and the trailers
-   `Task: T<n> · Covers: R…` and `Rounds: …` to a file under the Git directory and prints its
-   path; it commits nothing. The commit is a plain `git commit`, so it goes through the commit
+   `msg=$(sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py message specs/<NNN-slug>/tasks.md T<n> --subject "<type>(<scope>): <summary>" --rounds "spec <n> · code <n> · escalations <n>") && git add -A && git commit -F "$msg" --trailer "Co-Authored-By: …" && sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py record`.
+   `message` writes the subject and the optional `--body` to a file under the Git directory and
+   prints its path, and leaves the task's `Task: T<n> · Covers: R…` and `Rounds: …` lines in a
+   pending note; it commits nothing. `record` then attaches that note to the new commit under
+   `refs/notes/konundrm`. The commit is a plain `git commit`, so it goes through the commit
    gate like any other commit: the hook reuses the green result step 6 left for this tree and
    denies the commit on red. This commit checks no box and writes no Rounds line in `tasks.md`:
-   the task's rounds live in its commit message.
+   the task's rounds live in its note.
 
 When the task was the slice's last task and the slice is built here without a parallel wave, run
 the [Slice checkpoint](#slice-checkpoint) before the next slice's first task; a parallel slice runs
@@ -353,7 +359,8 @@ slice's `### Partitions` table this way:
 3. Build the wave's first partition here, on the feature branch, task by task (Phase 3).
 4. Wait for the other partitions. A partition is done when its session says so (the desktop app
    tells you; otherwise the user does) and its branch has a commit for every one of its tasks
-   (`git log -E --grep '^Task: T<n>( |$)' <branch>`) plus its report commit. A partition session
+   (`git log --notes=refs/notes/konundrm -E --grep '^Task: T<n>( |$)' <branch>`) plus its report
+   commit. A partition session
    that stops with `BLOCKED:` holds the wave: relay it to the user and send the answer to that
    session.
 5. Integrate one partition at a time, in table order, and only between tasks: no subagent running
@@ -362,15 +369,25 @@ slice's `### Partitions` table this way:
    own (a task in progress), finish it first; never integrate on a dirty tree.
    - Pick the partition's commits: `git cherry-pick <fork-point>..<branch>`, where the fork point
      is `git merge-base HEAD <branch>`. The range ends at the branch's tip, so it includes the
-     partition's report commit (`docs(<scope>): report partition P<k>`) and its
-     `evidence/P<k>.md`. In `tasks.md`, a conflict keeps both sides' boxes and Rounds lines.
+     partition's report commit and its `evidence/P<k>.md`. In `tasks.md`, a conflict keeps both
+     sides' boxes and Rounds lines.
+   - Cherry-picking leaves notes behind, so copy each picked task commit's note to its copy here:
+     `git notes --ref=refs/notes/konundrm copy <old> <new>`. Pair `<old>` and `<new>` in order,
+     never by subject (two commits may share one): the picked range's commits, oldest first
+     (`git log --reverse --format=%H <fork-point>..<branch>`), against the commits the pick just
+     made, in the same order (`git log --reverse --format=%H <start>..HEAD`, where `<start>` is
+     `git rev-parse HEAD` taken before the pick), skipping a pick that came out empty. The report
+     commit has no note to copy.
    - On a resumed wave, pick only what is not here yet. A partition whose tasks and
      `evidence/P<k>.md` are all here is integrated: skip it. Otherwise, since integration runs in
      table order, the partition's integrated commits are the start of its branch, so begin the
      range after them, `git cherry-pick <last>..<branch>`, where `<last>` is the branch's last task
-     commit whose task already has its commit here (the fork point when none has). The report
-     commit carries the last task's `Task:` line, so it counts as integrated only when
-     `evidence/P<k>.md` is here. When a pick still stops on a commit that comes out empty because
+     commit whose task already has its commit here (the fork point when none has). A session that
+     stopped mid-pick may have left a picked commit without its note: copy it as above before
+     judging what is here. A new session no longer has `<start>`, so pair such a commit with the
+     branch commit that has the same author time and subject (`git log --format='%H %at %s'`; a
+     pick keeps both, and two task commits never share both). The report commit counts as integrated only when `evidence/P<k>.md` is
+     here. When a pick still stops on a commit that comes out empty because
      its task already has its commit here, `git cherry-pick --skip` it.
    - Any other conflict means the partitions were not as independent as planned. Run
      `git cherry-pick --abort`, report which partition and which files conflicted, and stop with a
@@ -386,19 +403,17 @@ slice's `### Partitions` table this way:
 6. If the check is red after a partition, route the failure as in Phase 3 step 4 (a test problem
    to the `test-writer`, everything else to the `implementer`'s fix round, with that partition's
    last task), have `code-reviewer` review the fix, run the check again, and commit the fix with
-   `committing-changes`, carrying that task's `Task: T<n> · Covers: …` line and typed `feat` or
-   `refactor`, never `fix` (measure-impact counts `fix` commits on task files as escaped defects).
+   `committing-changes`, typed `feat` or `refactor`, never `fix` (measure-impact counts `fix` commits on task files as escaped defects).
    Then integrate the next partition.
 7. After the last partition, dispatch `code-reviewer` once over `git diff <wave-base>..HEAD` for
    duplication or inconsistency between partitions built apart, and route its Critical findings
-   as in step 6. A finding carries the `Task:` line of the task whose code it names; when it names
-   several, the wave's last integrated task.
+   as in step 6.
 8. Close any session still open in a partition's folder, then remove its worktree with
    `git worktree remove <folder>`, never `--force`: if it refuses, show the user what is left and
    keep its branch, which Git does not delete while a worktree has it checked out. Delete its
    branch (`git branch -D wave/<NNN-slug>-p<k>`) only once every one of its tasks has its commit
-   here and its report commit is integrated (`evidence/P<k>.md` is here): the report commit
-   carries the last task's `Task:` line, so searching task lines alone cannot tell. A session
+   here and its report commit is integrated (`evidence/P<k>.md` is here): the report commit has
+   no note, so searching task notes alone cannot tell. A session
    that resumes with every partition of the wave integrated never goes back to step 3: it runs
    the check command (step 6 when red) and step 7 again, then picks up here
    ([Phase 0](#phase-0-prepare)).
@@ -416,11 +431,11 @@ wave is integrated:
    evidence and the slice's commits.
 2. Run `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py close-slice specs/<NNN-slug>/tasks.md S<k>`,
    which checks the box of each of the slice's tasks that has its commit and writes the rounds from
-   that commit; it should print `not committed: none`, and a task it names is not built yet, so
+   that commit's note; it should print `not committed: none`, and a task it names is not built yet, so
    build it first. Commit the summary and that `tasks.md` change together with the
    `committing-changes` skill in its develop-feature mode, as
-   `docs(<scope>): summarize slice S<k>` carrying the `Task:` line of the slice's last task, so the
-   summary stays inside that slice's pull request.
+   `docs(<scope>): summarize <what it delivers>`. The commit that adds `summaries/S<k>.md` ends
+   the slice's pull request, so the summary stays inside it.
 3. Dispatch `konundrm-eng:process-reviewer` over the slice's flow record (its prompt is in
    [reference/dispatch-prompts.md](reference/dispatch-prompts.md)), then pass its report, the
    `IMPROVEMENT NOTES` block, on stdin to
@@ -428,8 +443,9 @@ wave is integrated:
    --feature <NNN-slug> --scope "slice S<k>"`, where `<project>` is the repository's folder name.
    The script prints where the notes went. When it warns that the notes fell back to the feature
    folder (`specs/<NNN-slug>/improvement-notes.md`), tell the user, and commit that file as
-   `docs(<scope>): keep slice S<k> improvement notes` carrying the `Task:` line of the slice's
-   last task, so it stays in that slice's pull request. Never change the plugin's skills, agents
+   `docs(<scope>): keep the process improvement notes`. Like the one-session commit of step 8,
+   it comes after the summary commit that ends the slice, so it lands in the next slice's pull
+   request (in the last slice's, after the final slice). Never change the plugin's skills, agents
    or hooks on the strength of these notes: they are proposals for the plugin's author.
 4. Stop and show the user the summary, with its reading order first: the files and line ranges to
    read, in order.
@@ -447,8 +463,8 @@ wave is integrated:
    `- **Sessions:** single` in the `tasks.md` header, build the next slice, or Phase 4, in this
    session instead. When the user asks at the pause to finish the feature in this session, set that
    header line to `- **Sessions:** single` and commit it alone as
-   `docs(<scope>): build <NNN-slug> in one session` carrying the `Task:` line of the slice's last
-   task, before going on. First run `git status --porcelain`: if it lists uncommitted changes, stop
+   `docs(<scope>): build <NNN-slug> in one session`, before going on (it lands in the next
+   slice's pull request, as step 3 says). First run `git status --porcelain`: if it lists uncommitted changes, stop
    with a `BLOCKED:` line that names those files, without opening the new session or giving its
    command. When the desktop app's session tools can open a session in an existing folder, open
    the new session in this folder with the prompt `/konundrm-eng:develop-feature specs/<NNN-slug>` and stop working

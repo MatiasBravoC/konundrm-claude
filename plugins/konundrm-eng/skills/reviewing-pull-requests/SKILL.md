@@ -34,7 +34,8 @@ draft pull request gets a review only when the request asks for it.
 ### 2. Spec and risk
 
 - Spec: a branch named `feat/<NNN-slug>` (or its slice branches) points to `specs/<NNN-slug>/`;
-  otherwise look for `Covers:` trailers in `git log <base>..<head>`. Without a spec, the
+  otherwise look for `Covers:` lines in the commits' notes with
+  `git log --notes=refs/notes/konundrm <base>..<head>`. Without a spec, the
   description's stated intent is the criterion.
 - Risk: high when the pull request has the `risk:high` label, when it touches a task marked high
   in `tasks.md`, or when the diff reaches authentication, authorization, payments, personal data,

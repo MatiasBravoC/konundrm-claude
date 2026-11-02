@@ -56,7 +56,7 @@ son de una tarea ya no llevan línea Task:. -->
 
 - [ ] **T5** develop-feature, committing-changes, fix-bug y reviewing-pull-requests hacen cada commit sin líneas del flujo: la tarea con `message` → `git commit` → `record`, al retomar se corre `record` primero, los resúmenes y demás commits del flujo con un asunto simple y sin línea `Task:` (el resumen se encuentra por su archivo), las particiones copian sus notas con `git notes copy`, el fix-bug guarda `Covers:` y `Escaped-gate:` en su nota, y las búsquedas de `Task:` y `Covers:` usan `--notes=refs/notes/konundrm` · `behavior` · Risk: medium · Covers: R6.1, R6.2, R6.3, R6.4, R9.1
   - Test: `P/hooks/tests/contract/test_flows.py::test_commits_carry_no_flow_lines_and_keep_their_data_in_notes`
-  - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/committing-changes/SKILL.md`, `P/skills/fix-bug/SKILL.md`, `P/skills/reviewing-pull-requests/SKILL.md`, `P/skills/opening-pull-requests/SKILL.md` (modify)
+  - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/committing-changes/SKILL.md`, `P/skills/fix-bug/SKILL.md`, `P/skills/reviewing-pull-requests/SKILL.md`, `P/skills/opening-pull-requests/SKILL.md`, `P/skills/engineering-standards/SKILL.md` (§6, el trailer `Escaped-gate:`), `P/skills/measure-impact/SKILL.md` y los graders de `P/evals/` que esperan esas líneas o el asunto `summarize slice S1` (modify)
   - Invariants: ninguna instrucción pide una línea `Task:`, `Covers:`, `Rounds:` ni `Escaped-gate:` en el mensaje de un commit.
   - Verify: `... -k test_commits_carry_no_flow_lines_and_keep_their_data_in_notes`
   - Depends on: T4

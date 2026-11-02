@@ -84,7 +84,7 @@ Before any fix, find why it happens, with evidence:
 - Ask why until you reach a cause you could have prevented: the faulty line, and the missing
   check that let it in.
 
-Name the gate that should have caught it; the commit records it as `Escaped-gate:` and
+Name the gate that should have caught it; the commit's note records it as `Escaped-gate:` and
 measure-impact counts them:
 
 | Gate | When |
@@ -141,12 +141,13 @@ fix(<scope>): <what is correct now, imperative>
 <the root cause in one or two sentences>
 
 Fixes: <issue reference>
-Covers: B1
-Escaped-gate: <spec | property | review | e2e | none>
 ```
 
-Leave out `Fixes:` when there is no issue; use the requirement ID in `Covers:` when the bug broke
-an approved one.
+Leave out `Fixes:` when there is no issue. The flow's data goes in the commit's note, never in
+the message: `Covers: B1` (the requirement ID when the bug broke an approved one) and
+`Escaped-gate: <spec | property | review | e2e | none>`. Hand both to `committing-changes`: its
+fix-bug mode writes that note in the same command as the commit, with `git notes --ref=refs/notes/konundrm add`, so
+do not run it again here.
 
 ### 9. Report
 
