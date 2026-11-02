@@ -124,18 +124,20 @@ son de una tarea ya no llevan línea Task:. -->
 cuatro tests de esta feature en rojo que en esta máquina pasan: la CI no tiene identidad global de
 Git, que `git notes add` necesita, y Python 3.10 no lee una fecha que termina en `Z`. -->
 
-- [ ] **T11** Los tests de `task_ledger.py` pasan en una máquina sin identidad global de Git (cada repositorio de prueba configura su propio `user.name` y `user.email`) y, cuando `git notes add` falla, `record` muestra el error de Git en vez de suponer que HEAD ya tiene una nota · `behavior` · Risk: medium · Covers: R6.2, R6.4
+- [x] **T11** Los tests de `task_ledger.py` pasan en una máquina sin identidad global de Git (cada repositorio de prueba configura su propio `user.name` y `user.email`) y, cuando `git notes add` falla, `record` muestra el error de Git en vez de suponer que HEAD ya tiene una nota · `behavior` · Risk: medium · Covers: R6.2, R6.4
   - Test: `P/hooks/tests/test_task_ledger.py::test_record_reports_gits_own_error_when_the_note_cannot_be_written` (en un repositorio de prueba sin identidad de Git, con `HOME` vacío y `GIT_CONFIG_NOSYSTEM=1`, y HEAD hecho desde el mensaje pendiente: `record` sale con 1, su error trae el mensaje de Git y no cambia ni las notas ni los archivos pendientes); además, los tests de `test_task_ledger.py` que fallaron en la CI (run 41381551936) pasan con `HOME` vacío y `GIT_CONFIG_NOSYSTEM=1`
   - Files: `P/hooks/scripts/task_ledger.py`, `P/hooks/tests/test_task_ledger.py` (modify)
   - Invariants: al negarse, `record` no cambia ninguna nota ni archivo pendiente.
   - Verify: `... -k test_record_reports_gits_own_error_when_the_note_cannot_be_written`, y `HOME=<carpeta vacía> GIT_CONFIG_NOSYSTEM=1 python -m unittest discover -s P/hooks/tests -t P/hooks -k test_task_ledger`
   - Depends on: T4
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T12** `metrics_report.py` lee en Python 3.10 las fechas de commit que terminan en `Z`, como ya hace con las de los pull requests · `behavior` · Risk: low · Covers: R6.2
+- [x] **T12** `metrics_report.py` lee en Python 3.10 las fechas de commit que terminan en `Z`, como ya hace con las de los pull requests · `behavior` · Risk: low · Covers: R6.2
   - Test: los cinco tests de `P/hooks/tests/test_metrics_report.py` que fallan en la CI con Python 3.10 (`ValueError: Invalid isoformat string: '…Z'`, run 41381573656); esta máquina no tiene Python 3.10, así que su rojo y su verde los muestra la CI del PR
   - Files: `P/hooks/scripts/metrics_report.py` (modify)
   - Verify: `... -k test_metrics_report` aquí, y los trabajos de Python 3.10 de la CI del PR
   - Depends on: T2
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
