@@ -27,45 +27,51 @@ son de una tarea ya no llevan línea Task:. -->
 
 ## Slice S1: los commits hablan solo del cambio y el plugin apunta a su repositorio
 
-- [ ] **T1** `task_commits` lee la tarea y sus rondas también desde la nota del commit en `refs/notes/konundrm`, además del mensaje · `behavior` · Risk: medium · Covers: R6.2, R6.5
+- [x] **T1** `task_commits` lee la tarea y sus rondas también desde la nota del commit en `refs/notes/konundrm`, además del mensaje · `behavior` · Risk: medium · Covers: R6.2, R6.5
   - Test: `P/hooks/tests/test_task_commits.py::test_a_task_and_its_rounds_come_from_the_flow_note_too` (commit sin líneas en el mensaje y nota `Task: T2 · Covers: R1.1` + `Rounds: spec 1 · code 2 · escalations 0` → T2 con (1, 2, 0); un commit con las líneas en el mensaje se sigue encontrando)
   - Files: `P/hooks/scripts/task_commits.py` (modify: `NOTES_REF`)
   - Invariants: sin notas, el resultado es el mismo que hoy; una sola llamada a `git log`.
   - Verify: `... -k test_a_task_and_its_rounds_come_from_the_flow_note_too`
   - Depends on: —
+  - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T2** El informe de impacto lee también de las notas qué commits son tareas y qué gate se escapó en un fix, y usa 500 líneas como tope por omisión de un PR · `behavior` · Risk: low · Covers: R6.2, R6.5, R7.4
+- [x] **T2** El informe de impacto lee también de las notas qué commits son tareas y qué gate se escapó en un fix, y usa 500 líneas como tope por omisión de un PR · `behavior` · Risk: low · Covers: R6.2, R6.5, R7.4
   - Test: `P/hooks/tests/test_metrics_report.py::test_reads_flow_notes_and_defaults_to_a_500_line_budget`
   - Files: `P/hooks/scripts/metrics_report.py` (modify)
   - Verify: `... -k test_reads_flow_notes_and_defaults_to_a_500_line_budget`
   - Depends on: T1
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T3** `task_ledger.py record` pega la nota pendiente al commit recién hecho solo si su asunto es el del mensaje pendiente, y si no, sale con 1 sin cambiar nada · `behavior` · Risk: medium · Covers: R6.2, R6.4
+- [x] **T3** `task_ledger.py record` pega la nota pendiente al commit recién hecho solo si su asunto es el del mensaje pendiente, y si no, sale con 1 sin cambiar nada · `behavior` · Risk: medium · Covers: R6.2, R6.4
   - Test: `P/hooks/tests/test_task_ledger.py::test_record_attaches_the_pending_note_to_the_commit_made_from_it` (con asunto igual → nota en HEAD y archivos pendientes borrados; sin nota pendiente o con otro asunto → exit 1, ni nota ni archivos cambian)
   - Files: `P/hooks/scripts/task_ledger.py` (modify)
   - Invariants: al negarse no cambia ninguna nota ni archivo pendiente.
   - Verify: `... -k test_record_attaches_the_pending_note_to_the_commit_made_from_it`
   - Depends on: T1
+  - Rounds: spec 3 · code 3 · escalations 0
 
-- [ ] **T4** `task_ledger.py message` escribe el mensaje solo con el asunto y el cuerpo, y deja `Task:`, `Covers:` y `Rounds:` en la nota pendiente · `behavior` · Risk: medium · Covers: R6.1, R6.2
+- [x] **T4** `task_ledger.py message` escribe el mensaje solo con el asunto y el cuerpo, y deja `Task:`, `Covers:` y `Rounds:` en la nota pendiente · `behavior` · Risk: medium · Covers: R6.1, R6.2
   - Test: `P/hooks/tests/test_task_ledger.py::test_message_keeps_flow_data_in_the_pending_note`
   - Files: `P/hooks/scripts/task_ledger.py` (modify)
   - Invariants: `message` sigue sin tocar el árbol de trabajo y se niega igual que antes ante una tarea inexistente o ya construida.
   - Verify: `... -k test_message_keeps_flow_data_in_the_pending_note`
   - Depends on: T3
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T5** develop-feature, committing-changes, fix-bug y reviewing-pull-requests hacen cada commit sin líneas del flujo: la tarea con `message` → `git commit` → `record`, al retomar se corre `record` primero, los resúmenes y demás commits del flujo con un asunto simple y sin línea `Task:` (el resumen se encuentra por su archivo), las particiones copian sus notas con `git notes copy`, el fix-bug guarda `Covers:` y `Escaped-gate:` en su nota, y las búsquedas de `Task:` y `Covers:` usan `--notes=refs/notes/konundrm` · `behavior` · Risk: medium · Covers: R6.1, R6.2, R6.3, R6.4, R9.1
+- [x] **T5** develop-feature, committing-changes, fix-bug y reviewing-pull-requests hacen cada commit sin líneas del flujo: la tarea con `message` → `git commit` → `record`, al retomar se corre `record` primero, los resúmenes y demás commits del flujo con un asunto simple y sin línea `Task:` (el resumen se encuentra por su archivo), las particiones copian sus notas con `git notes copy`, el fix-bug guarda `Covers:` y `Escaped-gate:` en su nota, y las búsquedas de `Task:` y `Covers:` usan `--notes=refs/notes/konundrm` · `behavior` · Risk: medium · Covers: R6.1, R6.2, R6.3, R6.4, R9.1
   - Test: `P/hooks/tests/contract/test_flows.py::test_commits_carry_no_flow_lines_and_keep_their_data_in_notes`
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/committing-changes/SKILL.md`, `P/skills/fix-bug/SKILL.md`, `P/skills/reviewing-pull-requests/SKILL.md`, `P/skills/opening-pull-requests/SKILL.md`, `P/skills/engineering-standards/SKILL.md` (§6, el trailer `Escaped-gate:`), `P/skills/measure-impact/SKILL.md` y los graders de `P/evals/` que esperan esas líneas o el asunto `summarize slice S1` (modify)
   - Invariants: ninguna instrucción pide una línea `Task:`, `Covers:`, `Rounds:` ni `Escaped-gate:` en el mensaje de un commit.
   - Verify: `... -k test_commits_carry_no_flow_lines_and_keep_their_data_in_notes`
   - Depends on: T4
+  - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T6** El manifiesto del plugin, el README y las plantillas del marketplace y del workflow de revisión de setup-project apuntan a `MatiasBravoC/konundrm-claude`, y el README dice que el repositorio es privado · `behavior` · Risk: low · Covers: R8.1, R8.2
+- [x] **T6** El manifiesto del plugin, el README y las plantillas del marketplace y del workflow de revisión de setup-project apuntan a `MatiasBravoC/konundrm-claude`, y el README dice que el repositorio es privado · `behavior` · Risk: low · Covers: R8.1, R8.2
   - Test: `P/hooks/tests/contract/test_meta.py::test_plugin_addresses_point_to_its_repository` (ningún archivo fuera de `specs/` nombra `konundrm/konundrm-claude` ni `github.com/konundrm`)
   - Files: `P/.claude-plugin/plugin.json`, `README.md`, `P/skills/setup-project/templates/claude-settings.json`, `P/skills/setup-project/templates/claude-review.yml` (modify)
   - Verify: `... -k test_plugin_addresses_point_to_its_repository`
   - Depends on: —
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
@@ -77,7 +83,7 @@ son de una tarea ya no llevan línea Task:. -->
 
 - [ ] **T7** writing-plans arma slices de 300 a 500 líneas cambiadas de código y tests sin contar los documentos de la feature, con 500 de tope por omisión, y la pausa de cada slice anota sus líneas (código y tests aparte de los documentos) y avisa cuando pasa del tope, también con pausas preaprobadas · `behavior` · Risk: low · Covers: R7.1, R7.2, R7.3, R7.4, R9.1
   - Test: `P/hooks/tests/contract/test_skills.py::test_slices_aim_at_300_to_500_changed_lines`
-  - Files: `P/skills/writing-plans/SKILL.md`, `P/skills/writing-plans/templates/tasks.md`, `P/skills/engineering-standards/SKILL.md`, `P/skills/develop-feature/SKILL.md`, `P/skills/develop-feature/templates/slice-summary.md`, `P/skills/opening-pull-requests/SKILL.md` (modify)
+  - Files: `P/skills/writing-plans/SKILL.md`, `P/skills/writing-plans/templates/tasks.md`, `P/skills/engineering-standards/SKILL.md`, `P/skills/develop-feature/SKILL.md`, `P/skills/develop-feature/templates/slice-summary.md`, `P/skills/opening-pull-requests/SKILL.md`, `P/skills/measure-impact/SKILL.md` y `README.md` (que todavía dicen 400) (modify)
   - Verify: `... -k test_slices_aim_at_300_to_500_changed_lines`
   - Depends on: —
 
