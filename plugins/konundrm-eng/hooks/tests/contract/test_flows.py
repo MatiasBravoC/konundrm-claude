@@ -3474,5 +3474,393 @@ class FlowDataInNotesTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
 
+# Live publishing (003 R1.1-R1.4, R2.1-R2.3, R3.1-R3.6, R9.1): develop-feature asks at plan approval whether to publish
+# while it builds, records `- **Publish:** live|local`, and in live mode pushes each slice branch and each flow commit.
+# These check keywords of each rule inside its section, on blocks from _blocks (lowercased, no backticks).
+_LIVE = re.compile(r"\bpublish:(?:\*\*)? ?live\b|\blive\b")
+_LIVE_LINE = re.compile(r"\bpublish:(?:\*\*)? ?live\b")
+_LIVE_LOCAL = re.compile(r"\bpublish:(?:\*\*)? ?local\b|\blocal\b")
+_LIVE_PUSH = re.compile(r"\bpush\w*")
+_LIVE_PUBLISH = re.compile(r"\bpublish\w*")
+_LIVE_ASK = re.compile(r"\bask\w*|\bquestion\b")
+_LIVE_SEPARATE = re.compile(r"\b(?:separate|apart|own)\b")
+_LIVE_REMOTE_CHECK = re.compile(r"\bgit remote get-url origin\b")
+_LIVE_GH_CHECK = re.compile(r"\bgh repo view\b")
+_LIVE_MISSING = re.compile(r"\bmissing\b|\blacks?\b|\bwithout\b|\bfails?\b")
+_LIVE_SAYS = re.compile(r"\bone line\b|\bone-line\b|\bsay\w*|\btell\w*|\bnam(?:e|es|ing)\b")
+_LIVE_EXPLICIT_YES = re.compile(r"\byes\b|\brequest\b|\basked for\b")
+_LIVE_WITHOUT_THE_LINE = re.compile(r"\b(?:without|lacks?|no)\b(?: \S+){0,4} line\b")
+_LIVE_RESUMES = re.compile(r"\bresum\w*")
+_LIVE_NEVER_ASKS = re.compile(r"\b(?:never|not|without|no)\b(?: \S+){0,4} ask\w*")
+_LIVE_SWITCH_C = re.compile(r"\bgit switch -c feat/<nnn-slug>-s<k>")
+_LIVE_PUSH_U = re.compile(r"\bgit push (?:-u|--set-upstream) origin feat/<nnn-slug>-s<k>")
+_LIVE_FIRST_SLICE = re.compile(r"\bs1\b|\bfirst slice\b")
+_LIVE_PLAN_COMMIT = re.compile(r"\bplan\b")
+_LIVE_PREVIOUS_SLICE = re.compile(r"\b(?:previous|earlier|prior) slice\b|\bslice before\b")
+_LIVE_TIP = re.compile(r"\btip\b|\bhead\b|\bbranch\b")
+_LIVE_ALREADY_EXISTS = re.compile(r"\balready exists?\b|\bexists already\b")
+_LIVE_SWITCH = re.compile(r"\bswitch\w*")
+_LIVE_NOT_AGAIN = re.compile(r"\b(?:never|not|without|no)\b(?: \S+){0,4} (?:creat\w*|again|anew)")
+_LIVE_GIT_PUSH = re.compile(r"\bgit push\b")
+_LIVE_NEXT_TASK = re.compile(r"\b(?:next|following) task\b")
+_LIVE_FLOW_COMMITS = {
+    "the slice summary": re.compile(r"\bsummar\w*"),
+    "plan changes": re.compile(r"\bplan (?:change|edit)\w*"),
+    "partition integration": re.compile(r"\bintegrat\w*"),
+    "the feature's closing commit": re.compile(r"\bfinal\b|\bclos\w*|\bfinish\w*"),
+}
+_LIVE_AFTER = re.compile(r"\b(?:after|once|when)\b")
+_LIVE_CHECK_PASSES = re.compile(r"\bcheck\b(?: \S+){0,4} (?:pass\w*|green)\b")
+_LIVE_PARTITION_BRANCH = re.compile(r"\bwave/|\bpartition(?:'s|s'|s)? branch")
+_LIVE_UNPUSHED = re.compile(r"\bremote\b|\bupstream\b|\bunpushed\b|\bnot (?:yet )?pushed\b")
+_LIVE_FIRST = re.compile(r"\bfirst\b|\bbefore\b")
+_LIVE_FAILS = re.compile(r"\bfail\w*|\breject\w*")
+_LIVE_ERROR = re.compile(r"\berror\b")
+_LIVE_NEVER_FORCES = re.compile(r"\b(?:never|not|no|nor|without)\b(?: \S+){0,4} (?:--force\b|forc\w*)")
+_LIVE_NEVER_PULLS = re.compile(r"\b(?:never|not|no|nor|without)\b(?: \S+){0,6} (?:pull(?!\w* requests?\b)|fetch)\w*")
+_LIVE_ONLY_MAIN = re.compile(r"\bonly\b(?: \S+){0,6} main session\b")
+_LIVE_TEMPLATE_LINE = re.compile(r"- \*\*publish:\*\* local\b")
+_LIVE_NOT_LIVE = re.compile(r"\b(?:without|unless|no)\b(?: \S+){0,2} publish:(?:\*\*)? ?live\b")
+_LIVE_NOTHING_PUSHED = re.compile(r"\b(?:nothing|never|not|no)\b(?: \S+){0,4} push\w*")
+_LIVE_BEFORE = re.compile(r"\bbefore\b")
+_LIVE_PHASE_4 = re.compile(r"\bphase 4\b")
+_LiveRules = dict[str, tuple[list[str], tuple[re.Pattern[str], ...]]]
+
+
+def _live_rule_gaps(rules: _LiveRules) -> list[str]:
+    """Return the name of each rule no sentence of its blocks matches with every one of its patterns."""
+    return [
+        rule for rule, (blocks, patterns) in rules.items() if not any(_in_one_sentence(b, *patterns) for b in blocks)
+    ]
+
+
+def _live_develop_feature_rules(skill: Path) -> _LiveRules:
+    """Return each live-publishing rule of develop-feature's SKILL.md, with the blocks that must hold it."""
+    prepare = _section_blocks(skill, "Phase 0: Prepare")
+    plan = _section_blocks(skill, "Phase 2: Plan")
+    loop = _section_blocks(skill, "Phase 3: Task loop")
+    partitions = _section_blocks(skill, "Parallel partitions")
+    finish = _section_blocks(skill, "Phase 4: Finish")
+    everything = _blocks(skill)
+    rules: _LiveRules = {
+        "Phase 2 lacks (R1.1): a separate question whether to publish while building": (
+            plan,
+            (_LIVE_ASK, _LIVE_SEPARATE, _LIVE_PUBLISH),
+        ),
+        "Phase 2 lacks (R1.1): Publish: live recorded only on an explicit yes or the request": (
+            plan,
+            (_LIVE_LINE, _LIVE_EXPLICIT_YES),
+        ),
+        "Phase 2 lacks (R1.2): saying in one line what is missing and recording local": (
+            plan,
+            (_LIVE_MISSING, _LIVE_SAYS, _LIVE_LOCAL),
+        ),
+        "Phase 2 lacks (R1.3): a tasks.md without the Publish line reads as local": (
+            plan,
+            (_LIVE_PUBLISH, _LIVE_WITHOUT_THE_LINE, _LIVE_LOCAL),
+        ),
+        "Phase 0 or 2 lacks (R1.4): a resumed session follows the Publish choice without asking again": (
+            prepare + plan,
+            (_LIVE_RESUMES, _LIVE_PUBLISH, _LIVE_NEVER_ASKS),
+        ),
+        # The invariant of R1.3: a plan that does not say live (or predates the line) publishes nothing early.
+        "Phase 3 lacks (R1.3): without Publish: live, nothing is pushed before Phase 4's question": (
+            loop,
+            (_LIVE_NOT_LIVE, _LIVE_NOTHING_PUSHED, _LIVE_BEFORE, _LIVE_PHASE_4),
+        ),
+        "Phase 4 lacks (R1.3): asking before pushing": (finish, (_LIVE_ASK, _LIVE_BEFORE, _LIVE_PUSH)),
+        "Phase 3 lacks (R2.1): S1's branch cut from the commit that adds the spec and plan": (
+            loop,
+            (_LIVE_FIRST_SLICE, _LIVE_PLAN_COMMIT),
+        ),
+        "Phase 3 lacks (R2.2): slice k's branch cut from the tip of the previous slice's branch": (
+            loop,
+            (_LIVE_PREVIOUS_SLICE, _LIVE_TIP),
+        ),
+        # The branch may exist without an upstream (its first push failed), and a bare `git push` fails there.
+        "Phase 3 lacks (R2.3): switching to a slice branch that already exists instead of creating it, then"
+        " git push -u origin feat/<NNN-slug>-s<k>": (
+            loop,
+            (_LIVE_ALREADY_EXISTS, _LIVE_SWITCH, _LIVE_NOT_AGAIN, _LIVE_PUSH_U),
+        ),
+        "Phase 3 lacks (R3.1): git push of each task commit before the next task": (
+            loop,
+            (_LIVE_GIT_PUSH, _LIVE_NEXT_TASK),
+        ),
+        "Parallel partitions lacks (R3.3): pushing integrated commits after the check passes": (
+            partitions,
+            (_LIVE_PUSH, _LIVE_AFTER, _LIVE_CHECK_PASSES),
+        ),
+        "Parallel partitions lacks (R3.3): never pushing a partition's branch": (
+            partitions,
+            (_NEVER_PUSHES, _LIVE_PARTITION_BRANCH),
+        ),
+        "Phase 0 lacks (R3.4): a resumed live feature first pushes what the remote lacks with"
+        " git push -u origin feat/<NNN-slug>-s<k>": (
+            prepare,
+            (_LIVE_PUSH, _LIVE_UNPUSHED, _LIVE_FIRST, _LIVE_PUSH_U),
+        ),
+        "develop-feature lacks (R3.5): a failed push stops with BLOCKED: quoting Git's error": (
+            everything,
+            (_BLOCKED, _LIVE_PUSH, _LIVE_FAILS, _LIVE_ERROR),
+        ),
+        "develop-feature lacks (R3.5): a push is never forced": (everything, (_LIVE_PUSH, _LIVE_NEVER_FORCES)),
+        "develop-feature lacks (R3.5): a failed push pulls nothing from the remote": (
+            everything,
+            (_LIVE_PUSH, _LIVE_NEVER_PULLS),
+        ),
+        "develop-feature lacks (R3.6): publishing only from the main session": (
+            everything,
+            (_LIVE_PUSH, _LIVE_ONLY_MAIN),
+        ),
+    }
+    for kind, pattern in _LIVE_FLOW_COMMITS.items():
+        rules[f"develop-feature lacks (R3.2): pushing {kind} as soon as it is made in live mode"] = (
+            everything,
+            (_LIVE, _LIVE_PUSH, pattern),
+        )
+    return rules
+
+
+def _live_develop_feature_gaps() -> list[str]:
+    """Return one message per live-publishing rule develop-feature's SKILL.md lacks in the section that owns it."""
+    skill = DEVELOP_FEATURE_DIR / "SKILL.md"
+    plan = _section_blocks(skill, "Phase 2: Plan")
+    loop = _section_blocks(skill, "Phase 3: Task loop")
+    gaps = _live_rule_gaps(_live_develop_feature_rules(skill))
+    if not any(_LIVE_REMOTE_CHECK.search(block) and _LIVE_GH_CHECK.search(block) for block in plan):
+        gaps.append("Phase 2 lacks (R1.1, R1.2): git remote get-url origin and gh repo view before the question")
+    if not any(_LIVE_SWITCH_C.search(block) and _LIVE_PUSH_U.search(block) and _LIVE.search(block) for block in loop):
+        gaps.append(
+            "Phase 3 lacks (R2.1, R2.2): in live mode, git switch -c feat/<NNN-slug>-s<k> and"
+            " git push -u origin feat/<NNN-slug>-s<k>"
+        )
+    return gaps
+
+
+# Stacked pull requests per slice (003 R4.1-R4.9, R9.1): in live mode each slice ends in its pull request, stacked on
+# the previous slice's, and opening-pull-requests writes the merge order into every stacked pull request, live or at the
+# end of a local feature. Keywords of each rule inside its section, on blocks from _blocks (lowercased, no backticks).
+_STACK_GH_PR_CREATE = re.compile(r"\bgh pr create --base (?:<[^>]*>|\S+) --head feat/<nnn-slug>-s<k>")
+_STACK_OPENS_PR = re.compile(r"\bgh pr create\b|\bopen\w*\b(?: \S+){0,4} (?:pull requests?|prs?)\b")
+_STACK_PR = re.compile(r"\bpull requests?\b|\bprs?\b|\bgh pr create\b")
+_STACK_AFTER_PUSH = re.compile(r"\bpush\w*|\bafter\b|\bonce\b|\bthen\b")
+_STACK_DEFAULT_BRANCH = re.compile(r"\bdefault branch\b")
+_STACK_BASE = re.compile(r"\bbase\b|\bagainst\b|--base\b")
+_STACK_BRANCH = re.compile(r"\bbranch\b")
+_STACK_NOT_DRAFT = re.compile(r"\bready for review\b|\b(?:never|not|no|without)\b(?: \S+){0,4} (?:--)?drafts?\b")
+_STACK_GONE = re.compile(r"\bno longer\b|\bgone\b|\bdeleted\b|\bmissing\b|\bnot (?:on|in) the remote\b")
+# R4.2: a branch never pushed (a local delivery's slices before step 5) is absent too, so its absence alone must not
+# send the pull request to the default branch: the fallback requires the previous pull request to be merged.
+_STACK_MERGED_PR = re.compile(
+    r"--state merged\b|\b(?:pull requests?|prs?)\b(?: \S+){0,4} merged\b|\bmerged (?:pull requests?|prs?)\b"
+)
+_STACK_REQUIRES = re.compile(r"\bonly\b|\brequir\w*|--state merged\b")
+_STACK_POSITION = re.compile(r"\((?:<?k>?|\d+)/(?:<?n>?|\d+)\)")
+_STACK_TITLE = re.compile(r"\btitles?\b")
+_STACK_SLICES = re.compile(r"\bslices?\b")
+_STACK_PLAN = re.compile(r"\bplan\b|\btasks\.md\b")
+_STACK_TOTAL = re.compile(r"\btotal\b|\bnumber of\b|\bhow many\b|\bcount\b")
+_STACK_MERGE_ORDER = re.compile(r"merge order: (?:<[^>]+>|\w+) of (?:<[^>]+>|\w+)\. merge #(?:<[^>]+>|\d+) first\.")
+_STACK_MERGE_FIRST = re.compile(r"merge order: 1 of (?:<[^>]+>|\w+)\. merge this one first\.")
+_STACK_STARTS = re.compile(r"\bstart\w*|\bbegin\w*|\bfirst line\b|\bbefore any section\b")
+_STACK_OLD_STACKED_ON = re.compile(r"\bstacked on #")
+_STACK_RISK_HIGH = re.compile(r"\brisk:high\b")
+_STACK_ONLY = re.compile(r"\bonly\b")
+_STACK_LABEL_EXISTS = re.compile(r"\bexist\w*|\bgh label list\b|\bhas (?:the |that |this )?(?:label|it)\b")
+_STACK_LABEL = re.compile(r"\blabel\b")
+_STACK_NEVER_CREATES = re.compile(r"\b(?:never|without|nor|not)\b (?:\S+ ){0,2}?creat\w*")
+_STACK_ASKS_TO_CREATE = re.compile(r"\bask\w* before creat\w*")
+_STACK_SAYS = re.compile(r"\bsay\w*|\btell\w*|\bmention\w*|\bwarn\w*|\breport\w*")
+_STACK_PAUSE = re.compile(r"\bpaus\w*|\bcheckpoint\b")
+_STACK_ALREADY_OPEN = re.compile(
+    r"\balready\b(?: \S+){0,4} open\b|\bopen (?:pull request|pr)\b(?: \S+){0,4} already\b"
+    r"|\bexisting (?:open )?(?:pull request|pr)\b"
+)
+_STACK_NO_DUPLICATE = re.compile(
+    r"\b(?:never|not|no|without)\b(?: \S+){0,4} (?:another|second|again|duplicat\w*|new one)\b"
+)
+_STACK_GH = re.compile(r"\bgh\b")
+_STACK_FAILS = re.compile(r"\bfail\w*|\bcannot\b|\bcan't\b|\breject\w*")
+_STACK_URLS = re.compile(r"\burls?\b")
+_STACK_IN_ORDER = re.compile(r"\border\b")
+_STACK_SHOWS = re.compile(r"\bpaus\w*|\bshow\w*|\bstop\w*")
+_STACK_SESSION_MESSAGE = re.compile(r"\b(?:closing|session'?s?|final) message\b|\bmessage of the session\b")
+_STACK_NO_PR = re.compile(r"\b(?:without|lacks?|no|missing|has no)\b(?: \S+){0,4} (?:pull requests?|prs?)\b")
+_STACK_FIRST = re.compile(r"\bbefore\b|\bfirst\b")
+_STACK_LAST_SLICE = re.compile(r"\blast slice\b")
+_STACK_INSTEAD_OF_ASKING = re.compile(
+    r"\b(?:instead of|rather than) ask\w*|\b(?:never|not|no|without)\b(?: \S+){0,4} ask\w*"
+    r"|\bskip\w*(?: \S+){0,3} question\b"
+)
+_STACK_NOT_LIVE = re.compile(
+    r"\blocal\b|\botherwise\b|\b(?:without|unless|no)\b(?: \S+){0,2} publish:(?:\*\*)? ?live\b"
+)
+
+
+def _stacked_pull_request_rules(develop_feature: Path, opening: Path) -> _LiveRules:
+    """Return each stacked-pull-request rule of develop-feature and opening-pull-requests, with the blocks that hold it.
+
+    The pull request mechanics may sit in develop-feature's Slice checkpoint or in opening-pull-requests, which it runs;
+    the title and the merge-order line must sit in opening-pull-requests, so a local feature's delivery stacks the same.
+    """
+    prepare = _section_blocks(develop_feature, "Phase 0: Prepare")
+    checkpoint = _section_blocks(develop_feature, "Slice checkpoint")
+    finish = _section_blocks(develop_feature, "Phase 4: Finish")
+    opening_blocks = _blocks(opening)
+    mechanics = checkpoint + opening_blocks
+    live_prepare = [block for block in prepare if _LIVE.search(block)]
+    return {
+        "Slice checkpoint lacks (R4.1): in live mode, opening the slice's pull request once its summary is pushed": (
+            checkpoint,
+            (_LIVE, _STACK_OPENS_PR, _STACK_AFTER_PUSH),
+        ),
+        "Slice checkpoint or opening-pull-requests lacks (R4.1): the first slice's pull request against the default"
+        " branch": (mechanics, (_LIVE_FIRST_SLICE, _STACK_DEFAULT_BRANCH, _STACK_BASE)),
+        "Slice checkpoint or opening-pull-requests lacks (R4.1): each later pull request against the previous slice's"
+        " branch": (mechanics, (_LIVE_PREVIOUS_SLICE, _STACK_BRANCH, _STACK_BASE)),
+        "Slice checkpoint or opening-pull-requests lacks (R4.1): the pull request opened ready for review, not as a"
+        " draft": (mechanics, (_STACK_PR, _STACK_NOT_DRAFT)),
+        "opening-pull-requests lacks (R4.2): against the default branch only when the previous slice's pull request"
+        " is merged and its branch is gone from the remote": (
+            opening_blocks,
+            (_LIVE_PREVIOUS_SLICE, _STACK_GONE, _STACK_MERGED_PR, _STACK_REQUIRES, _STACK_DEFAULT_BRANCH),
+        ),
+        "opening-pull-requests lacks (R4.3): each title ends with its position and the total, (k/N)": (
+            opening_blocks,
+            (_STACK_TITLE, _STACK_POSITION),
+        ),
+        "opening-pull-requests lacks (R4.3): N is the number of slices the plan has": (
+            opening_blocks,
+            (_STACK_SLICES, _STACK_PLAN, _STACK_TOTAL),
+        ),
+        "Slice checkpoint or opening-pull-requests lacks (R4.4): risk:high only if the repository has the label": (
+            mechanics,
+            (_STACK_RISK_HIGH, _STACK_ONLY, _STACK_LABEL_EXISTS),
+        ),
+        "Slice checkpoint or opening-pull-requests lacks (R4.4): never creating the label": (
+            mechanics,
+            (_STACK_LABEL, _STACK_NEVER_CREATES),
+        ),
+        "Slice checkpoint or opening-pull-requests lacks (R4.4): saying at the slice's pause that the label is"
+        " missing": (mechanics, (_STACK_LABEL, _STACK_SAYS, _STACK_PAUSE)),
+        "Slice checkpoint or opening-pull-requests lacks (R4.5): no second pull request for a branch that already has"
+        " an open one": (mechanics, (_STACK_ALREADY_OPEN, _STACK_NO_DUPLICATE)),
+        "Slice checkpoint or opening-pull-requests lacks (R4.7): BLOCKED: quoting the error when gh cannot open the"
+        " pull request": (mechanics, (_BLOCKED, _STACK_GH, _STACK_PR, _STACK_FAILS, _LIVE_ERROR)),
+        "Slice checkpoint lacks (R4.8): the pause shows the feature's pull request URLs in merge order": (
+            checkpoint,
+            (_STACK_URLS, _STACK_PR, _STACK_IN_ORDER, _STACK_SHOWS),
+        ),
+        "Slice checkpoint lacks (R4.8): with pre-approved pauses, the session's message lists the URLs": (
+            checkpoint,
+            (_STACK_URLS, _STACK_SESSION_MESSAGE),
+        ),
+        "Phase 0 lacks (R4.6): a resumed live feature first opens the pull request a finished slice lacks": (
+            live_prepare,
+            (_STACK_SLICES, _STACK_NO_PR, _STACK_OPENS_PR, _STACK_FIRST),
+        ),
+        "Phase 4 lacks (R4.9): in live mode, pushing the final commit to the last slice's branch": (
+            finish,
+            (_LIVE, _LIVE_PUSH, _STACK_LAST_SLICE),
+        ),
+        "Phase 4 lacks (R4.9): in live mode, listing every pull request URL in merge order": (
+            finish,
+            (_LIVE, _STACK_URLS, _STACK_IN_ORDER),
+        ),
+        "Phase 4 lacks (R4.9): in live mode, not asking whether to push": (finish, (_LIVE, _STACK_INSTEAD_OF_ASKING)),
+        # The invariant: a local feature still asks before anything goes up.
+        "Phase 4 lacks (invariant): in local mode, asking before pushing": (
+            finish,
+            (_STACK_NOT_LIVE, _LIVE_ASK, _LIVE_BEFORE, _LIVE_PUSH),
+        ),
+    }
+
+
+def _stacked_pull_request_gaps() -> list[str]:
+    """Return one message per stacked-pull-request rule the two skills lack, and per old rule they still state."""
+    develop_feature = DEVELOP_FEATURE_DIR / "SKILL.md"
+    opening = SKILLS_DIR / "opening-pull-requests" / "SKILL.md"
+    opening_blocks = _blocks(opening)
+    mechanics = _section_blocks(develop_feature, "Slice checkpoint") + opening_blocks
+    gaps = _live_rule_gaps(_stacked_pull_request_rules(develop_feature, opening))
+    if not any(_STACK_GH_PR_CREATE.search(block) for block in mechanics):
+        gaps.append(
+            "Slice checkpoint or opening-pull-requests lacks (R4.1): gh pr create --base <base> --head"
+            " feat/<NNN-slug>-s<k>"
+        )
+    if not any(_STACK_MERGE_ORDER.search(block) and _STACK_STARTS.search(block) for block in opening_blocks):
+        gaps.append(
+            "opening-pull-requests lacks (R4.3): the description starts with Merge order: k of N. Merge #<n> first."
+        )
+    if not any(_STACK_MERGE_FIRST.search(block) for block in opening_blocks):
+        gaps.append("opening-pull-requests lacks (R4.3): the first one's Merge order: 1 of N. Merge this one first.")
+    gaps += [
+        f"opening-pull-requests still says (R4.3): {block!r}"
+        for block in opening_blocks
+        if _STACK_OLD_STACKED_ON.search(block)
+    ]
+    gaps += [
+        f"still asks to create the label (R4.4): {sentence.strip()!r}"
+        for block in mechanics
+        for sentence in _sentences(block)
+        if _STACK_ASKS_TO_CREATE.search(sentence) and _STACK_LABEL.search(sentence)
+    ]
+    return gaps
+
+
+class LivePublishingFlowTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_live_publishing_pushes_each_slice_branch_and_commit(self) -> None:
+        """R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6: 003 develop-feature publishes
+        a feature while it builds it only when the plan says so (R9.1: checked here, without a model).
+
+        Phase 2 checks the remote (`git remote get-url origin`) and `gh repo view`, asks a separate question, records
+        `- **Publish:** live` only on an explicit yes or the request, otherwise says in one line what is missing and
+        records local; a plan without the line reads as local and a resumed session never asks again. Phase 3 cuts
+        `feat/<NNN-slug>-s<k>` with `git switch -c` (S1 from the plan's commit, slice k from the previous slice's
+        tip), switches to an existing one instead of creating it, pushes it with `git push -u origin` and runs
+        `git push` after each task commit, before the next task. Every other flow commit (summary, plan change,
+        integration, final commit) is pushed too in live mode; integrated partitions go up after the check passes and
+        their branches never; a resume, and a switch to an existing slice branch, first push what the remote lacks
+        with `git push -u origin feat/<NNN-slug>-s<k>`, which also sets the upstream; a failed push stops with
+        `BLOCKED:` quoting Git's error, never forced nor pulled; only the main session publishes, and the implementer
+        and test-writer never push. The tasks.md template carries `- **Publish:** local`."""
+        template = (SKILLS_DIR / "writing-plans" / "templates" / "tasks.md").read_text(encoding="utf-8")
+        header = _split_blocks(template.split("\n## ")[0].splitlines())
+
+        gaps = _live_develop_feature_gaps()
+        gaps += [
+            f"agents/{agent}.md lacks (R3.6): never pushing"
+            for agent in ("implementer", "test-writer")
+            if not any(_never_pushes(block) for block in _blocks(PLUGIN_ROOT / "agents" / f"{agent}.md"))
+        ]
+        if not any(_LIVE_TEMPLATE_LINE.match(item) for item in header):
+            gaps.append("writing-plans tasks.md template lacks (R1.1): - **Publish:** local in its header")
+
+        self.assertEqual(gaps, [])
+
+    def test_slices_end_in_stacked_pull_requests_in_merge_order(self) -> None:
+        """R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9: 003 each live slice ends in its own pull request,
+        stacked on the previous slice's, with its merge order written down (R9.1: checked here, without a model).
+
+        Once a live slice's summary is pushed, `gh pr create --base <base> --head feat/<NNN-slug>-s<k>` opens it ready
+        for review: S1 against the default branch, each later one against the previous slice's branch, or against the
+        default branch only when that slice's pull request is merged and its branch gone from the remote (a branch
+        never pushed is absent too). opening-pull-requests, which also delivers a local
+        feature, ends each title with `(k/N)` (N the plan's slices) and starts each description with
+        `Merge order: k of N. Merge #<n> first.` (the first: `Merge this one first.`) instead of `Stacked on #`.
+        `risk:high` goes on only if the label exists, never created, and its absence is said at the pause; a branch
+        with an open pull request gets no second one; a gh failure stops with `BLOCKED:` quoting its error. The pause,
+        or the session's message when pauses are pre-approved, lists the URLs in merge order; a resumed live feature
+        first opens the pull request a finished slice lacks; Phase 4 in live mode pushes the final commit to the last
+        slice's branch and lists every URL in merge order instead of asking, while a local feature still asks before
+        pushing."""
+        gaps = _stacked_pull_request_gaps()
+
+        self.assertEqual(gaps, [])
+
+
 if __name__ == "__main__":
     unittest.main()

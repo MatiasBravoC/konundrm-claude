@@ -82,8 +82,12 @@ Use [templates/tasks.md](templates/tasks.md). Rules for each task:
 Group consecutive tasks under `## Slice S<n>: <what this pull request delivers>` headings
 (Standards → Git and pull requests). A slice:
 
-- fits the pull request budget in the header (default 400 changed lines, tests included); estimate
-  from the files each task touches, and split the slice when in doubt;
+- aims at 300–500 changed lines of code and tests, the feature's documents (`requirements.md`,
+  `design.md`, `tasks.md`, summaries, evidence) not counted, and never goes over the pull request
+  budget in the header (default 500); estimate from the files each task touches, and split the
+  slice when in doubt;
+- is smaller than 300 lines only when the whole feature is smaller, or to split off high-risk work
+  from the rest;
 - merges on its own: after its last task the check is green and nothing user-visible is half-built
   and reachable;
 - keeps high-risk tasks together with the tests that guard them, and apart from unrelated

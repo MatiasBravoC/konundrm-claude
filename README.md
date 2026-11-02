@@ -54,7 +54,7 @@ subagentes (`code-reviewer`, como en la documentación de subagentes).
 | `documenting-code` | Claude y el `implementer` | Doc-comments estilo Google y el encabezado de cada módulo |
 | `naming-identifiers` | Claude y el `implementer` | Auditoría de nombres y renombrado seguro |
 | `committing-changes` | Claude | Commits atómicos en Conventional Commits, sin emojis, solo con el check en verde |
-| `opening-pull-requests` | Claude | Hace push (con permiso) y abre un pull request apilado por entrega, o uno solo con todas. Arma cada descripción desde el resumen de la entrega, con la tabla requisito → test → evidencia, el riesgo y los commits de cada tarea, y enlaza el resumen de la feature |
+| `opening-pull-requests` | Claude | Hace push (con permiso) y abre un pull request apilado por entrega, o uno solo con todas. Arma cada descripción desde el resumen de la entrega, con la plantilla de PR del repositorio o con cuatro secciones fijas, en inglés simple y sin los IDs ni la jerga del flujo |
 | `reviewing-pull-requests` | Claude, o la CI con `claude-review.yml` | Revisa un PR con los revisores del plugin y publica solo hallazgos verificados; nunca aprueba |
 | `develop-feature` | Solo `/konundrm-eng:develop-feature` | Orquestador de features: encadena todo, construye en paralelo si lo apruebas, replantea las tareas trabadas, se detiene tras cada entrega con su resumen, verifica según el riesgo, escribe el resumen de la feature y termina en pull requests (ver [Cómo avanza una feature](#cómo-avanza-una-feature)) |
 | `fix-bug` | Solo `/konundrm-eng:fix-bug` | Orquestador de bugs: reproduce, test de regresión en rojo, causa raíz, arreglo mínimo, revisiones (con replanteo si el arreglo se traba) y un commit `fix` con `Escaped-gate:` |
@@ -153,11 +153,30 @@ rol, edita el frontmatter de su agente.
   módulo es dueño de qué, los resúmenes de cada entrega, las decisiones, los requisitos con sus
   tests y evidencia, los replanteos, los hallazgos refutados, las sugerencias no aplicadas y cómo
   probar la feature.
-- **Entrega.** Después de la verificación final, y solo si apruebas el push, te ofrece un pull
-  request apilado por entrega (por defecto) o uno solo con todas. Apilados, `risk:high` va solo en
-  las entregas con una tarea de riesgo alto; con uno solo y alguna tarea de riesgo alto, avisa
-  antes que `risk:high` cubrirá la feature completa. Cada descripción sale del resumen de su
-  entrega y enlaza el resumen de la feature.
+- **Publicación en vivo.** Al aprobar el plan, si el repositorio tiene un remoto y `gh` con la
+  sesión iniciada lo ve, `develop-feature` pregunta aparte si publicar la feature en GitHub en vivo
+  y lo registra en `tasks.md` (`- **Publish:** live` o `local`). En vivo, cada entrega tiene su
+  rama, `feat/<NNN-slug>-s<k>`, subida al empezar; cada commit se sube apenas se hace, nunca con
+  push forzado (un rechazo lo detiene con `BLOCKED:`); y cada entrega terminada abre su pull
+  request, listo para revisar y apilado sobre el de la anterior. Solo la sesión principal sube:
+  los subagentes y las sesiones de partición nunca lo hacen. Un plan sin esa línea se construye en
+  local, como antes.
+- **Datos del flujo en notas de Git.** Los mensajes de commit hablan solo del cambio. La tarea,
+  los requisitos que cubre y sus rondas de revisión (y en un `fix-bug`, el criterio y el gate que
+  se escapó) quedan en una nota de Git bajo `refs/notes/konundrm`, que `task_ledger.py record`
+  pega al commit recién hecho. Las notas se quedan en tu repositorio local: no viajan en un clon
+  ni sobreviven al squash de GitHub. Las features empezadas antes de 0.8.0 conservan esas líneas
+  en el mensaje y se siguen leyendo.
+- **Entrega.** En vivo, al terminar la feature sube el commit final y lista los pull requests en
+  el orden en que se aceptan, sin preguntar. En local, después de la verificación final y solo si
+  apruebas el push, te ofrece un pull request apilado por entrega (por defecto) o uno solo con
+  todas. Cada pull request apilado termina su título con `(k/N)` y empieza su descripción con
+  `Merge order: <k> of <N>.` Apilados, `risk:high` va solo en las entregas con una tarea de riesgo
+  alto, y solo si el repositorio tiene esa etiqueta; con uno solo y alguna tarea de riesgo alto,
+  avisa antes que `risk:high` cubrirá la feature completa. Cada descripción sale del resumen de su
+  entrega y usa la plantilla de PR del repositorio (`pull_request_template.md` en `.github/`, la
+  raíz o `docs/`) o las secciones fijas, en inglés simple y sin IDs del plan, la palabra slice ni
+  líneas del flujo.
 - **Notas de mejora.** Al cerrar cada entrega y al final de la feature, el `process-reviewer`
   lee el registro del flujo (rondas de revisión, escalamientos, replanteos, subagentes bloqueados,
   eventos de los gates y tus correcciones) y propone mejoras al plugin, cada una con su evidencia.
@@ -208,7 +227,7 @@ los binarios locales de `npx`, los scopes de npm con registro propio en `.npmrc`
 calcen con `KONUNDRM_TRUSTED_PACKAGES` (globs separados por coma, como `@konundrm/*,konundrm-*`).
 `KONUNDRM_ACCEPTED_LICENSES` (globs separados por coma, como `GPL-3.0*`) lista las licencias que el
 proyecto acepta, `KONUNDRM_OSV_URL` apunta a un espejo de OSV y `KONUNDRM_DEPENDENCY_GUARD=off`
-apaga el guard. `KONUNDRM_PR_BUDGET` cambia el presupuesto de líneas por pull request (400).
+apaga el guard. `KONUNDRM_PR_BUDGET` cambia el presupuesto de líneas por pull request (500).
 
 ### De dónde salen las prácticas
 

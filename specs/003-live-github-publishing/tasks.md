@@ -1,14 +1,14 @@
 # Tasks: Publicar en GitHub mientras se construye una feature
 
 - **Spec:** [requirements.md](requirements.md) · **Design:** [design.md](design.md)
-- **Status:** Approved <!-- Draft → Approved → Done -->
+- **Status:** Done <!-- Draft → Approved → Done -->
 - **Check command:** `npm run check`
 - **Base commit:** `c8229a227d2ca0ce8e2bc8904f0dbbc626327285`
 - **Pull request budget:** 500 changed lines of code and tests per slice (aim for 300–500; the feature's documents do not count)
 - **Parallel:** no <!-- ningún slice tiene una ola de dos o más particiones -->
 - **Checkpoints:** pre-approved <!-- el usuario lo aprobó con el plan (2026-11-01) -->
 - **Decisions:** ask <!-- el usuario pidió que se le pregunte (2026-11-01) -->
-- **Sessions:** per-slice
+- **Sessions:** single <!-- el usuario eligió construir S3 en la sesión de la Fase 4 (2026-11-02) -->
 - **Publish:** local <!-- esta feature se construye en local y se sube solo con el sí del usuario (non-goal) -->
 
 <!-- Rutas relativas a la raíz del repositorio; P = plugins/konundrm-eng.
@@ -81,35 +81,66 @@ son de una tarea ya no llevan línea Task:. -->
 
 ## Slice S2: publicar en vivo, un PR por slice en orden y su texto
 
-- [ ] **T7** writing-plans arma slices de 300 a 500 líneas cambiadas de código y tests sin contar los documentos de la feature, con 500 de tope por omisión, y la pausa de cada slice anota sus líneas (código y tests aparte de los documentos) y avisa cuando pasa del tope, también con pausas preaprobadas · `behavior` · Risk: low · Covers: R7.1, R7.2, R7.3, R7.4, R9.1
+- [x] **T7** writing-plans arma slices de 300 a 500 líneas cambiadas de código y tests sin contar los documentos de la feature, con 500 de tope por omisión, y la pausa de cada slice anota sus líneas (código y tests aparte de los documentos) y avisa cuando pasa del tope, también con pausas preaprobadas · `behavior` · Risk: low · Covers: R7.1, R7.2, R7.3, R7.4, R9.1
   - Test: `P/hooks/tests/contract/test_skills.py::test_slices_aim_at_300_to_500_changed_lines`
   - Files: `P/skills/writing-plans/SKILL.md`, `P/skills/writing-plans/templates/tasks.md`, `P/skills/engineering-standards/SKILL.md`, `P/skills/develop-feature/SKILL.md`, `P/skills/develop-feature/templates/slice-summary.md`, `P/skills/opening-pull-requests/SKILL.md`, `P/skills/measure-impact/SKILL.md` y `README.md` (que todavía dicen 400) (modify)
   - Verify: `... -k test_slices_aim_at_300_to_500_changed_lines`
   - Depends on: —
+  - Rounds: spec 1 · code 1 · escalations 0
 
-- [ ] **T8** develop-feature publica en vivo cuando el plan lo dice: al aprobar el plan pregunta aparte si se publica en vivo (solo si hay remoto y `gh` ve el repositorio, si no dice qué falta) y lo registra en `- **Publish:**`; al empezar cada slice crea `feat/<NNN-slug>-s<k>` desde el slice anterior (S1 desde el commit del plan) y la sube; sube cada commit del flujo apenas lo hace; al retomar sube lo pendiente; un push que falla termina en `BLOCKED:`; nunca fuerza, y ni los subagentes ni las sesiones de partición suben · `behavior` · Risk: medium · Covers: R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R9.1
+- [x] **T8** develop-feature publica en vivo cuando el plan lo dice: al aprobar el plan pregunta aparte si se publica en vivo (solo si hay remoto y `gh` ve el repositorio, si no dice qué falta) y lo registra en `- **Publish:**`; al empezar cada slice crea `feat/<NNN-slug>-s<k>` desde el slice anterior (S1 desde el commit del plan) y la sube; sube cada commit del flujo apenas lo hace; al retomar sube lo pendiente; un push que falla termina en `BLOCKED:`; nunca fuerza, y ni los subagentes ni las sesiones de partición suben · `behavior` · Risk: medium · Covers: R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R9.1
   - Test: `P/hooks/tests/contract/test_flows.py::test_live_publishing_pushes_each_slice_branch_and_commit`
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/writing-plans/templates/tasks.md` (línea `Publish:`), `P/agents/implementer.md`, `P/agents/test-writer.md` (modify)
   - Invariants: sin `Publish: live`, nada se sube antes de la pregunta de la Fase 4.
   - Verify: `... -k test_live_publishing_pushes_each_slice_branch_and_commit`
   - Depends on: T5
+  - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T9** Al terminar cada slice en vivo se abre su PR apilado sobre el del anterior (o contra la rama por defecto si la anterior ya no está), con `(k/N)` al final del título y `Merge order: k of N. Merge #<n> first.` al empezar la descripción, sin duplicar un PR abierto, con `risk:high` solo si la etiqueta existe y `BLOCKED:` si `gh` falla; la pausa y el final muestran los PR en orden, al retomar se abre el que falte, y la entrega al final de una feature local apila igual · `behavior` · Risk: medium · Covers: R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R9.1
+- [x] **T9** Al terminar cada slice en vivo se abre su PR apilado sobre el del anterior (o contra la rama por defecto si la anterior ya no está), con `(k/N)` al final del título y `Merge order: k of N. Merge #<n> first.` al empezar la descripción, sin duplicar un PR abierto, con `risk:high` solo si la etiqueta existe y `BLOCKED:` si `gh` falla; la pausa y el final muestran los PR en orden, al retomar se abre el que falte, y la entrega al final de una feature local apila igual · `behavior` · Risk: medium · Covers: R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R9.1
   - Test: `P/hooks/tests/contract/test_flows.py::test_slices_end_in_stacked_pull_requests_in_merge_order`
   - Files: `P/skills/develop-feature/SKILL.md`, `P/skills/opening-pull-requests/SKILL.md` (modify)
   - Invariants: en modo local, la Fase 4 sigue preguntando antes de subir.
   - Verify: `... -k test_slices_end_in_stacked_pull_requests_in_merge_order`
   - Depends on: T8
+  - Rounds: spec 2 · code 2 · escalations 0
 
-- [ ] **T10** El texto del PR usa la plantilla del repositorio al pie de la letra (`.github/`, raíz o `docs/`) o las cuatro secciones fijas, en inglés, sin IDs del plan, sin la palabra slice y sin líneas del flujo; la plantilla de PR de setup-project tiene esas cuatro secciones; y la versión pasa a 0.8.0 con su changelog y el README · `behavior` · Risk: medium · Covers: R5.1, R5.2, R5.3, R5.4, R9.1, R9.2
+- [x] **T10** El texto del PR usa la plantilla del repositorio al pie de la letra (`.github/`, raíz o `docs/`) o las cuatro secciones fijas, en inglés, sin IDs del plan, sin la palabra slice y sin líneas del flujo; la plantilla de PR de setup-project tiene esas cuatro secciones; y la versión pasa a 0.8.0 con su changelog y el README · `behavior` · Risk: medium · Covers: R5.1, R5.2, R5.3, R5.4, R9.1, R9.2
   - Test: `P/hooks/tests/contract/test_skills.py::test_pull_request_text_follows_the_template_without_flow_data` (las pruebas que fijan IDs en el texto del PR, como `PullRequestTaskCommitsTest`, se reescriben o se quitan en el paso rojo)
   - Files: `P/skills/opening-pull-requests/SKILL.md`, `P/skills/setup-project/templates/pull_request_template.md`, `P/.claude-plugin/plugin.json`, `P/CHANGELOG.md`, `README.md` (modify)
   - Invariants: `opening-pull-requests` sigue pidiendo un sí antes de cada push de una feature local y nunca fusiona ni aprueba.
   - Verify: `... -k test_pull_request_text_follows_the_template_without_flow_data`
   - Depends on: T9
+  - Rounds: spec 1 · code 1 · escalations 0
 
 ### Partitions
 
 | Wave | Partition | Tasks | Depends on |
 | --- | --- | --- | --- |
 | 1 | P2 | T7–T10 | P1 |
+
+## Slice S3: la CI de GitHub sin identidad global de Git y con Python 3.10
+
+<!-- 2026-11-02: cambio de plan que el usuario aprobó al entregar. La CI de los PR #3 y #4 mostró
+cuatro tests de esta feature en rojo que en esta máquina pasan: la CI no tiene identidad global de
+Git, que `git notes add` necesita, y Python 3.10 no lee una fecha que termina en `Z`. -->
+
+- [x] **T11** Los tests de `task_ledger.py` pasan en una máquina sin identidad global de Git (cada repositorio de prueba configura su propio `user.name` y `user.email`) y, cuando `git notes add` falla, `record` muestra el error de Git en vez de suponer que HEAD ya tiene una nota · `behavior` · Risk: medium · Covers: R6.2, R6.4
+  - Test: `P/hooks/tests/test_task_ledger.py::test_record_reports_gits_own_error_when_the_note_cannot_be_written` (en un repositorio de prueba sin identidad de Git, con `HOME` vacío y `GIT_CONFIG_NOSYSTEM=1`, y HEAD hecho desde el mensaje pendiente: `record` sale con 1, su error trae el mensaje de Git y no cambia ni las notas ni los archivos pendientes); además, los tests de `test_task_ledger.py` que fallaron en la CI (run 41381551936) pasan con `HOME` vacío y `GIT_CONFIG_NOSYSTEM=1`
+  - Files: `P/hooks/scripts/task_ledger.py`, `P/hooks/tests/test_task_ledger.py` (modify)
+  - Invariants: al negarse, `record` no cambia ninguna nota ni archivo pendiente.
+  - Verify: `... -k test_record_reports_gits_own_error_when_the_note_cannot_be_written`, y `HOME=<carpeta vacía> GIT_CONFIG_NOSYSTEM=1 python -m unittest discover -s P/hooks/tests -t P/hooks -k test_task_ledger`
+  - Depends on: T4
+  - Rounds: spec 1 · code 1 · escalations 0
+
+- [x] **T12** `metrics_report.py` lee en Python 3.10 las fechas de commit que terminan en `Z`, como ya hace con las de los pull requests · `behavior` · Risk: low · Covers: R6.2
+  - Test: los cinco tests de `P/hooks/tests/test_metrics_report.py` que fallan en la CI con Python 3.10 (`ValueError: Invalid isoformat string: '…Z'`, run 41381573656); esta máquina no tiene Python 3.10, así que su rojo y su verde los muestra la CI del PR
+  - Files: `P/hooks/scripts/metrics_report.py` (modify)
+  - Verify: `... -k test_metrics_report` aquí, y los trabajos de Python 3.10 de la CI del PR
+  - Depends on: T2
+  - Rounds: spec 1 · code 1 · escalations 0
+
+### Partitions
+
+| Wave | Partition | Tasks | Depends on |
+| --- | --- | --- | --- |
+| 1 | P3 | T11–T12 | P2 |

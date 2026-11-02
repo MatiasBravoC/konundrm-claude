@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import re
 import subprocess
@@ -13,7 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .plugin_files import PLUGIN_ROOT, SKILLS_DIR, read_frontmatter, read_section
+from .plugin_files import AGENTS_DIR, PLUGIN_ROOT, SKILLS_DIR, read_frontmatter, read_section
 from .test_flows import _NEGATION, _blocks, _in_one_sentence, _section_blocks, _sentences, _split_blocks
 
 _WRITING_PLANS = SKILLS_DIR / "writing-plans" / "SKILL.md"
@@ -868,147 +869,6 @@ class SingleDeliveryRiskWarningTest(unittest.TestCase):
         self.assertEqual(gaps, [], "\n".join(gaps))
 
 
-# R2.5: every pull request description lists its commits in order, each with the task ID from its `Task:` line.
-_DELIVERY_PULL_REQUEST_TEMPLATE = SKILLS_DIR / "setup-project" / "templates" / "pull_request_template.md"
-_DELIVERY_COMMITS_HEADING = "Commits, one per task"
-_DELIVERY_FENCE = re.compile(r"\s*(?:```|~~~)")
-_DELIVERY_COMMIT = re.compile(r"\bcommits?\b")
-_DELIVERY_IN_ORDER = re.compile(
-    r"\boldest first\b|--reverse\b|\bchronologic\w*\b|\bin (?:commit |their |the same |the )?order\b"
-    r"|\bin the order (?:they were|of) \w+"
-)
-_DELIVERY_INVERTED_ORDER = re.compile(
-    r"\b(?:newest|latest|most recent|last) (?:commit )?first\b|\breverse(?:d)? (?:chronological )?order\b"
-    r"|\bany order\b|\bunordered\b"
-)
-_DELIVERY_TASK_ID = re.compile(r"\btask ids?\b|\bt<n>|\bt\d+\b")
-_DELIVERY_PARTIAL = re.compile(r"\b(?:only|solely|some|high[- ]risk)\b")
-_DELIVERY_TASK_LINE = re.compile(r"\btask:(?: \S+){0,6}? (?:lines?|trailers?)\b")
-_DELIVERY_READ_FROM = re.compile(r"\b(?:from|reads?|reading|tak\w*|comes?|pull\w*|extract\w*|parse\w*)\b")
-# A sentence about the commit listing: its heading, "commits section", "commit list", "list of commits", or a listing
-# verb a few words before "commit(s)" ("do not list the commits", "include every commit").
-_DELIVERY_COMMIT_LISTING = re.compile(
-    rf"\b{re.escape(_DELIVERY_COMMITS_HEADING.lower())}\b"
-    r"|\bcommits?(?:['\u2019]s?)? (?:section|list|listing|table|entries)\b"
-    r"|\blists? of(?: \S+){0,2}? commits?\b"
-    r"|\b(?:list|show|includ|enumerat|add|print|writ|giv|mention|keep)\w*\b(?: \S+){0,3}? commits?\b"
-)
-# Ways to leave the listing out that _DELIVERY_NEGATION does not read as negations.
-_DELIVERY_SKIPS_SECTION = re.compile(
-    r"\b(?:skip\w*|omit\w*|drop\w*|remov\w*|delet\w*|exclud\w*|strip\w*|forgo\w*|hid(?:e|es|ing|den)|cut)\b"
-    r"|\b(?:leav\w*|left)\b(?: \S+){0,6}? out\b"
-)
-_DELIVERY_GIT_LOG = re.compile(r"\bgit log\b")
-# git log's only oldest-first option.
-_DELIVERY_OLDEST_FIRST_OPTION = re.compile(r"(?<!\S)--reverse\b")
-
-
-def _delivery_commits_section(path: Path) -> list[str]:
-    """Return the blocks of the `## Commits, one per task` section of a file, stopping at a code fence (R2.5)."""
-    lines = read_section(path, _DELIVERY_COMMITS_HEADING).splitlines()
-    end = next((index for index, line in enumerate(lines) if _DELIVERY_FENCE.match(line)), len(lines))
-    return _split_blocks(lines[:end])
-
-
-def _delivery_commit_list_gaps(name: str, path: Path) -> list[str]:
-    """Return what one description template's commits section lacks to list its commits in order with task IDs."""
-    blocks = _delivery_commits_section(path)
-    if not blocks:
-        return [f"{name}: has no `## {_DELIVERY_COMMITS_HEADING}` section"]
-    sentences = [sentence for block in blocks for sentence in _sentences(block)]
-    gaps = []
-    if not any(
-        _DELIVERY_IN_ORDER.search(s) and not _DELIVERY_NEGATION.search(s) and not _DELIVERY_INVERTED_ORDER.search(s)
-        for s in sentences
-    ):
-        gaps.append(f"{name}: the commits section never says the commits are listed in order, oldest first")
-    gaps.extend(
-        f"{name}: the commits section orders them otherwise: {s.strip()!r}"
-        for s in sentences
-        if _DELIVERY_INVERTED_ORDER.search(s)
-    )
-    if not any(
-        _DELIVERY_COMMIT.search(s)
-        and _DELIVERY_TASK_ID.search(s)
-        and not _DELIVERY_NEGATION.search(s)
-        and not _DELIVERY_PARTIAL.search(s)
-        for s in sentences
-    ):
-        gaps.append(f"{name}: the commits section never lists every commit with its task ID")
-    return gaps
-
-
-def _delivery_task_line_gaps(blocks: list[str]) -> list[str]:
-    """Return what opening-pull-requests lacks to take each commit's task ID from its `Task:` line (R2.5).
-
-    Also returns every sentence that refers to the commit listing (`_DELIVERY_COMMIT_LISTING`) and negates it
-    (`_DELIVERY_NEGATION`) or leaves it out (`_DELIVERY_SKIPS_SECTION`), whatever delivery it names, and the gaps of
-    `_delivery_git_log_gaps`.
-    """
-    sentences = [sentence for block in blocks for sentence in _sentences(block)]
-    gaps = []
-    if not any(
-        _DELIVERY_TASK_LINE.search(s)
-        and _DELIVERY_COMMIT.search(s)
-        and _DELIVERY_TASK_ID.search(s)
-        and _DELIVERY_READ_FROM.search(s)
-        and not _DELIVERY_NEGATION.search(s)
-        for s in sentences
-    ):
-        gaps.append(
-            "opening-pull-requests/SKILL.md: no sentence says each commit's task ID comes from its `Task:` line"
-        )
-    gaps.extend(
-        f"opening-pull-requests/SKILL.md: drops or negates the commits section: {s.strip()!r}"
-        for s in sentences
-        if _DELIVERY_COMMIT_LISTING.search(s) and (_DELIVERY_NEGATION.search(s) or _DELIVERY_SKIPS_SECTION.search(s))
-    )
-    return gaps + _delivery_git_log_gaps(sentences)
-
-
-def _delivery_git_log_gaps(sentences: list[str]) -> list[str]:
-    """Return what the skill's `git log` command for the commit listing lacks to list them oldest first (R2.5).
-
-    The command is a sentence naming both `git log` and the commit listing (`_DELIVERY_COMMIT_LISTING`); at least one
-    must exist, and every one must pass `--reverse`, since git log lists newest first by default.
-    """
-    commands = [s for s in sentences if _DELIVERY_GIT_LOG.search(s) and _DELIVERY_COMMIT_LISTING.search(s)]
-    if not commands:
-        return ["opening-pull-requests/SKILL.md: no sentence gives the `git log` command that lists the commits"]
-    return [
-        f"opening-pull-requests/SKILL.md: lists the commits with `git log` without `--reverse`: {s.strip()!r}"
-        for s in commands
-        if not _DELIVERY_OLDEST_FIRST_OPTION.search(s)
-    ]
-
-
-class PullRequestTaskCommitsTest(unittest.TestCase):
-    maxDiff = None
-
-    def test_pull_requests_list_their_task_commits(self) -> None:
-        """R2.5: each pull request description lists its commits in order, each with its task ID.
-
-        Both opening-pull-requests/SKILL.md (the description sections in its step 4 fenced block) and setup-project's
-        pull_request_template.md have a `## Commits, one per task` section. In each, one sentence, not negated and not
-        inverted ("newest first", "reverse order", "any order"), lists the commits in order (oldest first, `git log
-        --reverse`, chronological, "in order"); one sentence, not negated and not narrowed ("only", "some",
-        "high-risk"), lists the commits with their task ID (`T<n>` or "task ID"). The skill also says, in one
-        unnegated sentence, that each commit's task ID is read from its `Task:` line; gives the `git log` command for
-        the listing with `--reverse`, so it comes out oldest first; and has no sentence that refers to the listing (its
-        heading, "commits section", "commit list", "list of commits", "list the commits") while negating it or leaving
-        it out ("skip", "omit", "drop", "leave … out", "not", "without"), for either delivery (stacked or single).
-        """
-        gaps = [
-            *_delivery_commit_list_gaps("opening-pull-requests/SKILL.md", _DELIVERY_OPENING_PULL_REQUESTS),
-            *_delivery_commit_list_gaps(
-                "setup-project/templates/pull_request_template.md", _DELIVERY_PULL_REQUEST_TEMPLATE
-            ),
-            *_delivery_task_line_gaps(_blocks(_DELIVERY_OPENING_PULL_REQUESTS)),
-        ]
-
-        self.assertEqual(gaps, [], "\n".join(gaps))
-
-
 # R9.4: rewriting the history of a pull request that is already pushed (a rebase onto the updated default branch, the
 # stacked `git rebase --onto` after a squash merge) needs the user's yes for that rewrite and goes up with
 # `--force-with-lease`, never a plain `--force`.
@@ -1294,6 +1154,388 @@ class MeasureImpactCostsTest(unittest.TestCase):
             for sentence in _sentences(block)
             if _COST.search(sentence) and _NOT_IN_REPORT.search(sentence) and not _TRANSCRIPT.search(sentence)
         ]
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
+_REPOSITORY_ROOT = PLUGIN_ROOT.parents[1]
+_TASKS_TEMPLATE = SKILLS_DIR / "writing-plans" / "templates" / "tasks.md"
+_SLICE_SUMMARY_TEMPLATE = SKILLS_DIR / "develop-feature" / "templates" / "slice-summary.md"
+_DEVELOP_FEATURE = SKILLS_DIR / "develop-feature" / "SKILL.md"
+# R7.4: every file that states the default budget of a slice or a pull request, with the `## ` section holding it
+# (None: the whole file).
+_BUDGET_FILES: dict[str, tuple[Path, str | None]] = {
+    "writing-plans/SKILL.md": (_WRITING_PLANS, None),
+    "engineering-standards/SKILL.md": (SKILLS_DIR / "engineering-standards" / "SKILL.md", "6. Git and pull requests"),
+    "opening-pull-requests/SKILL.md": (SKILLS_DIR / "opening-pull-requests" / "SKILL.md", "Workflow"),
+    "measure-impact/SKILL.md": (_MEASURE_IMPACT, "Limits to state when relevant"),
+    "README.md": (_REPOSITORY_ROOT / "README.md", None),
+}
+_BUDGET = re.compile(r"\bbudget\b|\bpresupuesto\b|\btope\b")
+_LINES_400 = re.compile(r"(?<![\d,.])400(?![\d,])")
+_LINES_500 = re.compile(r"(?<![\d,.])500(?![\d,])")
+_AIM_300_TO_500 = re.compile(r"(?<![\d,.])300\s*(?:\u2013|-|to|and)\s*500(?![\d,])")
+_CODE_AND_TESTS = re.compile(r"\bcode\b.*\btests?\b|\btests?\b.*\bcode\b")
+_DOCUMENTS = re.compile(r"\bdocuments?\b")
+_NOT_COUNTED = re.compile(r"\b(?:not|never|no)\b(?: \S+){0,3} count|\bexclud\w*|\bwithout\b|\bapart\b|\bseparate\w*")
+_SMALLER = re.compile(r"\bsmaller\b")
+_HIGH_RISK = re.compile(r"\bhigh[- ]risk\b")
+_ADDED_REMOVED = re.compile(r"\badded\b.*\bremoved\b")
+_OVER = re.compile(r"\b(?:over|exceed\w*|above|past)\b")
+_HOW_MUCH = re.compile(r"\bhow (?:much|many)\b|\bover by\b|\bby \S+ lines\b|\bexcess\b")
+_WARNS = re.compile(r"\bwarn\w*|\bflag\w*|\balert\w*")
+_PRE_APPROVED = re.compile(r"\bpre-approved\b")
+_SUMMARY = re.compile(r"\bsummary\b")
+_MESSAGE = re.compile(r"\bmessage\b")
+
+
+def _slice_size_gaps() -> list[str]:
+    """Return what writing-plans, its tasks.md template, the slice summary and develop-feature miss of R7.1-R7.3."""
+    plans = _blocks(_WRITING_PLANS)
+    template_budget = [line for line in _blocks(_TASKS_TEMPLATE) if "pull request budget" in line]
+    size = " ".join(read_section(_SLICE_SUMMARY_TEMPLATE, "Size").lower().split())
+    checkpoint = _section_blocks(_DEVELOP_FEATURE, "Slice checkpoint")
+    checks = {
+        "writing-plans: no block aims a slice at 300-500 changed lines of code and tests, documents not counted": any(
+            all(p.search(b) for p in (_AIM_300_TO_500, _CODE_AND_TESTS, _DOCUMENTS, _NOT_COUNTED)) for b in plans
+        ),
+        "writing-plans: no block allows a smaller slice only for a smaller feature or to split high-risk work": any(
+            _SMALLER.search(b) and "feature" in b and _HIGH_RISK.search(b) for b in plans
+        ),
+        "templates/tasks.md: the Pull request budget line does not default to 500": any(
+            _LINES_500.search(line) and not _LINES_400.search(line) for line in template_budget
+        ),
+        "slice-summary.md: ## Size does not count code and tests (added, removed) apart from the documents": all(
+            p.search(size) for p in (_CODE_AND_TESTS, _ADDED_REMOVED, _DOCUMENTS)
+        ),
+        "develop-feature: Slice checkpoint does not warn when a slice goes over the budget, and by how much": any(
+            all(p.search(b) for p in (_OVER, _BUDGET, _WARNS, _HOW_MUCH)) for b in checkpoint
+        ),
+        "develop-feature: with pre-approved pauses the warning is not kept in the summary and session message": any(
+            all(p.search(b) for p in (_PRE_APPROVED, _WARNS, _SUMMARY, _MESSAGE)) for b in checkpoint
+        ),
+    }
+    return [gap for gap, holds in checks.items() if not holds]
+
+
+def _default_budget_gaps() -> list[str]:
+    """Return each file of `_BUDGET_FILES` that still gives 400 lines as a budget, or none at all as 500 (R7.4)."""
+    gaps = []
+    for name, (path, heading) in _BUDGET_FILES.items():
+        blocks = _blocks(path) if heading is None else _section_blocks(path, heading)
+        budget_blocks = [block for block in blocks if _BUDGET.search(block)]
+        gaps += [f"{name}: still a 400-line budget: {block!r}" for block in budget_blocks if _LINES_400.search(block)]
+        if not any(_LINES_500.search(block) for block in budget_blocks):
+            gaps.append(f"{name}: no block gives 500 changed lines as the default budget")
+    return gaps
+
+
+class SliceSizeTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_slices_aim_at_300_to_500_changed_lines(self) -> None:
+        """R7.1, R7.2, R7.3, R7.4, R9.1: 003 slices aim at 300-500 changed lines and the pause reports their size.
+
+        writing-plans has a block that aims each slice at 300-500 changed lines of code and tests without counting the
+        feature's documents, and one that allows a smaller slice only for a smaller feature or to split high-risk
+        work; its tasks.md template defaults the Pull request budget to 500. The slice summary's `## Size` counts the
+        changed lines of code and tests (added, removed) apart from the documents'. develop-feature's `## Slice
+        checkpoint` warns when a slice goes over the budget, with by how much, and with pre-approved pauses keeps that
+        warning in the summary and the session's message. No file in `_BUDGET_FILES` still gives 400 lines as a
+        budget, and each gives 500.
+        """
+        gaps = _slice_size_gaps() + _default_budget_gaps()
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
+# Pull request text (003 R5.1-R5.4, R9.1, R9.2): opening-pull-requests follows the repository's pull request template
+# word for word, else four fixed sections, in English and plain words, with none of the flow's data; setup-project's
+# template has those four sections; the release is 0.8.0. Keywords of each rule inside its section, on text that is
+# lowercased, without backticks and single-spaced, as _split_blocks leaves it.
+_TEXT_OPENING = SKILLS_DIR / "opening-pull-requests" / "SKILL.md"
+_TEXT_TEMPLATE = SKILLS_DIR / "setup-project" / "templates" / "pull_request_template.md"
+_TEXT_MANIFEST = PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
+_TEXT_CHANGELOG = PLUGIN_ROOT / "CHANGELOG.md"
+_TEXT_README = PLUGIN_ROOT.parents[1] / "README.md"
+_TEXT_RELEASE = "0.8.0"
+_TEXT_SECTIONS = ["What and why", "Where to look first", "How it was verified", "Not in this pull request"]
+_TEXT_FENCE = re.compile(r"\s*(?:```|~~~)")
+_TEXT_LEAVES_OUT = re.compile(
+    r"\bleav\w*\b(?: \S+){0,8}? out\b|\bleft out\b|\bkeep\w*\b(?: \S+){0,8}? out of\b|\bomit\w*|\bexclud\w*"
+    r"|\bnever\b|\bwithout\b|\bno\b|\bnothing\b"
+)
+_TEXT_PLAIN = re.compile(r"\bplain\b|\bsimple\b|\beveryday\b")
+_TEXT_TITLE = re.compile(r"\btitles?\b")
+_TEXT_DESCRIPTION = re.compile(r"\bdescriptions?\b")
+# What the pull request text must never hold, outside backticks and link targets (R5.4).
+_TEXT_FLOW_DATA = re.compile(
+    r"\b[rtsb]\d+(?:\.\d+)?\b|\b[rtsb]<[nk]>|\bslices?\b|\bpartitions?\b|\btask ids?\b|\breview rounds?\b"
+    r"|\b(?:task|covers|rounds|escaped-gate):"
+)
+_TEXT_ROLE_NAMES = re.compile("|".join(rf"\b{re.escape(agent.stem)}\b" for agent in sorted(AGENTS_DIR.glob("*.md"))))
+# The sections the four fixed ones replace, named anywhere in step 4's prose.
+_TEXT_OLD_SECTIONS = re.compile(
+    r"\brequirements → tests\b|\brisk and where to look first\b|\bcommits, one per task\b|\bhow it was built\b"
+)
+# R5.1, R5.2, R5.3, R5.4 and the merge-order line T9 put first: each rule must sit in one sentence of step 4's prose.
+_TEXT_STEP_4_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "(R5.1) looking for pull_request_template.md in .github/, then the root, then docs/": (
+        re.compile(r"\bpull_request_template\.md\b"),
+        re.compile(r"\.github/"),
+        re.compile(r"\broot\b"),
+        re.compile(r"\bdocs/"),
+        re.compile(r"\bin (?:that|this) order\b|\bthen\b|\bfollowed by\b"),
+    ),
+    "(R5.1) matching the template's name in any letter case": (
+        re.compile(r"\bpull_request_template\.md\b"),
+        re.compile(r"\bcase\b|\bcapitali[sz]\w*|\b(?:upper|lower)case\b"),
+    ),
+    "(R5.1) keeping the template's sections in order, with their headings and fixed text as they are": (
+        re.compile(r"\bsections?\b"),
+        re.compile(r"\border\b"),
+        re.compile(r"\bheadings?\b|\btitles?\b"),
+        re.compile(r"\btext\b"),
+        re.compile(r"\bverbatim\b|\bword for word\b|\bas (?:is|they are|written)\b|\bunchanged\b|\bexactly\b"),
+    ),
+    "(R5.1) filling each section in place of its help comments": (
+        re.compile(r"\bcomments?\b"),
+        re.compile(r"\binstead of\b|\bin place of\b|\breplac\w*"),
+    ),
+    "(R5.1) None in a section with nothing to say": (
+        re.compile(r"\bnone\b"),
+        re.compile(r"\bempty\b|\bnothing\b|\bno content\b|\bwithout content\b"),
+    ),
+    "(R5.1) checking a box only when what it says was verified": (
+        re.compile(r"\bcheck ?box\w*|\bboxes\b|\btick\w*"),
+        re.compile(r"\bonly\b"),
+        re.compile(r"\bverif\w*|\bconfirm\w*"),
+    ),
+    "(R5.2) the fixed sections when there is no such template, even with a folder of several": (
+        re.compile(r"\bfolder\b|\bdirector(?:y|ies)\b"),
+        re.compile(r"\bseveral\b|\bmultiple\b|\bmany\b|\bmore than one\b"),
+        re.compile(r"\bsections?\b"),
+    ),
+    "(R5.3) the title and the description in English and plain words": (
+        _TEXT_TITLE,
+        _TEXT_DESCRIPTION,
+        re.compile(r"\benglish\b"),
+        _TEXT_PLAIN,
+    ),
+    "(R5.4) the title and the description leave out the flow's data": (
+        _TEXT_LEAVES_OUT,
+        _TEXT_TITLE,
+        _TEXT_DESCRIPTION,
+        re.compile(r"\bflow\b"),
+    ),
+    "(R5.4) no IDs of requirements, bug criteria, tasks, slices or partitions": (
+        _TEXT_LEAVES_OUT,
+        re.compile(r"\bids?\b"),
+        re.compile(r"\brequirements?\b"),
+        re.compile(r"\bcriteri(?:on|a)\b"),
+        re.compile(r"\btasks?\b"),
+        re.compile(r"\bslices?\b"),
+        re.compile(r"\bpartitions?\b"),
+    ),
+    '(R5.4) not the word "slice"': (_TEXT_LEAVES_OUT, re.compile(r"\bword\b\W{1,3}slice\b")),
+    "(R5.4) no Task:, Covers:, Rounds: or Escaped-gate: lines": (
+        _TEXT_LEAVES_OUT,
+        re.compile(r"\btask:"),
+        re.compile(r"\bcovers:"),
+        re.compile(r"\brounds:"),
+        re.compile(r"\bescaped-gate:"),
+    ),
+    "(R5.4) no review rounds and no names of the plugin's roles": (
+        _TEXT_LEAVES_OUT,
+        re.compile(r"\breview rounds?\b|\brounds? of reviews?\b"),
+        re.compile(r"\broles?(?:'s?)? names?\b|\bnames? of (?:the )?(?:plugin'?s? )?(?:roles|subagents|agents)\b"),
+    ),
+    "(R5.4) code and paths in backticks, code blocks and link targets are exempt": (
+        re.compile(r"\bbackticks?\b"),
+        re.compile(r"\bcode blocks?\b"),
+        re.compile(
+            r"\blink (?:targets?|destinations?|urls?)\b|\b(?:targets?|destinations?|urls?) of (?:the )?links?\b"
+        ),
+    ),
+    "(T9) a stacked description still starts with its Merge order: line": (
+        re.compile(r"\bmerge order:"),
+        re.compile(r"\bfirst line\b|\bbefore any section\b|\bstart\w*"),
+    ),
+}
+# R5.2: what each fixed section asks for, in the skill's fallback block and in setup-project's template.
+_TEXT_SECTION_CONTENT: dict[str, tuple[tuple[str, re.Pattern[str]], ...]] = {
+    "Where to look first": (
+        ("each change's risk", re.compile(r"\brisk\b")),
+        ("in plain words", _TEXT_PLAIN),
+        ("for high-risk changes", re.compile(r"\bhigh[- ]risk\b")),
+        ("the files", re.compile(r"\bfiles?\b")),
+        ("and lines to read first", re.compile(r"\blines?\b")),
+        ("and what they guard", re.compile(r"\bguard\w*|\bprotect\w*")),
+    ),
+    "How it was verified": (
+        ("the check's result", re.compile(r"\bcheck\b")),
+        ("each behavior", re.compile(r"\bbehaviou?rs?\b")),
+        ("with its test", re.compile(r"\btests?\b")),
+        ("the end-to-end evidence", re.compile(r"\bend[- ]to[- ]end\b")),
+    ),
+}
+_TEXT_EXPLICIT_YES = re.compile(r"\b(?:wait\w*|ask\w*) for (?:an |the |their |its )?(?:explicit )?yes\b")
+_TEXT_NEVER_MERGES_OR_APPROVES = (re.compile(r"\bnever\b"), re.compile(r"\bmerge\b"), re.compile(r"\bapprove\b"))
+_TEXT_CHANGELOG_ITEMS = (
+    ("live publishing", re.compile(r"\blive\b")),
+    ("the flow's data in refs/notes/konundrm", re.compile(r"\brefs/notes/konundrm\b")),
+    ("the pull request text", re.compile(r"\bpull request (?:template|text|descriptions?)\b")),
+)
+_TEXT_README_ITEMS = (
+    ("live publishing (en vivo)", re.compile(r"\ben vivo\b")),
+    ("where the flow's data stays (refs/notes/konundrm)", re.compile(r"\brefs/notes/konundrm\b")),
+)
+
+
+def _text_subsection(path: Path, prefix: str) -> tuple[list[str], list[str]]:
+    """Return the prose lines and the fenced lines of the `### ` subsection whose heading starts with `prefix`.
+
+    The subsection runs to the next `## ` or `### ` heading outside a code fence; both lists are empty without it.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = next((index for index, line in enumerate(lines) if line.startswith(prefix)), None)
+    if start is None:
+        return [], []
+    prose: list[str] = []
+    fenced: list[str] = []
+    in_fence = False
+    for line in lines[start + 1 :]:
+        if _TEXT_FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if not in_fence and line.startswith(("## ", "### ")):
+            break
+        (fenced if in_fence else prose).append(line)
+    return prose, fenced
+
+
+def _text_normalized(lines: list[str]) -> str:
+    """Return pull request text lowercased and single-spaced, without backtick spans and link targets (R5.4)."""
+    text = re.sub(r"`[^`]*`", " ", "\n".join(lines))
+    text = re.sub(r"\]\([^)]*\)", "]", text)
+    return " ".join(text.lower().split())
+
+
+def _text_body_gaps(name: str, lines: list[str]) -> list[str]:
+    """Return what a pull request body's sections lack: the four fixed headings in order, what two of them ask for,
+    and no flow data or role name anywhere in the body (R5.2, R5.4)."""
+    headings = [line[3:].strip() for line in lines if line.startswith("## ")]
+    gaps = [] if headings == _TEXT_SECTIONS else [f"{name}: its sections are {headings}, not {_TEXT_SECTIONS}"]
+    bodies: dict[str, list[str]] = {}
+    for line in lines:
+        if line.startswith("## "):
+            bodies[line[3:].strip()] = []
+        elif bodies:
+            bodies[list(bodies)[-1]].append(line)
+    for heading, items in _TEXT_SECTION_CONTENT.items():
+        body = _text_normalized(bodies.get(heading, []))
+        gaps += [
+            f"{name}: '{heading}' does not ask for {label}" for label, pattern in items if not pattern.search(body)
+        ]
+    text = _text_normalized(lines)
+    found = sorted({match.group(0) for match in _TEXT_FLOW_DATA.finditer(text)})
+    found += sorted({match.group(0) for match in _TEXT_ROLE_NAMES.finditer(text)})
+    if found:
+        gaps.append(f"{name}: holds the flow's data or role names: {found}")
+    return gaps
+
+
+def _text_skill_gaps() -> list[str]:
+    """Return what opening-pull-requests' step 4 lacks to write the pull request text R5.1-R5.4 ask for."""
+    prose, fenced = _text_subsection(_TEXT_OPENING, "### 4.")
+    blocks = _split_blocks(prose)
+    gaps = [
+        f"opening-pull-requests step 4 lacks {label}"
+        for label, patterns in _TEXT_STEP_4_RULES.items()
+        if not any(_in_one_sentence(block, *patterns) for block in blocks)
+    ]
+    gaps += _text_body_gaps("opening-pull-requests step 4's fixed sections", fenced)
+    gaps += [
+        f"opening-pull-requests step 4 still names a replaced section: {block!r}"
+        for block in blocks
+        if _TEXT_OLD_SECTIONS.search(block)
+    ]
+    return gaps
+
+
+def _text_invariant_gaps() -> list[str]:
+    """Return the invariant's gaps: opening-pull-requests still waits for a yes before pushing and never merges or
+    approves."""
+    gaps = []
+    ask_prose, _ = _text_subsection(_TEXT_OPENING, "### 5.")
+    if not any(_TEXT_EXPLICIT_YES.search(block) for block in _split_blocks(ask_prose)):
+        gaps.append("opening-pull-requests step 5 lacks (invariant): waiting for an explicit yes before pushing")
+    if not any(
+        _in_one_sentence(block, *_TEXT_NEVER_MERGES_OR_APPROVES) for block in _section_blocks(_TEXT_OPENING, "Rules")
+    ):
+        gaps.append("opening-pull-requests Rules lack (invariant): never merging or approving")
+    return gaps
+
+
+def _text_release_gaps() -> list[str]:
+    """Return what plugin.json, the CHANGELOG and the README lack to release this feature as 0.8.0 (R9.2)."""
+    gaps = []
+    version = json.loads(_TEXT_MANIFEST.read_text(encoding="utf-8"))["version"]
+    if version != _TEXT_RELEASE:
+        gaps.append(f"plugin.json: version is {version}, not {_TEXT_RELEASE}")
+    heading = next(
+        (line[3:] for line in _TEXT_CHANGELOG.read_text(encoding="utf-8").splitlines() if line.startswith("## [")),
+        "",
+    )
+    if not heading.startswith(f"[{_TEXT_RELEASE}]"):
+        gaps.append(f"CHANGELOG.md: the first entry is {heading!r}, not [{_TEXT_RELEASE}]")
+    else:
+        entry = " ".join(read_section(_TEXT_CHANGELOG, heading).lower().replace("`", "").split())
+        gaps += [
+            f"CHANGELOG.md [{_TEXT_RELEASE}]: does not name {label}"
+            for label, pattern in _TEXT_CHANGELOG_ITEMS
+            if not pattern.search(entry)
+        ]
+    readme, _ = _text_subsection(_TEXT_README, "### Cómo avanza una feature")
+    flow = " ".join(" ".join(readme).lower().replace("`", "").split())
+    gaps += [
+        f"README.md '### Cómo avanza una feature': does not describe {label}"
+        for label, pattern in _TEXT_README_ITEMS
+        if not pattern.search(flow)
+    ]
+    return gaps
+
+
+class PullRequestTextTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_pull_request_text_follows_the_template_without_flow_data(self) -> None:
+        """R5.1, R5.2, R5.3, R5.4, R9.1, R9.2: 003 the pull request text follows the repository's template word for
+        word, else four fixed sections, in English and plain words, with none of the flow's data.
+
+        opening-pull-requests' step 4 says, each in one sentence: look for `pull_request_template.md` in `.github/`,
+        then the root, then `docs/`, in any letter case; keep its sections in order with their headings and fixed text
+        as they are; fill each in place of its help comments, "None" when it has nothing; check a box only when what it
+        says was verified; without that template, even with a folder of several, use the fixed sections; write the
+        title and the description in English and plain words; leave out of them the flow's data (IDs of requirements,
+        bug criteria, tasks, slices and partitions, the word "slice", the Task:, Covers:, Rounds: and Escaped-gate:
+        lines, review rounds and role names), except code and paths in backticks, code blocks and link targets; and a
+        stacked description still starts with its Merge order: line. Its fixed sections, and setup-project's
+        pull_request_template.md, are exactly What and why, Where to look first (risk in plain words; for high risk
+        the files and lines and what they guard), How it was verified (check, each behavior with its test, end-to-end
+        evidence) and Not in this pull request, with no flow data or role name. Invariant: step 5 still waits for an
+        explicit yes before pushing and Rules still never merge or approve. plugin.json is 0.8.0, the CHANGELOG's
+        first entry is [0.8.0] and names live publishing, refs/notes/konundrm and the pull request text, and the
+        README's `### Cómo avanza una feature` describes publishing "en vivo" and refs/notes/konundrm.
+        """
+        template_lines = _TEXT_TEMPLATE.read_text(encoding="utf-8").splitlines()
+
+        gaps = (
+            _text_skill_gaps()
+            + _text_body_gaps("setup-project/templates/pull_request_template.md", template_lines)
+            + _text_invariant_gaps()
+            + _text_release_gaps()
+        )
 
         self.assertEqual(gaps, [], "\n".join(gaps))
 

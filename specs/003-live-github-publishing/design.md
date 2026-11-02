@@ -1,7 +1,7 @@
 # Design: Publicar en GitHub mientras se construye una feature
 
 - **Spec:** [requirements.md](requirements.md)
-- **Status:** Approved <!-- Draft → Approved → Done -->
+- **Status:** Done <!-- Draft → Approved → Done -->
 
 ## Overview
 

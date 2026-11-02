@@ -19,7 +19,9 @@ of dropping it. -->
 
 ## Size
 
-<changed lines> changed lines (<added> added, <removed> removed) against a budget of <Pull request budget> per slice.
+<changed lines> changed lines of code and tests (<added> added, <removed> removed) against a budget of <Pull request budget> per slice; the feature's documents changed <document lines> more lines, not counted.
+
+<Over the budget by <n> lines. | Within the budget.>
 
 ## Risks and high-risk tasks
 
