@@ -64,9 +64,12 @@ first mutation check.
 
 **Stacked:** each slice is one pull request:
 
-1. Find each task's commit: `git log --format=%H -E --grep '^Task: T<n>( |$)' <base>..HEAD`.
-2. Slice `S<k>` ends at the last commit of its tasks. The spec-and-plan commit belongs to the
-   first slice; the final `Status: Done` commit to the last.
+1. Find each task's commit, by its note:
+   `git log --notes=refs/notes/konundrm --format=%H -E --grep '^Task: T<n>( |$)' <base>..HEAD`.
+2. Slice `S<k>` ends at the commit that adds `specs/<NNN-slug>/summaries/S<k>.md`
+   (`git log --diff-filter=A --format=%H -- specs/<NNN-slug>/summaries/S<k>.md`), falling back to the last commit
+   of its tasks when there is none. The spec-and-plan commit belongs to the first slice; the final
+   `Status: Done` commit to the last.
 3. Create a branch at each slice end: `git branch <branch>-s<k> <sha>` (the last slice keeps the
    feature branch). Base of S1: the default branch. Base of S<k>: the branch of S<k-1>.
 
@@ -112,11 +115,13 @@ For a fix-bug branch, the table has the `B1` criterion and the regression test, 
 why" states the root cause and the escaped gate. Keep the attribution lines configured for the
 session.
 
-List Commits, one per task with `git log --reverse --format='%h %s' <range>`, where the range
+List Commits, one per task with
+`git log --reverse --notes=refs/notes/konundrm --format='%h %s%n%b%N' <range>`, where the range
 of a stacked slice is `<previous slice branch>..<slice branch>` (S1 starts at `<base>`) and the
 range of the single pull request is `<base>..HEAD`. Take each commit's task ID from the
-`Task: T<n> · Covers: R…` line in its body; a commit without that line (spec and plan, summary,
-`Status: Done`) shows `—` in its place.
+`Task: T<n> · Covers: R…` line of its note (`%N`) or, in a commit made before notes, from that
+line in its body (`%b`), so a feature that mixes both formats lists every task, as step 1 finds
+them; a commit with neither (spec and plan, summary, `Status: Done`) shows `—` in its place.
 
 When `specs/<NNN-slug>/summaries/S<k>.md` exists, build that slice's description from it: its
 "What changed and why" feeds What and why, "Requirements covered" the table, "Risks and high-risk

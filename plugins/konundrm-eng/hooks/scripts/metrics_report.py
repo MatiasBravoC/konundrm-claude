@@ -34,7 +34,7 @@ from typing import Any
 
 from metrics_log import read_events
 from project_paths import project_root
-from task_commits import TASK_TRAILER
+from task_commits import NOTES_REF, TASK_TRAILER
 from tasks_document import read_tasks
 
 # The optional leading token still counts commits written in the Gitmoji format used before 0.4.0.
@@ -42,7 +42,7 @@ COMMIT_TYPE = re.compile(r"^(?:\S+\s+)?(feat|fix|refactor|test|docs|style|perf|c
 ESCAPED_GATE_TRAILER = re.compile(r"(?mi)^Escaped-gate:\s*(?P<gate>[a-z0-9-]+)")
 ESCAPE_WINDOW = timedelta(days=30)
 FIELD, RECORD = "\x1f", "\x1e"
-DEFAULT_PR_BUDGET_LINES = 400
+DEFAULT_PR_BUDGET_LINES = 500
 GH_TIMEOUT_SECONDS = 30
 
 
@@ -54,9 +54,11 @@ class CommitInfo:
         when: Commit time.
         kind: Conventional Commits type, ``revert`` or ``other``.
         subject: First line of the message.
-        is_task: Whether the body carries a ``Task: T<n>`` trailer (a develop-feature task).
+        is_task: Whether the body or the commit's note under ``NOTES_REF`` carries a
+            ``Task: T<n>`` line (a develop-feature task).
         files: Paths the commit touched.
-        escaped_gate: For fix-bug commits, the gate its ``Escaped-gate:`` trailer names.
+        escaped_gate: For fix-bug commits, the gate the ``Escaped-gate:`` line in the body or
+            the note names.
     """
 
     when: datetime
@@ -68,7 +70,11 @@ class CommitInfo:
 
 
 def read_commits(root: Path, since: datetime) -> list[CommitInfo]:
-    """Reads the commits made since a date, oldest first; empty outside a Git repository."""
+    """Reads the commits made since a date, oldest first; empty outside a Git repository.
+
+    The flow lines (``Task:``, ``Escaped-gate:``) are searched in each commit's body and in its
+    note under ``NOTES_REF``, so both the old trailers and the newer notes are counted.
+    """
     try:
         output = subprocess.run(
             [
@@ -76,7 +82,8 @@ def read_commits(root: Path, since: datetime) -> list[CommitInfo]:
                 "log",
                 "--reverse",  # history order, oldest first; timestamps tie within a second
                 f"--since={since.isoformat()}",
-                f"--format={RECORD}%cI{FIELD}%s{FIELD}%b{FIELD}",
+                f"--notes={NOTES_REF}",
+                f"--format={RECORD}%cI{FIELD}%s{FIELD}%b{FIELD}%N{FIELD}",
                 "--name-only",
             ],
             cwd=root,
@@ -91,18 +98,19 @@ def read_commits(root: Path, since: datetime) -> list[CommitInfo]:
     commits = []
     for record in filter(None, output.split(RECORD)):
         parts = record.split(FIELD)
-        if len(parts) < 4:
+        if len(parts) < 5:
             continue
-        when, subject, body, files = parts[0], parts[1], parts[2], parts[3]
+        when, subject, body, note, files = parts[:5]
+        flow_text = f"{body}\n{note}"
         match = COMMIT_TYPE.match(subject)
         kind = "revert" if subject.startswith("Revert") else (match.group(1) if match else "other")
-        gate = ESCAPED_GATE_TRAILER.search(body)
+        gate = ESCAPED_GATE_TRAILER.search(flow_text)
         commits.append(
             CommitInfo(
                 when=datetime.fromisoformat(when),
                 kind=kind,
                 subject=subject,
-                is_task=bool(TASK_TRAILER.search(body)),
+                is_task=bool(TASK_TRAILER.search(flow_text)),
                 files=tuple(line for line in files.splitlines() if line.strip()),
                 escaped_gate=gate.group("gate").lower() if gate else None,
             )

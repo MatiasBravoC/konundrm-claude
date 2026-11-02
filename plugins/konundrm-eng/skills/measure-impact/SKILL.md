@@ -25,8 +25,8 @@ escaping, is rework falling, and do the gates catch real problems or only add fr
    - **Escaped defects and fixes per feature:** falling means problems are caught before they
      ship. Open the listed possible escapes; for each real one, name the gate that should have
      caught it (spec criterion, property, review, end-to-end check). Fixes made with
-     `/konundrm-eng:fix-bug` already name it in their `Escaped-gate:` trailer: the gate that
-     appears most is the one to sharpen first.
+     `/konundrm-eng:fix-bug` already name it in their note's `Escaped-gate:` line
+     (`refs/notes/konundrm`): the gate that appears most is the one to sharpen first.
    - **Pull requests:** many over the budget mean the plans need smaller slices; a growing time
      to merge means reviewers are the bottleneck, so slices should get smaller, not fewer.
    - **Review rounds per task:** more than two on average points at vague specs or plans; the

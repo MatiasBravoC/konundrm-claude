@@ -1,14 +1,18 @@
 """Finds each task's commit among the commits made after a feature's base commit.
 
-develop-feature commits every task with a ``Task: T<n> · Covers: …`` line and, once its reviews
-end, a ``Rounds: spec <n> · code <n> · escalations <n>`` line. Only commits in ``<base>..HEAD``
-count, so a task with the same number in an earlier feature is never mistaken for this one's.
+develop-feature records every task with a ``Task: T<n> · Covers: …`` line and, once its reviews
+end, a ``Rounds: spec <n> · code <n> · escalations <n>`` line. Features built before notes existed
+carry both lines in the commit message; newer ones carry them in the commit's Git note under
+``NOTES_REF``, so they never reach the commit message. Both places are read. Only commits in
+``<base>..HEAD`` count, so a task with the same number in an earlier feature is never mistaken
+for this one's.
 A line names a task only when it starts with ``Task: T`` followed by the whole number, so ``T10``
 is not ``T1`` and a ``Task:`` quoted mid-line is ignored; numbers match without their zero
 padding (``T01`` is ``T1``). When several commits in the range name the same task (a slice
 summary repeats it, say), the oldest is the task's commit.
 
 Sections:
+    NOTES_REF          — the notes ref that holds each task commit's flow lines.
     TASK_TRAILER       — the ``Task: T<n>`` line, shared with the impact report.
     GitError           — Git could not list the range.
     TaskCommit         — one task's commit and its review rounds.
@@ -24,6 +28,7 @@ from pathlib import Path
 
 from working_tree import run_git
 
+NOTES_REF = "refs/notes/konundrm"
 TASK_TRAILER = re.compile(r"(?m)^Task: T0*(?P<number>\d+)(?= |$)")
 _TASK_ID = re.compile(r"T0*(?P<number>\d+)")
 ROUNDS_TRAILER = re.compile(r"(?m)^Rounds: spec (?P<spec>\d+) · code (?P<code>\d+) · escalations (?P<escalations>\d+)")
@@ -41,7 +46,7 @@ class TaskCommit:
         task_id: ``T<n>`` without zero padding (``T01`` in the message gives ``T1``).
         sha: Full SHA of the commit.
         rounds: Spec review rounds, code review rounds and escalations from the commit's own
-            ``Rounds:`` line, or None when it has none.
+            ``Rounds:`` line, in its message or its note, or None when it has none.
     """
 
     task_id: str
@@ -77,25 +82,29 @@ def task_commits(root: Path, base: str) -> dict[str, TaskCommit]:
     Raises:
         GitError: When Git cannot list the range, for instance because ``base`` does not resolve.
     """
-    # -z ends each commit with NUL, which a commit message cannot hold; --reverse puts the oldest
-    # first, so the first commit seen for a task is the one kept.
-    output = run_git(["log", "-z", "--reverse", "--format=%H%n%B", "--end-of-options", f"{base}..HEAD"], root)
+    # -z ends each commit with NUL, which a commit message or note cannot hold; --reverse puts the
+    # oldest first, so the first commit seen for a task is the one kept. %N is the commit's note
+    # under NOTES_REF (empty without one), appended so the flow lines are found in either place.
+    output = run_git(
+        ["log", "-z", "--reverse", f"--notes={NOTES_REF}", "--format=%H%n%B%n%N", "--end-of-options", f"{base}..HEAD"],
+        root,
+    )
     if output is None:
         raise GitError(f"git log {base}..HEAD failed in {root}")
     found: dict[str, TaskCommit] = {}
     for record in output.decode("utf-8", errors="replace").split("\0"):
-        sha, _, message = record.partition("\n")
-        task_line = TASK_TRAILER.search(message)
+        sha, _, flow_text = record.partition("\n")
+        task_line = TASK_TRAILER.search(flow_text)
         if task_line is None:
             continue
         task_id = task_key(f"T{task_line['number']}")
         if task_id not in found:
-            found[task_id] = TaskCommit(task_id, sha, _rounds(message))
+            found[task_id] = TaskCommit(task_id, sha, _rounds(flow_text))
     return found
 
 
-def _rounds(message: str) -> tuple[int, int, int] | None:
-    match = ROUNDS_TRAILER.search(message)
+def _rounds(flow_text: str) -> tuple[int, int, int] | None:
+    match = ROUNDS_TRAILER.search(flow_text)
     if match is None:
         return None
     return int(match["spec"]), int(match["code"]), int(match["escalations"])

@@ -3,21 +3,27 @@
 from __future__ import annotations
 
 import random
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from task_commits import GitError, TaskCommit, task_commits
+import task_commits as task_commits_module
+from task_commits import NOTES_REF, GitError, TaskCommit, task_commits
 
 # Task numbers whose digits prefix one another, so matching a prefix ("T1" in "T10") shows up.
 TASK_NUMBERS = (1, 2, 10, 11, 20, 100, 101)
 TASK_LINE_ENDINGS = (" · Covers: R1.1", "", " ")
 SEED_COUNT = 40
+# The paragraph _random_message adds for a real task: its `Task: T<n>` line and, maybe, its `Rounds:`
+# line, between the newlines that open and close every generated paragraph.
+FLOW_PARAGRAPH = re.compile(r"\nTask: T\d+[^\n]*\n(?:Rounds: [^\n]*\n)?")
 
 
 def git(root: Path, *args: str) -> str:
@@ -93,6 +99,23 @@ def _import_histories(root: Path, histories: dict[str, list[str]]) -> dict[tuple
     return shas
 
 
+def _move_flow_paragraph(message: str) -> tuple[str, str]:
+    """Split a generated message into the message without its flow paragraph and that paragraph."""
+    match = FLOW_PARAGRAPH.search(message)
+    if match is None:
+        raise AssertionError(f"no flow paragraph in {message!r}")
+    return message[: match.start()] + message[match.end() :], match.group().lstrip("\n")
+
+
+def _import_notes(root: Path, notes: dict[str, str]) -> None:
+    """Attach each note to its commit under NOTES_REF with one `git fast-import` (one process for all)."""
+    stream = bytearray(f"commit {NOTES_REF}\ncommitter t <t@example.com> 1700000000 +0000\ndata 0\n".encode())
+    for sha, note in notes.items():
+        data = note.encode("utf-8")
+        stream += f"N inline {sha}\ndata {len(data)}\n".encode() + data + b"\n"
+    subprocess.run(["git", "fast-import", "--quiet"], cwd=root, input=bytes(stream), capture_output=True, check=True)
+
+
 @unittest.skipIf(shutil.which("git") is None, "Git is not installed")
 class TaskCommitsTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -155,6 +178,71 @@ class TaskCommitsTest(unittest.TestCase):
             found = task_commits(self.root, shas[(branch, base_positions[branch])])
 
             self.assertEqual(found, expected, f"{branch} (base at {base_positions[branch]}): {history!r}")
+
+    # R6.2, R6.5: the task and its rounds come from the commit's note in refs/notes/konundrm, and a
+    # commit that still carries those lines in its message is found as before.
+    def test_a_task_and_its_rounds_come_from_the_flow_note_too(self) -> None:
+        base = commit(self.root, "docs(specs): plan the feature\n")
+        t1 = commit(self.root, "feat: first task\n\nTask: T1 · Covers: R1.1\n")
+        t2 = commit(self.root, "feat: second task\n\nwhy\n")
+        note_file = self.root.parent / "note.txt"
+        note_file.write_text(
+            "Task: T2 · Covers: R1.1\nRounds: spec 1 · code 2 · escalations 0\n", encoding="utf-8", newline="\n"
+        )
+        git(self.root, "notes", "--ref=refs/notes/konundrm", "add", "-F", str(note_file), t2)
+
+        found = task_commits(self.root, base)
+
+        self.assertEqual(
+            found,
+            {
+                "T1": TaskCommit(task_id="T1", sha=t1, rounds=None),
+                "T2": TaskCommit(task_id="T2", sha=t2, rounds=(1, 2, 0)),
+            },
+        )
+
+    # R6.2, R6.5: over the seeded histories, moving any commit's flow lines from its message to its
+    # note in refs/notes/konundrm never changes which commit and rounds each task gets (so a history
+    # without notes reads as today), and every call reads the range with exactly one `git log`.
+    def test_each_task_keeps_its_commit_wherever_its_flow_lines_are_for_any_history(self) -> None:
+        histories: dict[str, list[str]] = {}
+        notes_at: dict[tuple[str, int], str] = {}
+        base_positions: dict[str, int] = {}
+        for seed in range(SEED_COUNT):
+            rng = random.Random(seed)  # noqa: S311 - seeded for reproducible test data, not cryptography
+            generated = [_random_message(rng, index) for index in range(rng.randint(1, 9))]
+            base_position = rng.randint(0, len(generated))
+            generated.insert(base_position, ("docs(specs): plan the feature\n", None, None))
+            in_messages = [message for message, _, _ in generated]
+            mixed: list[str] = []
+            for position, (message, number, _) in enumerate(generated):
+                if number is not None and rng.random() < 0.5:
+                    message, notes_at[(f"mixed{seed}", position)] = _move_flow_paragraph(message)
+                mixed.append(message)
+            histories[f"seed{seed}"] = in_messages
+            histories[f"mixed{seed}"] = mixed
+            base_positions[f"seed{seed}"] = base_positions[f"mixed{seed}"] = base_position
+        shas = _import_histories(self.root, histories)
+        _import_notes(self.root, {shas[key]: note for key, note in notes_at.items()})
+        positions = {sha: position for (_, position), sha in shas.items()}
+
+        def found_by_position(branch: str) -> tuple[dict[str, tuple[int, tuple[int, int, int] | None]], list[str]]:
+            (self.root / ".git" / "HEAD").write_text(f"ref: refs/heads/{branch}\n", encoding="utf-8")
+            real_run_git = task_commits_module.run_git
+            with mock.patch.object(task_commits_module, "run_git", side_effect=real_run_git) as spy:
+                found = task_commits(self.root, shas[(branch, base_positions[branch])])
+            git_commands = [call.args[0][0] for call in spy.call_args_list]
+            by_position = {task_id: (positions[tc.sha], tc.rounds) for task_id, tc in found.items()}
+            return by_position, git_commands
+
+        for seed in range(SEED_COUNT):
+            in_messages, in_messages_commands = found_by_position(f"seed{seed}")
+            mixed, mixed_commands = found_by_position(f"mixed{seed}")
+
+            moved = sorted(position for branch, position in notes_at if branch == f"mixed{seed}")
+            context = f"seed {seed}, flow lines moved to notes at {moved}: {histories[f'mixed{seed}']!r}"
+            self.assertEqual(mixed, in_messages, context)
+            self.assertEqual((in_messages_commands, mixed_commands), (["log"], ["log"]), context)
 
 
 if __name__ == "__main__":

@@ -729,13 +729,9 @@ _PARALLEL_PARTITIONS_RULES: dict[str, Callable[[str], bool]] = {
         _CHECK.search(b) is not None
         and (_ONE_AT_A_TIME.search(b) is not None or _AFTER_A_PARTITION.search(b) is not None)
     ),
-    "R3.3 reviewing an integration fix and committing it with its task's Task: line, typed feat or refactor": (
-        lambda b: (
-            _REVIEWED.search(b) is not None
-            and _TASK_LINE.search(b) is not None
-            and _FEAT.search(b) is not None
-            and _REFACTOR.search(b) is not None
-        )
+    # 003 R6.1: the fix's commit carries no Task: line, so only its review and its type are checked here.
+    "R3.3 reviewing an integration fix and committing it typed feat or refactor": lambda b: (
+        _REVIEWED.search(b) is not None and _FEAT.search(b) is not None and _REFACTOR.search(b) is not None
     ),
     "R3.3 a cross code review of the whole wave at the end": lambda b: (
         "code-review" in b and _AT_THE_END.search(b) is not None and _ACROSS_PARTITIONS.search(b) is not None
@@ -1203,7 +1199,8 @@ _CHECKPOINT_LANDED = re.compile(r"\b(?:committed|integrated|lands|landed)\b")
 _CHECKPOINT_WRITES = re.compile(r"\b(?:writ|fill|sav)\w*")
 _CHECKPOINT_TEMPLATE = re.compile(r"\btemplates/slice-summary\.md\b")
 _CHECKPOINT_SUMMARY_FILE = re.compile(r"\bspecs/<[^>\s]+>/summaries/s<k>\.md\b")
-_CHECKPOINT_SUMMARY_COMMIT = re.compile(r"\bdocs\([^)\s]+\): summarize slice s<k>")
+# Committing the slice's summary (003 R6.1: a plain subject that names no slice, and no Task: line).
+_CHECKPOINT_SUMMARY_COMMIT = re.compile(r"\bcommit\w*(?: \S+){0,3} summary\b|\bsummary(?:'s)? commit\b")
 _CHECKPOINT_STOPS = re.compile(r"\b(?:stop|paus|halt)\w*")
 _CHECKPOINT_READING_ORDER = re.compile(r"\breading order\b|\bwhat to read first\b")
 _CHECKPOINT_GO_AHEAD = re.compile(r"\bgo[- ]ahead\b|\bapprov\w*")
@@ -1224,8 +1221,7 @@ _CHECKPOINT_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
     ),
     "R6.1 it writes the summary from templates/slice-summary.md": (_CHECKPOINT_WRITES, _CHECKPOINT_TEMPLATE),
     "R6.1 it writes the summary to specs/<slug>/summaries/S<k>.md": (_CHECKPOINT_WRITES, _CHECKPOINT_SUMMARY_FILE),
-    "R6.1 it commits the summary as docs(<scope>): summarize slice S<k>": (_CHECKPOINT_SUMMARY_COMMIT,),
-    "R6.1 the summary commit carries the Task: line of the slice's last task": (_TASK_LINE, _CHECKPOINT_LAST_TASK),
+    "R6.1 it commits the summary": (_CHECKPOINT_SUMMARY_COMMIT,),
     "R4.1 it stops and shows the user the summary": (_CHECKPOINT_STOPS, _SHOWS, _USER, _SUMMARIES),
     "R4.1 it shows the summary's reading order (what to read first)": (_SHOWS, _CHECKPOINT_READING_ORDER),
     "R4.1 it waits for the user's go-ahead": (_WAITS, _CHECKPOINT_GO_AHEAD),
@@ -1884,10 +1880,12 @@ def _notes_gaps(skill: Path, prompts: Path) -> list[str]:
 # A session that stops between a slice's last task commit and its summary commit resumes through Phase 0 (R4.1, R6.1):
 # a Phase 0 block that names the summary commit must say a slice with every task committed but no summary commit runs
 # the Slice checkpoint before the next slice's first task, so resuming never skips the summary and the pause.
-_RESUME_CHECKPOINT_MISSING = re.compile(r"\b(?:missing|lacks|lacking|without|has no)\b")
+_RESUME_CHECKPOINT_MISSING = re.compile(r"\b(?:missing|lacks|lacking|without|has no|no commit)\b")
+# 003 R6.1: a slice's summary commit is found by the file it adds, `summaries/S<k>.md`, not by its subject.
+_RESUME_SUMMARY = re.compile(r"\bsummaries/s<k>\.md\b")
 _RESUME_CHECKPOINT_RULES: dict[str, Callable[[str], bool]] = {
     "R4.1, R6.1 a slice whose every task has its commit but whose summary commit is missing": lambda block: (
-        _in_one_sentence(block, _EVERY_TASK_COMMIT, _COMMIT, _CHECKPOINT_SUMMARY_COMMIT, _RESUME_CHECKPOINT_MISSING)
+        _in_one_sentence(block, _EVERY_TASK_COMMIT, _COMMIT, _RESUME_SUMMARY, _RESUME_CHECKPOINT_MISSING)
     ),
     "R4.1 running the Slice checkpoint before the next slice's first task": lambda block: any(
         _CHECKPOINT_LINK in sentence and _CHECKPOINT_BEFORE.search(sentence) and _CHECKPOINT_NEXT_SLICE.search(sentence)
@@ -1897,11 +1895,11 @@ _RESUME_CHECKPOINT_RULES: dict[str, Callable[[str], bool]] = {
 
 
 def _resume_checkpoint_gaps(skill: Path) -> list[str]:
-    """Return one message when no block of develop-feature's `## Phase 0: Prepare` section names the summary commit,
-    else one per rule of _RESUME_CHECKPOINT_RULES that no such block states."""
-    blocks = [block for block in _section_blocks(skill, "Phase 0: Prepare") if _CHECKPOINT_SUMMARY_COMMIT.search(block)]
+    """Return one message when no block of develop-feature's `## Phase 0: Prepare` section names the summary file
+    `summaries/S<k>.md`, else one per rule of _RESUME_CHECKPOINT_RULES that no such block states."""
+    blocks = [block for block in _section_blocks(skill, "Phase 0: Prepare") if _RESUME_SUMMARY.search(block)]
     if not blocks:
-        return ["develop-feature Phase 0: no block names the summary commit docs(<scope>): summarize slice S<k>"]
+        return ["develop-feature Phase 0: no block names the slice's summary file summaries/S<k>.md"]
     return [
         f"develop-feature Phase 0: no sentence says {label}"
         for label, rule in _RESUME_CHECKPOINT_RULES.items()
@@ -2050,7 +2048,7 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         session and each other one in its own session, in a worktree on a `wave/` branch created outside the project
         with `git worktree add ../<repo>-worktrees/...`; integrates them one at a time by cherry-picking each branch's
         commits (its report included) from the merge-base, running the check after each; reviews an integration fix
-        and commits it with its task's `Task:` line typed feat or refactor; runs a cross code review over the wave at
+        and commits it typed feat or refactor; runs a cross code review over the wave at
         the end; removes worktrees with `git worktree remove`, never `--force`; and deletes a partition branch only
         once every one of its task commits, found by `Task:` line, is integrated."""
         gaps = _parallel_partitions_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
@@ -2104,8 +2102,8 @@ class DevelopFeatureFlowTest(unittest.TestCase):
     def test_develop_feature_pauses_after_each_slice(self) -> None:
         """R4.1, R6.1: develop-feature's `## Slice checkpoint` section runs once a slice's last task is committed (and,
         with partitions, integrated): it writes the slice's summary from `templates/slice-summary.md` to
-        `specs/<slug>/summaries/S<k>.md` and commits it as `docs(<scope>): summarize slice S<k>` with the `Task:` line
-        of the slice's last task, so it stays in that slice's pull request; then it stops, shows the user the summary
+        `specs/<slug>/summaries/S<k>.md` and commits it (003 R6.1: with a plain subject and no `Task:` line, the
+        summary being found by its file); then it stops, shows the user the summary
         with its reading order, and waits for the user's go-ahead before starting the next slice. Another part of
         SKILL.md links to the section, so the task loop reaches it; every Phase 3 sentence that links to it limits it
         to a slice built without a parallel wave, and a sentence says a partition session never runs it."""
@@ -2175,8 +2173,8 @@ class DevelopFeatureFlowTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
     def test_resume_runs_a_missing_slice_checkpoint_first(self) -> None:
-        """R4.1, R6.1: when develop-feature resumes a slice whose every task has its commit but whose summary commit
-        `docs(<scope>): summarize slice S<k>` is missing (the session stopped between the two), its `## Phase 0:
+        """R4.1, R6.1: when develop-feature resumes a slice whose every task has its commit but no commit adds its
+        summary `summaries/S<k>.md` (the session stopped between the two; 003 R6.1), its `## Phase 0:
         Prepare` section runs the Slice checkpoint before the next slice's first task, so the slice's summary and pause
         are never skipped."""
         gaps = _resume_checkpoint_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
@@ -2823,7 +2821,7 @@ _TASK_COMMIT_NAMES = {
     "git commit -F": re.compile(r"\bgit commit -f\b"),
 }
 _TASK_COMMIT_WORD = re.compile(r"\bcommit\w*")
-_TASK_COMMIT_TO_MESSAGE = re.compile(r"\bmessage\b|--rounds\b")
+_TASK_COMMIT_ROUNDS_FLAG = re.compile(r"--rounds\b")
 _TASK_COMMIT_BOX = re.compile(r"\bbox(?:es)?\b")
 _TASK_COMMIT_ROUNDS = re.compile(r"(?<!-)\brounds\b")
 _TASK_COMMIT_GATE = re.compile(r"\bcommit (?:gate|hook)\b")
@@ -2849,7 +2847,8 @@ _TASK_COMMIT_FIX_BUG_INHERITS = re.compile(r"\btask_ledger\b|\bsame as (?:(?:ins
 # paragraph or Phase 0 partition session paragraph, or committing-changes' `### Inside develop-feature`.
 _TASK_COMMIT_RULES = [
     ("step 7", 'R4.2 msg=$(task_ledger.py message … --rounds …) && git commit -F "$msg"', (_TASK_COMMIT_LINE,)),
-    ("tally", "R2.7 the rounds go to the task's commit message", (_TASK_COMMIT_WORD, _TASK_COMMIT_TO_MESSAGE)),
+    # 003 R6.2: the rounds reach the task's note through `message --rounds`, not its commit message.
+    ("tally", "R2.7 the tally goes to the task's commit step as --rounds", (_TASK_COMMIT_ROUNDS_FLAG,)),
     ("step 7", "R2.7 checks no box, writes no Rounds line", (_NEGATION, _TASK_COMMIT_BOX, _TASK_COMMIT_ROUNDS)),
     ("step 7", "R4.3 goes through the commit gate like any other commit", (_TASK_COMMIT_GATE, _TASK_COMMIT_LIKE_ANY)),
     ("partition", "commits its tasks as step 7 or task_ledger.py message", (_TASK_COMMIT_WORD, _TASK_COMMIT_AS_STEP_7)),
@@ -2948,7 +2947,7 @@ class GateFlowTest(unittest.TestCase):
 
     def test_task_commit_goes_through_the_gate_with_its_message(self) -> None:
         """R2.7, R4.2, R4.3: 002 develop-feature's step 7 and partition session commit a task with `task_ledger.py
-        message` and a plain `git commit -F`, through the commit gate, its rounds in the message and no box or Rounds
+        message` and a plain `git commit -F`, through the commit gate, its rounds as `--rounds` and no box or Rounds
         line in tasks.md; committing-changes' develop-feature mode says so too, attribution in `--trailer`, single
         quotes only with no apostrophe in them (or a quoted heredoc), and its fix-bug mode does not inherit
         `message`."""
@@ -3155,7 +3154,7 @@ class SliceHandoffFlowTest(unittest.TestCase):
 
     def test_slice_checkpoint_closes_the_slice_in_the_summary_commit(self) -> None:
         """R2.8, R4.5: 002 develop-feature's Slice checkpoint runs `task_ledger.py close-slice` through run.sh before
-        committing the summary, so the plan's boxes and rounds land in `docs(<scope>): summarize slice S<k>`, also
+        committing the summary, so the plan's boxes and rounds land in the summary commit, also
         with pre-approved pauses; the tasks.md template says the box is checked at the pause, not in the task's own
         commit."""
         checkpoint = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Slice checkpoint")
@@ -3169,7 +3168,7 @@ class SliceHandoffFlowTest(unittest.TestCase):
         if not any(_in_one_sentence(b, *_CLOSE_RUNS) for b in checkpoint):
             gaps.append("Slice checkpoint lacks (R4.5): sh run.sh task_ledger.py close-slice specs/<...>/tasks.md S<k>")
         if not any(_in_one_sentence(b, _CLOSE_LEDGER, _CHECKPOINT_SUMMARY_COMMIT) for b in checkpoint):
-            gaps.append("Slice checkpoint lacks (R2.8): close-slice's tasks.md in docs(<scope>): summarize slice S<k>")
+            gaps.append("Slice checkpoint lacks (R2.8): close-slice's tasks.md in the summary commit")
         if not (close_at and commit_at and close_at.start() < commit_at.start()):
             gaps.append("Slice checkpoint does not run close-slice before committing the summary (R2.8)")
         if not any(
@@ -3264,6 +3263,213 @@ class SliceHandoffFlowTest(unittest.TestCase):
         ]
         if not any(_SESSIONS_TEMPLATE_LINE.match(item) for item in items[decisions + 1 :]):
             gaps.append("writing-plans tasks.md template lacks (R1.7): - **Sessions:** per-slice after Decisions")
+
+        self.assertEqual(gaps, [])
+
+
+# The flow's data lives in a Git note under refs/notes/konundrm, never in a commit message (003 R6.1-R6.4, R9.1).
+# These check keywords of each rule, on blocks from _blocks (lowercased, no backticks) or on the raw Markdown.
+_FLOW_NOTES_SKILLS = (
+    "develop-feature",
+    "committing-changes",
+    "fix-bug",
+    "opening-pull-requests",
+    "reviewing-pull-requests",
+    "engineering-standards",
+)
+_FLOW_NOTES_SEARCHING_SKILLS = ("develop-feature", "opening-pull-requests", "reviewing-pull-requests")
+_FLOW_NOTES_REF = "--notes=refs/notes/konundrm"
+_FLOW_LINE = re.compile(r"\b(?:task|covers|rounds|escaped-gate):")
+_FLOW_SEARCH_LINE = re.compile(r"\b(?:task|covers):")
+# Where a flow line would go if it went into the commit: its body, trailers or message, or a commit that carries it.
+_FLOW_IN_THE_MESSAGE = re.compile(
+    r"\bbody\b|\btrailers?\b|\bmessage\b|\bcarr(?:y|ies|ying)\b|\bcommit (?:records?|holds?|has)\b"
+    r"|\bwith (?:the|its|that|this|a)\b(?: \S+){0,4} (?:task|covers|rounds|escaped-gate): line\b"
+)
+_FLOW_IDS_IN_THE_BODY = re.compile(r"\btask(?: and requirement)? ids?\b(?: \S+){0,2} (?:body|message)\b")
+_FLOW_IN_A_NOTE = re.compile(r"\bnotes?\b")
+# A fenced commit message: a Conventional Commits subject line, and a flow line of its own.
+_FLOW_FENCE = re.compile(r"^```[^\n]*\n(.*?)^```", re.MULTILINE | re.DOTALL)
+_FLOW_FENCE_SUBJECT = re.compile(r"^[a-z]+(?:\([^)\n]*\))?!?: \S", re.MULTILINE)
+_FLOW_FENCE_LINE = re.compile(r"^(?:Task|Covers|Rounds|Escaped-gate):", re.MULTILINE)
+# A commit subject template in inline code, and what R6.1 keeps out of it: slices, partitions, rounds and flow IDs.
+_FLOW_SUBJECT_SPAN = re.compile(r"^\w+\([^)]*\)!?: ")
+_FLOW_SUBJECT_NAMES_THE_FLOW = re.compile(r"\b(?:slice|partition|rounds?)\b|\b[SPTRB]<[kn]>|\b[TRB]\d", re.IGNORECASE)
+_FLOW_INLINE_CODE = re.compile(r"`([^`\n]+)`")
+# The task's commit in one command (R6.2): `message`, then `git commit -F`, then `record`.
+_FLOW_MESSAGE_COMMIT_RECORD = re.compile(
+    r"\btask_ledger\.py message\b.*?&& git commit -f\b[^&]*&&[^&]*\btask_ledger\.py record\b"
+)
+_FLOW_ROUNDS = re.compile(r"\brounds\b")
+_FLOW_ROUNDS_IN_THE_MESSAGE = re.compile(
+    r"\brounds\b(?: \S+){0,6} commit message\b|\bcommit message\b(?: \S+){0,4} --rounds\b"
+)
+_FLOW_RECORD = "task_ledger.py record"
+_FLOW_STATUS = "task_ledger.py status"
+_FLOW_FIRST = re.compile(r"\b(?:first|before)\b")
+_FLOW_GIT_LOG = re.compile(r"\bgit log\b")
+_FLOW_SUMMARY_FILE = re.compile(r"\bsummaries/s<k>\.md\b")
+_FLOW_NOTES_COPY = re.compile(r"\bgit notes --ref[= ]refs/notes/konundrm copy\b")
+_FLOW_NOTES_ADD = re.compile(r"\bgit notes --ref[= ]refs/notes/konundrm add\b")
+_FLOW_COVERS = re.compile(r"\bcovers:")
+_FLOW_ESCAPED_GATE = re.compile(r"\bescaped-gate:")
+_FLOW_SLICE_ENDS = re.compile(r"\bslice\b.*\bends?\b|\bends?\b.*\bslice\b")
+_FLOW_LAST_TASK_COMMIT = re.compile(r"\blast\b(?: \S+){0,4} commit")
+_FLOW_FALLBACK = re.compile(r"\b(?:otherwise|fall\w* back|without|lacks?|no|when there is none)\b")
+
+
+def _flow_lines_in_messages(skill: str) -> list[str]:
+    """Return each instruction of a skill that puts a Task:, Covers:, Rounds: or Escaped-gate: line in a commit:
+    a sentence that names such a line and its body, trailers or message (unnegated, and with no note in it), a
+    sentence that puts task or requirement IDs in the body, and a fenced commit message with such a line."""
+    path = SKILLS_DIR / skill / "SKILL.md"
+    gaps = [
+        f"{skill}: puts a flow line in a commit message (R6.1): {sentence.strip()}"
+        for block in _blocks(path)
+        for sentence in _sentences(block)
+        if (
+            _FLOW_LINE.search(sentence)
+            and _unnegated(sentence, _FLOW_IN_THE_MESSAGE)
+            and not _FLOW_IN_A_NOTE.search(sentence)
+        )
+        or _unnegated(sentence, _FLOW_IDS_IN_THE_BODY)
+    ]
+    gaps += [
+        f"{skill}: a fenced commit message carries a flow line (R6.1): {fence.splitlines()[0]!r}"
+        for fence in _FLOW_FENCE.findall(path.read_text(encoding="utf-8"))
+        if _FLOW_FENCE_SUBJECT.search(fence) and _FLOW_FENCE_LINE.search(fence)
+    ]
+    gaps += [
+        f"{skill}: a commit subject names the flow (R6.1): `{span}`"
+        for span in _FLOW_INLINE_CODE.findall(path.read_text(encoding="utf-8"))
+        if _FLOW_SUBJECT_SPAN.match(span) and _FLOW_SUBJECT_NAMES_THE_FLOW.search(span)
+    ]
+    return gaps
+
+
+def _flow_searches_without_notes(skill: str) -> list[str]:
+    """Return each search for a Task: or Covers: line in a skill that does not read the konundrm notes: inline code
+    with `--grep` on such a line, or a sentence that names `git log` and such a line, without
+    `--notes=refs/notes/konundrm` (R6.2), plus any `--grep` on a summary subject (R6.1: the summary is found by its
+    file)."""
+    path = SKILLS_DIR / skill / "SKILL.md"
+    spans = _FLOW_INLINE_CODE.findall(path.read_text(encoding="utf-8"))
+    gaps = [
+        f"{skill}: searches a flow line without {_FLOW_NOTES_REF} (R6.2): `{span}`"
+        for span in spans
+        if "--grep" in span and re.search(r"\b(?:Task|Covers):", span) and _FLOW_NOTES_REF not in span
+    ]
+    gaps += [
+        f"{skill}: git log reads a flow line without {_FLOW_NOTES_REF} (R6.2): {sentence.strip()}"
+        for block in _blocks(path)
+        for sentence in _sentences(block)
+        if _FLOW_GIT_LOG.search(sentence) and _FLOW_SEARCH_LINE.search(sentence) and _FLOW_NOTES_REF not in sentence
+    ]
+    gaps += [
+        f"{skill}: finds a summary by its subject, not its file (R6.1): `{span}`"
+        for span in spans
+        if "--grep" in span and "summar" in span
+    ]
+    return gaps
+
+
+def _flow_task_commit_gaps(skill: Path) -> list[str]:
+    """Return what develop-feature's step 7 and Phase 0 lack: the task committed as message → git commit → record in
+    one command, its rounds in its note, and the resume running `record` before anything else (R6.2, R6.4)."""
+    phase_3 = _section_blocks(skill, "Phase 3: Task loop")
+    step_7 = [block for block in phase_3 if block.startswith("7. **commit.**")]
+    prepare = _section_blocks(skill, "Phase 0: Prepare")
+    prepare_text = " ".join(prepare)
+    gaps = []
+    if not any(_FLOW_MESSAGE_COMMIT_RECORD.search(block) for block in step_7):
+        gaps.append(
+            "develop-feature step 7 lacks (R6.2): task_ledger.py message && … git commit -F … && task_ledger.py record"
+            " in one command"
+        )
+    if not any(_in_one_sentence(block, _FLOW_ROUNDS, _FLOW_IN_A_NOTE) for block in step_7):
+        gaps.append("develop-feature step 7 lacks (R6.2): the task's rounds live in its note")
+    gaps += [
+        f"develop-feature Phase 3 keeps the rounds in the commit message (R6.1): {sentence.strip()}"
+        for block in phase_3
+        for sentence in _sentences(block)
+        if _unnegated(sentence, _FLOW_ROUNDS_IN_THE_MESSAGE)
+    ]
+    record_at, status_at = prepare_text.find(_FLOW_RECORD), prepare_text.find(_FLOW_STATUS)
+    if record_at < 0 or (status_at >= 0 and record_at > status_at):
+        gaps.append("develop-feature Phase 0 resume does not run task_ledger.py record before status (R6.4)")
+    if not any(
+        _FLOW_RECORD in sentence and _FLOW_FIRST.search(sentence) for block in prepare for sentence in _sentences(block)
+    ):
+        gaps.append("develop-feature Phase 0 lacks (R6.4): a sentence that runs task_ledger.py record first")
+    if not any(_in_one_sentence(block, _FLOW_GIT_LOG, _FLOW_SUMMARY_FILE) for block in prepare):
+        gaps.append("develop-feature Phase 0 lacks (R6.1): finding a slice's summary with git log … summaries/S<k>.md")
+    return gaps
+
+
+def _flow_fix_bug_note_gaps() -> list[str]:
+    """Return one message per fix-bug commit step (fix-bug's step 8, committing-changes' fix-bug mode) that does not
+    write `Covers:` and `Escaped-gate:` with `git notes --ref=refs/notes/konundrm add` (R6.2)."""
+    fix_bug = _subsection_blocks(
+        _section_blocks(SKILLS_DIR / "fix-bug" / "SKILL.md", "Workflow"), "### 8. gate and commit"
+    )
+    committing = _subsection_blocks(
+        _section_blocks(SKILLS_DIR / "committing-changes" / "SKILL.md", "Workflow"), "### inside fix-bug"
+    )
+    return [
+        f"{where} lacks (R6.2): git notes --ref=refs/notes/konundrm add with Covers: and Escaped-gate:"
+        for where, blocks in (("fix-bug step 8", fix_bug), ("committing-changes ### Inside fix-bug", committing))
+        if not any(
+            _FLOW_NOTES_ADD.search(block) and _FLOW_COVERS.search(block) and _FLOW_ESCAPED_GATE.search(block)
+            for block in blocks
+        )
+    ]
+
+
+def _flow_slice_end_gaps() -> list[str]:
+    """Return a message when opening-pull-requests does not end a slice at the commit that adds its summaries/S<k>.md,
+    falling back to the slice's last task commit (R6.1: no summary subject or Task: line to find it by)."""
+    blocks = _blocks(SKILLS_DIR / "opening-pull-requests" / "SKILL.md")
+    if any(
+        _FLOW_SUMMARY_FILE.search(block)
+        and _FLOW_SLICE_ENDS.search(block)
+        and _FLOW_LAST_TASK_COMMIT.search(block)
+        and _FLOW_FALLBACK.search(block)
+        for block in blocks
+    ):
+        return []
+    return [
+        "opening-pull-requests lacks (R6.1): a slice ends at the commit that adds summaries/S<k>.md, else at its last"
+        " task commit"
+    ]
+
+
+class FlowDataInNotesTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_commits_carry_no_flow_lines_and_keep_their_data_in_notes(self) -> None:
+        """R6.1, R6.2, R6.3, R6.4: 003 every commit the plugin's flows make carries only what changes, and the flow's
+        data lives in a Git note under refs/notes/konundrm (R9.1: checked here, without a model).
+
+        No sentence of develop-feature, committing-changes, fix-bug, opening-pull-requests, reviewing-pull-requests or
+        engineering-standards puts a `Task:`, `Covers:`, `Rounds:` or `Escaped-gate:` line in a commit's body,
+        trailers or message, or the task and requirement IDs in its body; no fenced commit message carries one; and
+        no commit subject template names a slice, partition or round. develop-feature commits a task as
+        `task_ledger.py message` → `git commit -F` → `task_ledger.py record` in one command, its rounds in its note;
+        resumes by running `record` before `status`; finds a slice's summary by `summaries/S<k>.md`; and copies each
+        integrated commit's note with `git notes --ref=refs/notes/konundrm copy`. Every `Task:` / `Covers:` search
+        in develop-feature, opening-pull-requests and reviewing-pull-requests reads `--notes=refs/notes/konundrm`;
+        opening-pull-requests ends a slice at the commit that adds its summary, else at its last task commit; and
+        fix-bug (and committing-changes' fix-bug mode) writes `Covers:` and `Escaped-gate:` with
+        `git notes --ref=refs/notes/konundrm add`."""
+        develop_feature = DEVELOP_FEATURE_DIR / "SKILL.md"
+
+        gaps = [gap for skill in _FLOW_NOTES_SKILLS for gap in _flow_lines_in_messages(skill)]
+        gaps += [gap for skill in _FLOW_NOTES_SEARCHING_SKILLS for gap in _flow_searches_without_notes(skill)]
+        gaps += _flow_task_commit_gaps(develop_feature)
+        if not any(_FLOW_NOTES_COPY.search(block) for block in _section_blocks(develop_feature, "Parallel partitions")):
+            gaps.append("develop-feature Parallel partitions lacks (R6.3): git notes --ref=refs/notes/konundrm copy")
+        gaps += _flow_slice_end_gaps()
+        gaps += _flow_fix_bug_note_gaps()
 
         self.assertEqual(gaps, [])
 

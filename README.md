@@ -291,10 +291,12 @@ Dentro de la sesión, `/reload-plugins` recarga los cambios que hagas a los arch
 
 Instalación para todo el equipo, una vez subido el repo a GitHub: `/konundrm-eng:setup-project`
 deja en cada proyecto un `.claude/settings.json` que registra el marketplace y activa el plugin;
-cada persona lo recibe al confiar en la carpeta. Para instalarlo a mano:
+cada persona lo recibe al confiar en la carpeta. El repositorio es privado: quien instala el
+plugin necesita acceso de lectura con sus credenciales de Git, y el workflow de revisión del CI
+de cada proyecto, un token con acceso a él. Para instalarlo a mano:
 
 ```bash
-claude plugin marketplace add konundrm/konundrm-claude
+claude plugin marketplace add MatiasBravoC/konundrm-claude
 ```
 
 ```bash

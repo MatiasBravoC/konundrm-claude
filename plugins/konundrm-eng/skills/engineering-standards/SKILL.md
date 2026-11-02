@@ -125,9 +125,9 @@ person (§6).
 - Message: `<type>(<scope>): <imperative summary>` (Conventional Commits, no emoji), in English,
   ≤ 72 characters.
 - One logical change per commit, committed only with the check command green.
-- A bug fix's commit carries two trailers: `Fixes: <issue>` when there is one, and
-  `Escaped-gate: spec | property | review | e2e | none`, the gate that should have caught the bug.
-  The impact report counts them.
+- A bug fix's commit carries `Fixes: <issue>` when there is one, and its note under
+  `refs/notes/konundrm` holds `Escaped-gate: spec | property | review | e2e | none`, the gate that
+  should have caught the bug. The impact report counts them.
 - Never `--no-verify`, never amend someone else's commit, never push without explicit approval.
 - **Small batches.** A pull request stays within the budget in `tasks.md` (default 400 changed
   lines; Google's review guide calls about 100 lines reasonable and 1,000 too large). Larger work
