@@ -69,6 +69,11 @@ class CommitInfo:
     escaped_gate: str | None = None
 
 
+def _parse_iso_timestamp(text: str) -> datetime:
+    # Python 3.10's fromisoformat rejects the trailing "Z" Git and GitHub print for UTC times.
+    return datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
+
+
 def read_commits(root: Path, since: datetime) -> list[CommitInfo]:
     """Reads the commits made since a date, oldest first; empty outside a Git repository.
 
@@ -107,7 +112,7 @@ def read_commits(root: Path, since: datetime) -> list[CommitInfo]:
         gate = ESCAPED_GATE_TRAILER.search(flow_text)
         commits.append(
             CommitInfo(
-                when=datetime.fromisoformat(when),
+                when=_parse_iso_timestamp(when),
                 kind=kind,
                 subject=subject,
                 is_task=bool(TASK_TRAILER.search(flow_text)),
@@ -241,8 +246,8 @@ def read_merged_pull_requests(root: Path, since: datetime) -> list[dict[str, Any
 
 def _hours_to_merge(pull_request: dict[str, Any]) -> float | None:
     try:
-        opened = datetime.fromisoformat(str(pull_request["createdAt"]).replace("Z", "+00:00"))
-        merged = datetime.fromisoformat(str(pull_request["mergedAt"]).replace("Z", "+00:00"))
+        opened = _parse_iso_timestamp(str(pull_request["createdAt"]))
+        merged = _parse_iso_timestamp(str(pull_request["mergedAt"]))
     except (KeyError, ValueError):
         return None
     return (merged - opened).total_seconds() / 3600
