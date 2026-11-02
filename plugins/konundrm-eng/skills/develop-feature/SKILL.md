@@ -428,7 +428,10 @@ wave is integrated:
 
 1. Write the slice's summary from `templates/slice-summary.md` to
    `specs/<NNN-slug>/summaries/S<k>.md`, filling each of its sections from `tasks.md`, the
-   evidence and the slice's commits.
+   evidence and the slice's commits. For `## Size`, measure from the commit that ended the
+   previous slice (the `Base commit` for S1) to `HEAD`: the code and tests with
+   `git diff --shortstat <from>...HEAD -- . ":(exclude)specs/<NNN-slug>"`, and the feature's
+   documents apart with `git diff --shortstat <from>...HEAD -- specs/<NNN-slug>`.
 2. Run `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py close-slice specs/<NNN-slug>/tasks.md S<k>`,
    which checks the box of each of the slice's tasks that has its commit and writes the rounds from
    that commit's note; it should print `not committed: none`, and a task it names is not built yet, so
@@ -448,7 +451,9 @@ wave is integrated:
    request (in the last slice's, after the final slice). Never change the plugin's skills, agents
    or hooks on the strength of these notes: they are proposals for the plugin's author.
 4. Stop and show the user the summary, with its reading order first: the files and line ranges to
-   read, in order.
+   read, in order. When the slice's changed lines of code and tests go over the `Pull request
+   budget` in `tasks.md`, warn the user first, with the number of lines and how much it went over
+   (`612 changed lines, over the 500-line budget by 112 lines`).
 5. Ask two or three short questions about the slice's code, each answerable from the summary and
    the files it points to. When the user answers wrong or says they don't know, explain the right
    answer, citing the file and the lines that show it.
@@ -475,7 +480,8 @@ wave is integrated:
 With `Checkpoints: pre-approved` in the `tasks.md` header, still write the summary, run `close-slice`,
 commit both and save the improvement notes (steps 1 to 3), then go on to the next slice as step 8
 says (in a new session, or here with `Sessions: single`) without stopping, asking questions or
-waiting. From a terminal, `run_slices.py` chains those sessions for a `Checkpoints: pre-approved`
+waiting. A slice over the budget still gets its warning: it stays in the summary's `## Size`
+and in the session's closing message. From a terminal, `run_slices.py` chains those sessions for a `Checkpoints: pre-approved`
 plan, headless and one per slice, and its last line says how it ended:
 `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" run_slices.py specs/<NNN-slug>`.
 

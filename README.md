@@ -208,7 +208,7 @@ los binarios locales de `npx`, los scopes de npm con registro propio en `.npmrc`
 calcen con `KONUNDRM_TRUSTED_PACKAGES` (globs separados por coma, como `@konundrm/*,konundrm-*`).
 `KONUNDRM_ACCEPTED_LICENSES` (globs separados por coma, como `GPL-3.0*`) lista las licencias que el
 proyecto acepta, `KONUNDRM_OSV_URL` apunta a un espejo de OSV y `KONUNDRM_DEPENDENCY_GUARD=off`
-apaga el guard. `KONUNDRM_PR_BUDGET` cambia el presupuesto de líneas por pull request (400).
+apaga el guard. `KONUNDRM_PR_BUDGET` cambia el presupuesto de líneas por pull request (500).
 
 ### De dónde salen las prácticas
 

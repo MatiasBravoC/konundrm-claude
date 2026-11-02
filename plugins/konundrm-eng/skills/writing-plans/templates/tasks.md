@@ -4,7 +4,7 @@
 - **Status:** Draft <!-- Draft → Approved → Done -->
 - **Check command:** `<npm run check | poe check | make check>`
 - **Base commit:** `<SHA the feature branch started from>`
-- **Pull request budget:** <400> changed lines per slice
+- **Pull request budget:** <500> changed lines of code and tests per slice
 - **Parallel:** no <!-- yes | no: whether the partitions of one wave may be built at the same time -->
 - **Checkpoints:** ask <!-- ask | pre-approved: pre-approved when the user approved the pauses
 between slices in advance (in the request or when approving the plan) -->

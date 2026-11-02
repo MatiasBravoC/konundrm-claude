@@ -39,7 +39,7 @@ Check `gh auth status`; without `gh`, give the user the push command and the des
 
 Run the check command once (or rely on the commit gate's green result for this tree). Measure:
 `git diff --shortstat <base>...HEAD`. The budget is the `Pull request budget` in the feature's
-`tasks.md`, else `KONUNDRM_PR_BUDGET`, else 400 changed lines. Over the budget without slices,
+`tasks.md`, else `KONUNDRM_PR_BUDGET`, else 500 changed lines. Over the budget without slices,
 propose a split along commit boundaries (refactors first, then each behavior) and ask before
 going on: big pull requests get worse reviews.
 

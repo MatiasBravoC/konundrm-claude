@@ -49,7 +49,7 @@ escaping, is rework falling, and do the gates catch real problems or only add fr
 - Gate events are logged on this machine only, and review rounds only exist for features built
   with `develop-feature`.
 - The pull request section needs the `gh` CLI signed in to the repository's GitHub; without it
-  the report says so. `KONUNDRM_PR_BUDGET` changes the budget it compares against (default 400).
+  the report says so. `KONUNDRM_PR_BUDGET` changes the budget it compares against (default 500).
 - Token cost comes only from the transcript folders given, so without them the report has none.
   It is per role over those transcripts, not per feature, and transcripts exist only on the
   machine that ran the sessions. Claude Code also exports cost through OpenTelemetry

@@ -129,7 +129,7 @@ person (§6).
   `refs/notes/konundrm` holds `Escaped-gate: spec | property | review | e2e | none`, the gate that
   should have caught the bug. The impact report counts them.
 - Never `--no-verify`, never amend someone else's commit, never push without explicit approval.
-- **Small batches.** A pull request stays within the budget in `tasks.md` (default 400 changed
+- **Small batches.** A pull request stays within the budget in `tasks.md` (default 500 changed
   lines; Google's review guide calls about 100 lines reasonable and 1,000 too large). Larger work
   is planned as slices that each merge on their own and leave the main branch green. A slice that
   ships part of a user-visible feature keeps it unreachable (not wired to an entry point, or behind

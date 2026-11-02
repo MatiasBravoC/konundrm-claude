@@ -1298,5 +1298,96 @@ class MeasureImpactCostsTest(unittest.TestCase):
         self.assertEqual(gaps, [], "\n".join(gaps))
 
 
+_REPOSITORY_ROOT = PLUGIN_ROOT.parents[1]
+_TASKS_TEMPLATE = SKILLS_DIR / "writing-plans" / "templates" / "tasks.md"
+_SLICE_SUMMARY_TEMPLATE = SKILLS_DIR / "develop-feature" / "templates" / "slice-summary.md"
+_DEVELOP_FEATURE = SKILLS_DIR / "develop-feature" / "SKILL.md"
+# R7.4: every file that states the default budget of a slice or a pull request, with the `## ` section holding it
+# (None: the whole file).
+_BUDGET_FILES: dict[str, tuple[Path, str | None]] = {
+    "writing-plans/SKILL.md": (_WRITING_PLANS, None),
+    "engineering-standards/SKILL.md": (SKILLS_DIR / "engineering-standards" / "SKILL.md", "6. Git and pull requests"),
+    "opening-pull-requests/SKILL.md": (SKILLS_DIR / "opening-pull-requests" / "SKILL.md", "Workflow"),
+    "measure-impact/SKILL.md": (_MEASURE_IMPACT, "Limits to state when relevant"),
+    "README.md": (_REPOSITORY_ROOT / "README.md", None),
+}
+_BUDGET = re.compile(r"\bbudget\b|\bpresupuesto\b|\btope\b")
+_LINES_400 = re.compile(r"(?<![\d,.])400(?![\d,])")
+_LINES_500 = re.compile(r"(?<![\d,.])500(?![\d,])")
+_AIM_300_TO_500 = re.compile(r"(?<![\d,.])300\s*(?:\u2013|-|to|and)\s*500(?![\d,])")
+_CODE_AND_TESTS = re.compile(r"\bcode\b.*\btests?\b|\btests?\b.*\bcode\b")
+_DOCUMENTS = re.compile(r"\bdocuments?\b")
+_NOT_COUNTED = re.compile(r"\b(?:not|never|no)\b(?: \S+){0,3} count|\bexclud\w*|\bwithout\b|\bapart\b|\bseparate\w*")
+_SMALLER = re.compile(r"\bsmaller\b")
+_HIGH_RISK = re.compile(r"\bhigh[- ]risk\b")
+_ADDED_REMOVED = re.compile(r"\badded\b.*\bremoved\b")
+_OVER = re.compile(r"\b(?:over|exceed\w*|above|past)\b")
+_HOW_MUCH = re.compile(r"\bhow (?:much|many)\b|\bover by\b|\bby \S+ lines\b|\bexcess\b")
+_WARNS = re.compile(r"\bwarn\w*|\bflag\w*|\balert\w*")
+_PRE_APPROVED = re.compile(r"\bpre-approved\b")
+_SUMMARY = re.compile(r"\bsummary\b")
+_MESSAGE = re.compile(r"\bmessage\b")
+
+
+def _slice_size_gaps() -> list[str]:
+    """Return what writing-plans, its tasks.md template, the slice summary and develop-feature miss of R7.1-R7.3."""
+    plans = _blocks(_WRITING_PLANS)
+    template_budget = [line for line in _blocks(_TASKS_TEMPLATE) if "pull request budget" in line]
+    size = " ".join(read_section(_SLICE_SUMMARY_TEMPLATE, "Size").lower().split())
+    checkpoint = _section_blocks(_DEVELOP_FEATURE, "Slice checkpoint")
+    checks = {
+        "writing-plans: no block aims a slice at 300-500 changed lines of code and tests, documents not counted": any(
+            all(p.search(b) for p in (_AIM_300_TO_500, _CODE_AND_TESTS, _DOCUMENTS, _NOT_COUNTED)) for b in plans
+        ),
+        "writing-plans: no block allows a smaller slice only for a smaller feature or to split high-risk work": any(
+            _SMALLER.search(b) and "feature" in b and _HIGH_RISK.search(b) for b in plans
+        ),
+        "templates/tasks.md: the Pull request budget line does not default to 500": any(
+            _LINES_500.search(line) and not _LINES_400.search(line) for line in template_budget
+        ),
+        "slice-summary.md: ## Size does not count code and tests (added, removed) apart from the documents": all(
+            p.search(size) for p in (_CODE_AND_TESTS, _ADDED_REMOVED, _DOCUMENTS)
+        ),
+        "develop-feature: Slice checkpoint does not warn when a slice goes over the budget, and by how much": any(
+            all(p.search(b) for p in (_OVER, _BUDGET, _WARNS, _HOW_MUCH)) for b in checkpoint
+        ),
+        "develop-feature: with pre-approved pauses the warning is not kept in the summary and session message": any(
+            all(p.search(b) for p in (_PRE_APPROVED, _WARNS, _SUMMARY, _MESSAGE)) for b in checkpoint
+        ),
+    }
+    return [gap for gap, holds in checks.items() if not holds]
+
+
+def _default_budget_gaps() -> list[str]:
+    """Return each file of `_BUDGET_FILES` that still gives 400 lines as a budget, or none at all as 500 (R7.4)."""
+    gaps = []
+    for name, (path, heading) in _BUDGET_FILES.items():
+        blocks = _blocks(path) if heading is None else _section_blocks(path, heading)
+        budget_blocks = [block for block in blocks if _BUDGET.search(block)]
+        gaps += [f"{name}: still a 400-line budget: {block!r}" for block in budget_blocks if _LINES_400.search(block)]
+        if not any(_LINES_500.search(block) for block in budget_blocks):
+            gaps.append(f"{name}: no block gives 500 changed lines as the default budget")
+    return gaps
+
+
+class SliceSizeTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_slices_aim_at_300_to_500_changed_lines(self) -> None:
+        """R7.1, R7.2, R7.3, R7.4, R9.1: 003 slices aim at 300-500 changed lines and the pause reports their size.
+
+        writing-plans has a block that aims each slice at 300-500 changed lines of code and tests without counting the
+        feature's documents, and one that allows a smaller slice only for a smaller feature or to split high-risk
+        work; its tasks.md template defaults the Pull request budget to 500. The slice summary's `## Size` counts the
+        changed lines of code and tests (added, removed) apart from the documents'. develop-feature's `## Slice
+        checkpoint` warns when a slice goes over the budget, with by how much, and with pre-approved pauses keeps that
+        warning in the summary and the session's message. No file in `_BUDGET_FILES` still gives 400 lines as a
+        budget, and each gives 500.
+        """
+        gaps = _slice_size_gaps() + _default_budget_gaps()
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
 if __name__ == "__main__":
     unittest.main()
