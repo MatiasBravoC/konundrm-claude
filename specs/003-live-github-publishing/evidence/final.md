@@ -313,13 +313,23 @@ whose default budget moved from 400 to 500 lines (R7.4), is covered by
 
 ## Step 4: the delivery (with the user's yes)
 
-Not run yet: it is the delivery itself, after the user approves the push. This repository has no
-pull request template, so each stacked pull request gets the four fixed sections. What to check, with
-`gh pr view <number> --json title,body`: the titles end in `(1/2)` and `(2/2)`; each description
-starts with its `Merge order:` line, then "What and why", "Where to look first", "How it was
-verified" and "Not in this pull request", in English; and no flow data: no requirement, task or
-slice IDs, no word "slice", no `Task:`, `Covers:`, `Rounds:` or `Escaped-gate:` lines, no review
-rounds and no role names.
+The user approved two stacked pull requests:
+[#3](https://github.com/MatiasBravoC/konundrm-claude/pull/3), `feat/003-live-github-publishing-s1`
+into `main`, and [#4](https://github.com/MatiasBravoC/konundrm-claude/pull/4),
+`feat/003-live-github-publishing` into `feat/003-live-github-publishing-s1`. This repository has no
+pull request template, so each got the four fixed sections. Checked with
+`gh pr view <number> --json title,body,baseRefName,isDraft,labels` right after opening:
+
+| Pull request | Title | First line of the description | Sections | Flow data |
+| --- | --- | --- | --- | --- |
+| #3 | `feat(hooks): keep workflow bookkeeping out of commit messages (1/2)`, 67 characters | `Merge order: 1 of 2. Merge this one first.` | What and why · Where to look first · How it was verified · Not in this pull request | none |
+| #4 | `feat(skills): publish features live with stacked pull requests (2/2)`, 68 characters | `Merge order: 2 of 2. Merge #3 first.` | the same four, in the same order | none |
+
+"None" means a scan of each title and description, outside code spans and link targets, found no
+requirement, task, slice, partition or bug-criterion ID, no word "slice", no `Task:`, `Covers:`,
+`Rounds:` or `Escaped-gate:` line, no review rounds and no role name. Both descriptions end with the
+session's attribution line; neither pull request is a draft or has a label, since no task was high
+risk. Their CI is in [GitHub CI](#github-ci) below.
 
 ## Step 5: live publishing (the next feature)
 
@@ -427,13 +437,13 @@ more subagents at once; S1 had 10 batches and 10 such messages.
 
 | Constraint (`requirements.md`) | Measured | Result |
 | --- | --- | --- |
-| The changed commands use only Python's standard library 3.10+ and run on Windows, macOS and Linux | `task_commits.py`, `task_ledger.py` and `metrics_report.py` import only the standard library and the plugin's own modules, and mypy passes here for 3.10 and 3.13 (step 1). On GitHub, CI on `main` has failed since before this feature (see GitHub CI below): on Python 3.10, `metrics_report.py:110` cannot read a commit date that ends in `Z` | **not met on Python 3.10**, by a line older than this feature |
+| The changed commands use only Python's standard library 3.10+ and run on Windows, macOS and Linux | `task_commits.py`, `task_ledger.py`, `metrics_report.py` and `working_tree.py` import only the standard library and the plugin's own modules, and mypy passes here for 3.10 and 3.13 (step 1). On GitHub, `metrics_report.py` failed on Python 3.10 on an older line until T12 fixed it; after S3, the CI run 41386172101 passes these scripts' tests on all three systems with Python 3.10 and 3.13, and its remaining failures are in code this feature did not change (see GitHub CI below) | pass, after S3 |
 | `status` answers in under 2 s with a 100-task plan, now reading the flow data from notes | `status_timing_notes.py`: a plan of 100 tasks in 10 slices and 260 commits, none with a flow line in its message and each with a note (200 before the base naming T1–T100, then 60 task commits T1–T60); 10 runs: median 0.41 s, max 0.42 s | pass |
 | Live: one push per task and no `gh` call per task; `gh` at plan approval, at each slice's end and on resume | develop-feature pushes after each task's commit and runs `gh` "here and on resume, never per task", pinned by `contract/test_flows.py::test_live_publishing_pushes_each_slice_branch_and_commit` and `::test_slices_end_in_stacked_pull_requests_in_merge_order` | pass (rules; measured live in the next feature) |
 | Nothing on the remote is rewritten; subagents and partition sessions push nothing | develop-feature never forces a push nor pulls or fetches to make one go through, and only the main session pushes; `agents/implementer.md` and `agents/test-writer.md` never push nor open pull requests; same contract test | pass (rules) |
 | Nothing else changes on GitHub: no settings, no labels | opening-pull-requests adds `risk:high` only when the label exists and never creates it; same contract tests | pass (rules) |
 | The flow data stays in the local repository | no skill or agent pushes `refs/notes/konundrm` (`git grep` finds no push of notes); live publishing pushes only the slice branches | pass |
-| Commits keep their `Co-Authored-By` line and pull requests their attribution line | each of this feature's 13 commits carries one `Co-Authored-By` trailer, and step 2's task commits keep theirs; opening-pull-requests keeps "the attribution lines configured for the session" | pass |
+| Commits keep their `Co-Authored-By` line and pull requests their attribution line | each of this feature's commits carries one `Co-Authored-By` trailer (19 before the closing commit, which adds its own), and step 2's task commits keep theirs; opening-pull-requests keeps "the attribution lines configured for the session", and both pull requests end with it (step 4) | pass |
 
 ## GitHub CI
 
@@ -451,8 +461,36 @@ Python 3.13, and the plugin validation, passed:
 | test, ubuntu-latest, Python 3.10 and 3.13 | `test_session_costs.py`, `test_reads_transcripts_past_the_windows_path_limit`: "238 not greater than 260" | the test's long folder comes out shorter than 260 characters on that runner (feature 002) |
 
 None of these lines was written by this feature, but `metrics_report.py` is one of the scripts it
-changed, so its constraint above does not hold on Python 3.10 until that line is fixed. The CI runs
-of this feature's pull requests show whether it adds any failure of its own.
+changed.
+
+The CI of the two pull requests as first opened (run 41381551936 for #3, run 41381573656 for #4)
+failed those jobs and Windows with Python 3.13 too, with failures of this feature's own beside the
+older ones:
+
+| Jobs | New failure | Cause |
+| --- | --- | --- |
+| test, ubuntu-latest and windows-latest, Python 3.10 and 3.13 | `test_task_ledger.py`: `test_message_builds_the_task_commit_message_from_the_plan`, `test_record_attaches_the_pending_note_to_the_commit_made_from_it` and `test_record_changes_nothing_whenever_it_refuses_for_any_pending_state`, each with `git notes add failed for HEAD …; does it already have a note?` | `record`'s `git notes add` needs a Git identity; those runners have none and this machine has a global one, while the tests gave Git an identity only on their own commands (reproduced here with `HOME` at an empty folder and `GIT_CONFIG_NOSYSTEM=1`) |
+| test, Python 3.10, all three systems | `test_metrics_report.py::test_reads_flow_notes_and_defaults_to_a_500_line_budget` | the older `Z` date line, which this new test also reaches |
+
+The merge was held, the user chose to fix first, and slice S3 did: T11 gives each test repository
+its own identity and has `record` report Git's own error, and T12 reads `Z` dates through one
+helper. The CI run on the fixes (run 41386172101, on `dfc0ee2`, pull request #4) failed only on
+older problems:
+
+| Job | Result |
+| --- | --- |
+| lint | failed: `session_costs.py:502` unreachable (older) |
+| test, ubuntu-latest, Python 3.10 | failed: the `find_duplicates` option check and the long-path test (both older) |
+| test, ubuntu-latest, Python 3.13 | failed: the long-path test (older) |
+| test, macos-latest, Python 3.10 | failed: the `find_duplicates` option check (older) |
+| test, windows-latest, Python 3.10 | failed: the `find_duplicates` option check (older) |
+| test, macos-latest and windows-latest, Python 3.13 | passed |
+| validate | passed |
+
+So this feature adds no CI failure, and T12 also removed the four older `test_metrics_report.py`
+errors on Python 3.10. Three older problems are left on `main`, outside this feature: the mypy
+warning on Linux, the `find_duplicates` option check on Python 3.10 and the long-path test on
+ubuntu.
 
 ## Scripts
 

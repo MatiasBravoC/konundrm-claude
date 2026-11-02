@@ -1,7 +1,7 @@
 # Tasks: Publicar en GitHub mientras se construye una feature
 
 - **Spec:** [requirements.md](requirements.md) · **Design:** [design.md](design.md)
-- **Status:** Approved <!-- Draft → Approved → Done -->
+- **Status:** Done <!-- Draft → Approved → Done -->
 - **Check command:** `npm run check`
 - **Base commit:** `c8229a227d2ca0ce8e2bc8904f0dbbc626327285`
 - **Pull request budget:** 500 changed lines of code and tests per slice (aim for 300–500; the feature's documents do not count)

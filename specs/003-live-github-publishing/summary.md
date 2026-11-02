@@ -1,7 +1,7 @@
 # Feature summary: Publicar en GitHub mientras se construye una feature
 
 - **Spec:** [requirements.md](requirements.md) · **Design:** [design.md](design.md) · **Tasks:** [tasks.md](tasks.md)
-- **Slices:** S1–S2 · **Tasks:** T1–T10
+- **Slices:** S1–S3 · **Tasks:** T1–T12
 
 ## Spec: problem and goals
 
@@ -28,6 +28,7 @@ session, and a plugin that points to its real repository.
 | `develop-feature` (and the `tasks.md` template), agents `implementer` and `test-writer` | live publishing: the question at plan approval, a branch per slice, a push per commit, only from the main session |
 | `develop-feature`, `opening-pull-requests`, setup-project's pull request template | each slice's stacked pull request in merge order, and its plain-English text |
 | `plugin.json`, `README.md`, setup-project's `claude-settings.json` and `claude-review.yml`, `CHANGELOG.md` | the repository's address, the private-repository note and version 0.8.0 |
+| `plugins/konundrm-eng/hooks/scripts/working_tree.py` | running Git; `run_git_checked` hands Git's own error to the callers that report it (added in S3, with `run_git` unchanged) |
 
 ## Slice summaries
 
@@ -35,6 +36,7 @@ session, and a plugin that points to its real repository.
 | --- | --- | --- | --- |
 | S1 | Commits say only what changed, with the flow's data in Git notes, and the plugin points to its repository | T1–T6 | [summaries/S1.md](summaries/S1.md) |
 | S2 | Live publishing on GitHub, one stacked pull request per slice in merge order, pull request text anyone can read, 300–500-line slices and release 0.8.0 | T7–T10 | [summaries/S2.md](summaries/S2.md) |
+| S3 | The ledger and the impact report pass GitHub CI without a global Git identity and on Python 3.10 (added at delivery) | T11–T12 | [summaries/S3.md](summaries/S3.md) |
 
 ## Decisions
 
@@ -53,6 +55,13 @@ session, and a plugin that points to its real repository.
 - R4.2's fallback to the default branch: decide just before the pull request opens | only when the previous pull request is merged and its branch is gone → **merged and gone** (orchestrator, R4.2's wording)
 - T10's files: also develop-feature's Phase 4 phrase "traceability table" (orchestrator)
 - The live summary link: change the older test now | leave it open → **leave it open**, since it needs a plan change (orchestrator)
+- Delivery: two stacked pull requests | a single pull request | not yet → **two stacked pull requests, then merge both so `main` holds the new version** (user)
+- T1–T3's commits, which carry the flow lines in their message: leave them | rewrite them before pushing → **leave them** (user)
+- The README's stale line about the bug-fix commit: fix it before pushing | leave it → **leave it** (user)
+- The pull requests' CI showed four of this feature's tests failing: fix first, then merge | merge now, fix after | do not merge yet → **fix first, then merge**, as slice S3 built in the Phase 4 session (user)
+- T11's test file failed format and lint after the red step: the implementer works around it | a test-writer fix round → **test-writer fix round** (orchestrator, routing rule)
+- T12's red step: a new test, which cannot fail on Python 3.13 | the CI's Python 3.10 failures → **the CI's failures** (plan)
+- Where Git's own error is captured: `task_ledger.py` | `working_tree.py`, next to `run_git` → **`working_tree.py`** (implementer; the spec review accepted the file outside the task's list)
 
 ## Requirements, tests and evidence
 
@@ -68,9 +77,9 @@ evidence file; the final verification covers the feature end to end.
 | R4.3 | T9 | `contract/test_flows.py::test_slices_end_in_stacked_pull_requests_in_merge_order` | test output; [final.md](evidence/final.md), step 4 at delivery |
 | R5.1, R5.2, R5.3, R5.4 | T10 | `contract/test_skills.py::test_pull_request_text_follows_the_template_without_flow_data` | test output; [final.md](evidence/final.md), step 4 at delivery |
 | R6.1 | T4, T5 | `test_task_ledger.py::test_message_keeps_flow_data_in_the_pending_note`, `contract/test_flows.py::test_commits_carry_no_flow_lines_and_keep_their_data_in_notes` | [final.md](evidence/final.md), step 2 |
-| R6.2 | T1, T2, T3, T4, T5 | `test_task_commits.py::test_a_task_and_its_rounds_come_from_the_flow_note_too`, `test_metrics_report.py::test_reads_flow_notes_and_defaults_to_a_500_line_budget`, `test_task_ledger.py::test_record_attaches_the_pending_note_to_the_commit_made_from_it`, `test_task_ledger.py::test_message_keeps_flow_data_in_the_pending_note`, `contract/test_flows.py::test_commits_carry_no_flow_lines_and_keep_their_data_in_notes` | [final.md](evidence/final.md), step 2 |
+| R6.2 | T1, T2, T3, T4, T5, T11, T12 | `test_task_commits.py::test_a_task_and_its_rounds_come_from_the_flow_note_too`, `test_metrics_report.py::test_reads_flow_notes_and_defaults_to_a_500_line_budget`, `test_task_ledger.py::test_record_attaches_the_pending_note_to_the_commit_made_from_it`, `test_task_ledger.py::test_message_keeps_flow_data_in_the_pending_note`, `test_task_ledger.py::test_record_reports_gits_own_error_when_the_note_cannot_be_written`, `contract/test_flows.py::test_commits_carry_no_flow_lines_and_keep_their_data_in_notes`; on Python 3.10, the `test_metrics_report.py` tests in GitHub CI | [final.md](evidence/final.md), step 2 and GitHub CI |
 | R6.3 | T5 | `contract/test_flows.py::test_commits_carry_no_flow_lines_and_keep_their_data_in_notes` | test output |
-| R6.4 | T3, T5 | `test_task_ledger.py::test_record_changes_nothing_whenever_it_refuses_for_any_pending_state`, `contract/test_flows.py::test_commits_carry_no_flow_lines_and_keep_their_data_in_notes` | [final.md](evidence/final.md), step 2 |
+| R6.4 | T3, T5, T11 | `test_task_ledger.py::test_record_changes_nothing_whenever_it_refuses_for_any_pending_state`, `test_task_ledger.py::test_record_reports_gits_own_error_when_the_note_cannot_be_written`, `contract/test_flows.py::test_commits_carry_no_flow_lines_and_keep_their_data_in_notes` | [final.md](evidence/final.md), step 2 |
 | R6.5 | T1, T2 | `test_task_commits.py::test_each_task_keeps_its_commit_wherever_its_flow_lines_are_for_any_history`, `test_metrics_report.py::test_reads_flow_notes_and_defaults_to_a_500_line_budget` | [final.md](evidence/final.md), steps 2 and 3 |
 | R7.1, R7.2, R7.3 | T7 | `contract/test_skills.py::test_slices_aim_at_300_to_500_changed_lines` | test output |
 | R7.4 | T2, T7 | `test_metrics_report.py::test_reads_flow_notes_and_defaults_to_a_500_line_budget`, `contract/test_skills.py::test_slices_aim_at_300_to_500_changed_lines` | test output |
@@ -80,10 +89,10 @@ evidence file; the final verification covers the feature end to end.
 
 - **Final verification:** [evidence/final.md](evidence/final.md): steps 1–3 and 6 run and passed;
   step 4 is checked on the pull requests once the user approves the delivery; step 5 belongs to the
-  next feature built with `Publish: live`. One constraint is not met: on Python 3.10 the impact
-  report cannot read a commit date ending in `Z`, a line older than this feature, and GitHub CI on
-  `main` has failed on it, and on three other older problems, since before this feature (the
-  evidence's GitHub CI section).
+  next feature built with `Publish: live`. GitHub CI on the first pull requests showed four of this
+  feature's tests failing (no global Git identity on the runners, and Python 3.10 rejecting a `Z`
+  date); slice S3 fixed them, and the CI run on the fixes fails only on three problems `main` had
+  before this feature (the evidence's GitHub CI section).
 
 ## Rethinks
 
@@ -131,12 +140,24 @@ All non-blocking; the flow records Suggestions instead of looping on them.
 - S2 reviews: some contract-test rules accept loose keywords (R2.1, R3.2 and R5.4's leave-out
   patterns), so weaker wording would still pass.
 - Whole-feature spec review: the README's skills table still says fix-bug ends in a `fix` commit
-  "con `Escaped-gate:`" (`README.md:60`); the escaped gate now lives in the commit's note.
+  "con `Escaped-gate:`" (`README.md:60`); the escaped gate now lives in the commit's note. The user
+  chose to leave it.
+- T11 code review: `run_git`'s docstring repeats the Args block of `run_git_checked`
+  (`working_tree.py:73-80`).
+- T11 code review: the new test clears the identity variables but not `GIT_CONFIG_PARAMETERS` or
+  `GIT_CONFIG_COUNT`, so under a Git process started with `-c user.name=…` it would fail falsely,
+  never pass falsely (`test_task_ledger.py:1013-1024`).
+- T11 code review: `run_git_checked` has no direct test of its spawn-failure and empty-stderr
+  branches (`working_tree.py:62-66`).
+- T12 code review: the same trailing-`Z` workaround also lives in `package_registry.py:136` and
+  `session_costs.py:141-142`; worth one shared helper if a fourth copy appears.
 
 ## How to test the feature
 
-1. `npm run check`: format, lint, types and 493 hook tests pass (1 skipped on Windows); then
-   `claude plugin validate ./plugins/konundrm-eng`: "Validation passed".
+1. `npm run check`: format, lint, types and 494 hook tests pass (1 skipped on Windows); then
+   `claude plugin validate ./plugins/konundrm-eng`: "Validation passed". To see what GitHub CI
+   sees, run `HOME=<empty folder> GIT_CONFIG_NOSYSTEM=1 python -m unittest discover -s plugins/konundrm-eng/hooks/tests -t plugins/konundrm-eng/hooks -k test_task_ledger`:
+   it passes without a global Git identity.
 2. In a scratch repository with a plan in `specs/<NNN-slug>/tasks.md`, commit a task with
    `msg=$(sh <plugin>/hooks/run.sh task_ledger.py message <plan> T1 --subject "feat(demo): build it" --rounds "spec 1 · code 1 · escalations 0") && git add -A && git commit -F "$msg" && sh <plugin>/hooks/run.sh task_ledger.py record`:
    the message holds only the subject, `git notes --ref=refs/notes/konundrm show HEAD` shows the
