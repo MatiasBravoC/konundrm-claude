@@ -1,7 +1,7 @@
 # Publicar en GitHub mientras se construye una feature
 
 - **Spec:** 003-live-github-publishing
-- **Status:** Approved <!-- Draft → Approved → Done -->
+- **Status:** Done <!-- Draft → Approved → Done -->
 - **Date:** 2026-11-01
 
 ## Problem
