@@ -80,7 +80,10 @@ evidence file; the final verification covers the feature end to end.
 
 - **Final verification:** [evidence/final.md](evidence/final.md): steps 1–3 and 6 run and passed;
   step 4 is checked on the pull requests once the user approves the delivery; step 5 belongs to the
-  next feature built with `Publish: live`.
+  next feature built with `Publish: live`. One constraint is not met: on Python 3.10 the impact
+  report cannot read a commit date ending in `Z`, a line older than this feature, and GitHub CI on
+  `main` has failed on it, and on three other older problems, since before this feature (the
+  evidence's GitHub CI section).
 
 ## Rethinks
 

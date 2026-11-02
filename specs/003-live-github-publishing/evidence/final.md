@@ -427,13 +427,32 @@ more subagents at once; S1 had 10 batches and 10 such messages.
 
 | Constraint (`requirements.md`) | Measured | Result |
 | --- | --- | --- |
-| The changed commands use only Python's standard library 3.10+ and run on Windows, macOS and Linux | `task_commits.py`, `task_ledger.py` and `metrics_report.py` import only the standard library and the plugin's own modules; mypy passes for 3.10 and 3.13 (step 1); CI runs the hook tests on the three systems | pass |
+| The changed commands use only Python's standard library 3.10+ and run on Windows, macOS and Linux | `task_commits.py`, `task_ledger.py` and `metrics_report.py` import only the standard library and the plugin's own modules, and mypy passes here for 3.10 and 3.13 (step 1). On GitHub, CI on `main` has failed since before this feature (see GitHub CI below): on Python 3.10, `metrics_report.py:110` cannot read a commit date that ends in `Z` | **not met on Python 3.10**, by a line older than this feature |
 | `status` answers in under 2 s with a 100-task plan, now reading the flow data from notes | `status_timing_notes.py`: a plan of 100 tasks in 10 slices and 260 commits, none with a flow line in its message and each with a note (200 before the base naming T1–T100, then 60 task commits T1–T60); 10 runs: median 0.41 s, max 0.42 s | pass |
 | Live: one push per task and no `gh` call per task; `gh` at plan approval, at each slice's end and on resume | develop-feature pushes after each task's commit and runs `gh` "here and on resume, never per task", pinned by `contract/test_flows.py::test_live_publishing_pushes_each_slice_branch_and_commit` and `::test_slices_end_in_stacked_pull_requests_in_merge_order` | pass (rules; measured live in the next feature) |
 | Nothing on the remote is rewritten; subagents and partition sessions push nothing | develop-feature never forces a push nor pulls or fetches to make one go through, and only the main session pushes; `agents/implementer.md` and `agents/test-writer.md` never push nor open pull requests; same contract test | pass (rules) |
 | Nothing else changes on GitHub: no settings, no labels | opening-pull-requests adds `risk:high` only when the label exists and never creates it; same contract tests | pass (rules) |
 | The flow data stays in the local repository | no skill or agent pushes `refs/notes/konundrm` (`git grep` finds no push of notes); live publishing pushes only the slice branches | pass |
 | Commits keep their `Co-Authored-By` line and pull requests their attribution line | each of this feature's 13 commits carries one `Co-Authored-By` trailer, and step 2's task commits keep theirs; opening-pull-requests keeps "the attribution lines configured for the session" | pass |
+
+## GitHub CI
+
+The check above runs here, on Windows with Python 3.13. The repository's CI
+(`.github/workflows/ci.yml`) also runs the hook tests on ubuntu-latest, windows-latest and
+macos-latest with Python 3.10 and 3.13, and its last run on `main`, on `c8229a2` (the commit this
+feature started from, run 41355334852), failed in five of its eight jobs; macOS and Windows with
+Python 3.13, and the plugin validation, passed:
+
+| Job | Failure | Origin |
+| --- | --- | --- |
+| lint, mypy on Linux | `session_costs.py:502: error: Statement is unreachable` | the code after a Windows-only early return, which mypy on Linux treats as unreachable (feature 002) |
+| test, Python 3.10, all three systems | 4 errors in `test_metrics_report.py`: `ValueError: Invalid isoformat string: '…Z'` | `metrics_report.py:110` reads commit dates with `datetime.fromisoformat`, which accepts a trailing `Z` only from Python 3.11 (the plugin's first commit) |
+| test, Python 3.10, all three systems | `test_find_duplicates.py`, `test_usage_errors_exit_2_with_a_message` with `--all --base HEAD`: exit 0 instead of 2 | `find_duplicates.py` accepts that pair of options on Python 3.10 |
+| test, ubuntu-latest, Python 3.10 and 3.13 | `test_session_costs.py`, `test_reads_transcripts_past_the_windows_path_limit`: "238 not greater than 260" | the test's long folder comes out shorter than 260 characters on that runner (feature 002) |
+
+None of these lines was written by this feature, but `metrics_report.py` is one of the scripts it
+changed, so its constraint above does not hold on Python 3.10 until that line is fixed. The CI runs
+of this feature's pull requests show whether it adds any failure of its own.
 
 ## Scripts
 
