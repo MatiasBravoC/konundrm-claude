@@ -1,14 +1,14 @@
 # Tasks: Publicar en GitHub mientras se construye una feature
 
 - **Spec:** [requirements.md](requirements.md) · **Design:** [design.md](design.md)
-- **Status:** Done <!-- Draft → Approved → Done -->
+- **Status:** Approved <!-- Draft → Approved → Done -->
 - **Check command:** `npm run check`
 - **Base commit:** `c8229a227d2ca0ce8e2bc8904f0dbbc626327285`
 - **Pull request budget:** 500 changed lines of code and tests per slice (aim for 300–500; the feature's documents do not count)
 - **Parallel:** no <!-- ningún slice tiene una ola de dos o más particiones -->
 - **Checkpoints:** pre-approved <!-- el usuario lo aprobó con el plan (2026-11-01) -->
 - **Decisions:** ask <!-- el usuario pidió que se le pregunte (2026-11-01) -->
-- **Sessions:** per-slice
+- **Sessions:** single <!-- el usuario eligió construir S3 en la sesión de la Fase 4 (2026-11-02) -->
 - **Publish:** local <!-- esta feature se construye en local y se sube solo con el sí del usuario (non-goal) -->
 
 <!-- Rutas relativas a la raíz del repositorio; P = plugins/konundrm-eng.
@@ -117,3 +117,28 @@ son de una tarea ya no llevan línea Task:. -->
 | Wave | Partition | Tasks | Depends on |
 | --- | --- | --- | --- |
 | 1 | P2 | T7–T10 | P1 |
+
+## Slice S3: la CI de GitHub sin identidad global de Git y con Python 3.10
+
+<!-- 2026-11-02: cambio de plan que el usuario aprobó al entregar. La CI de los PR #3 y #4 mostró
+cuatro tests de esta feature en rojo que en esta máquina pasan: la CI no tiene identidad global de
+Git, que `git notes add` necesita, y Python 3.10 no lee una fecha que termina en `Z`. -->
+
+- [ ] **T11** Los tests de `task_ledger.py` pasan en una máquina sin identidad global de Git (cada repositorio de prueba configura su propio `user.name` y `user.email`) y, cuando `git notes add` falla, `record` muestra el error de Git en vez de suponer que HEAD ya tiene una nota · `behavior` · Risk: medium · Covers: R6.2, R6.4
+  - Test: `P/hooks/tests/test_task_ledger.py::test_record_reports_gits_own_error_when_the_note_cannot_be_written` (en un repositorio de prueba sin identidad de Git, con `HOME` vacío y `GIT_CONFIG_NOSYSTEM=1`, y HEAD hecho desde el mensaje pendiente: `record` sale con 1, su error trae el mensaje de Git y no cambia ni las notas ni los archivos pendientes); además, los tests de `test_task_ledger.py` que fallaron en la CI (run 41381551936) pasan con `HOME` vacío y `GIT_CONFIG_NOSYSTEM=1`
+  - Files: `P/hooks/scripts/task_ledger.py`, `P/hooks/tests/test_task_ledger.py` (modify)
+  - Invariants: al negarse, `record` no cambia ninguna nota ni archivo pendiente.
+  - Verify: `... -k test_record_reports_gits_own_error_when_the_note_cannot_be_written`, y `HOME=<carpeta vacía> GIT_CONFIG_NOSYSTEM=1 python -m unittest discover -s P/hooks/tests -t P/hooks -k test_task_ledger`
+  - Depends on: T4
+
+- [ ] **T12** `metrics_report.py` lee en Python 3.10 las fechas de commit que terminan en `Z`, como ya hace con las de los pull requests · `behavior` · Risk: low · Covers: R6.2
+  - Test: los cinco tests de `P/hooks/tests/test_metrics_report.py` que fallan en la CI con Python 3.10 (`ValueError: Invalid isoformat string: '…Z'`, run 41381573656); esta máquina no tiene Python 3.10, así que su rojo y su verde los muestra la CI del PR
+  - Files: `P/hooks/scripts/metrics_report.py` (modify)
+  - Verify: `... -k test_metrics_report` aquí, y los trabajos de Python 3.10 de la CI del PR
+  - Depends on: T2
+
+### Partitions
+
+| Wave | Partition | Tasks | Depends on |
+| --- | --- | --- | --- |
+| 1 | P3 | T11–T12 | P2 |
