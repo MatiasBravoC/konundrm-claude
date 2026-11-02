@@ -41,7 +41,7 @@ from project_paths import project_root
 from quality_check import green_tree
 from task_commits import NOTES_REF, GitError, TaskCommit, task_commits, task_key
 from tasks_document import HTML_COMMENT, ROUNDS, SLICE_HEADING, TASK, Task, TasksDocument, next_tasks, read_tasks
-from working_tree import git_path, head_tree, run_git, snapshot_tree
+from working_tree import GitCommandError, git_path, head_tree, run_git, run_git_checked, snapshot_tree
 
 REFUSED_EXIT = 1
 """Exit code when ``message`` refuses its task (not in the plan, or already committed),
@@ -355,7 +355,8 @@ def record_task_note(root: Path) -> str:
 
     Raises:
         RefusedRecordError: When there is no pending note or message, HEAD's subject differs from
-            the pending message's, or Git cannot read HEAD or add the note.
+            the pending message's, Git cannot read HEAD, or Git cannot add the note (the
+            message then carries Git's own error).
 
     Side effects:
         Unless it raises, adds a note to HEAD under NOTES_REF and deletes both pending files.
@@ -375,8 +376,11 @@ def record_task_note(root: Path) -> str:
     if _first_line(head_message) != pending_subject:
         raise RefusedRecordError(f"HEAD {short_sha.decode()} was not committed from {message_path.as_posix()}")
     # -F hands Git the note file's bytes as they are, so its UTF-8 `·` survives any locale.
-    if run_git(["notes", f"--ref={NOTES_REF}", "add", "-F", str(note_path), "HEAD"], root) is None:
-        raise RefusedRecordError(f"git notes add failed for HEAD {short_sha.decode()}; does it already have a note?")
+    try:
+        run_git_checked(["notes", f"--ref={NOTES_REF}", "add", "-F", str(note_path), "HEAD"], root)
+    except GitCommandError as error:
+        # Git's own words cover every cause, an existing note as much as a missing identity.
+        raise RefusedRecordError(f"git notes add failed for HEAD {short_sha.decode()}: {error}") from error
     note_summary = _first_line(note_path.read_bytes())
     note_path.unlink()
     message_path.unlink()

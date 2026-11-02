@@ -6,6 +6,7 @@ Taking one writes blob and tree objects into the repository's object database (a
 ``git stash create`` does) but never touches the real index, HEAD, refs or any file on disk.
 
 Sections:
+    GitCommandError, run_git_checked() — runs one Git command and raises Git's own error on failure.
     run_git()        — runs one Git command with a timeout; the hooks' shared Git runner.
     git_path()       — where a file under the repository's Git directory lives.
     snapshot_tree()  — the working tree's content as a tree SHA.
@@ -30,6 +31,42 @@ GIT_TIMEOUT_SECONDS = 60
 HUNK_HEADER = re.compile(rb"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
+class GitCommandError(Exception):
+    """A Git command could not run or exited with an error; the message is Git's own when it has one."""
+
+
+def run_git_checked(
+    args: list[str], root: Path, env: dict[str, str] | None = None, stdin: bytes | None = None
+) -> bytes:
+    """Runs one Git command in a repository, with a timeout, and fails with Git's own error.
+
+    Args:
+        args: Git's arguments, without the leading ``git``; passed as an argument list, never
+            through a shell.
+        root: Directory Git runs in, inside the repository.
+        env: Environment for Git; None inherits this process's.
+        stdin: Bytes fed to Git's standard input; None feeds nothing.
+
+    Returns:
+        Git's standard output.
+
+    Raises:
+        GitCommandError: When Git is missing or times out (the message says which), or exits with
+            an error (the message is Git's standard error, stripped).
+    """
+    command = " ".join(["git", *args[:1]])
+    try:
+        completed = subprocess.run(
+            ["git", *args], cwd=root, env=env, input=stdin, capture_output=True, timeout=GIT_TIMEOUT_SECONDS
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise GitCommandError(f"{command} could not run: {error}") from error
+    if completed.returncode != 0:
+        stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise GitCommandError(stderr or f"{command} exited with {completed.returncode}")
+    return completed.stdout
+
+
 def run_git(args: list[str], root: Path, env: dict[str, str] | None = None, stdin: bytes | None = None) -> bytes | None:
     """Runs one Git command in a repository, with a timeout.
 
@@ -44,12 +81,9 @@ def run_git(args: list[str], root: Path, env: dict[str, str] | None = None, stdi
         Git's standard output, or None when Git is missing, times out or exits with an error.
     """
     try:
-        completed = subprocess.run(
-            ["git", *args], cwd=root, env=env, input=stdin, capture_output=True, timeout=GIT_TIMEOUT_SECONDS
-        )
-    except (OSError, subprocess.SubprocessError):
+        return run_git_checked(args, root, env, stdin)
+    except GitCommandError:
         return None
-    return completed.stdout if completed.returncode == 0 else None
 
 
 def git_path(root: Path, name: str) -> Path | None:

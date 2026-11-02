@@ -25,9 +25,14 @@ PLAN_PATH = "specs/002-efficient-feature-flow/tasks.md"
 NEXT_TITLE = "status nombra la próxima tarea del árbol"
 
 
+IDENTITY = ("-c", "user.name=t", "-c", "user.email=t@example.com")
+"""A Git identity given on one command only, for a repository whose config has none."""
+
+
 def git(root: Path, *args: str) -> str:
+    """Run Git in `root` and return its stdout; the identity comes from the repository's own config."""
     completed = subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+        ["git", *args],
         cwd=root,
         capture_output=True,
         text=True,
@@ -79,6 +84,10 @@ class LedgerRepositoryTest(unittest.TestCase):
         self.root = (Path(repository.name).resolve()) / "repo"
         self.root.mkdir()
         git(self.root, "init", "-q")
+        # Each repository carries its own identity, so commits and `git notes add` (which makes a
+        # notes commit) work on a machine without a global Git identity, as CI runners are.
+        git(self.root, "config", "user.name", "t")
+        git(self.root, "config", "user.email", "t@example.com")
         # A non-UTF-8 locale (cp1252 on Windows, ASCII under an uncoerced C locale elsewhere), so the
         # script itself must write UTF-8; no session variables, so no result depends on the session.
         dropped = {
@@ -989,6 +998,56 @@ class RecordTest(LedgerRepositoryTest):
                     self.assertFalse(note_file.exists())
                 else:
                     self.assert_refused(case)
+
+    # R6.2, R6.4: when `git notes add` fails (here, a machine without any Git identity, as a CI
+    # runner is, so Git cannot make the notes commit), `record` exits 1 with Git's own error on
+    # stderr instead of guessing that HEAD already has a note, and changes no note and no pending file.
+    def test_record_reports_gits_own_error_when_the_note_cannot_be_written(self) -> None:
+        git(self.root, "config", "--unset", "user.name")
+        git(self.root, "config", "--unset", "user.email")
+        # Without this, Git may invent an identity from the user and host names on some machines.
+        git(self.root, "config", "user.useConfigOnly", "true")
+        empty_home = tempfile.TemporaryDirectory()
+        self.addCleanup(empty_home.cleanup)
+        # No variable may hand Git an identity or a config file other than the repository's own.
+        identity_sources = {
+            "GIT_AUTHOR_NAME",
+            "GIT_AUTHOR_EMAIL",
+            "GIT_COMMITTER_NAME",
+            "GIT_COMMITTER_EMAIL",
+            "EMAIL",
+            "XDG_CONFIG_HOME",
+            "GIT_CONFIG_GLOBAL",
+            "GIT_CONFIG_SYSTEM",
+        }
+        self.environment = {
+            key: value for key, value in self.environment.items() if key.upper() not in identity_sources
+        }
+        self.environment |= {"HOME": empty_home.name, "USERPROFILE": empty_home.name, "GIT_CONFIG_NOSYSTEM": "1"}
+        message_file = self.pending_path("KONUNDRM_TASK_MSG")
+        note_file = self.pending_path("KONUNDRM_TASK_NOTE")
+        subject = "feat(hooks): record the pending note"
+        message_file.write_text(f"{subject}\n\nWhy it changes.\n", encoding="utf-8", newline="\n")
+        note_file.write_text(
+            "Task: T11 · Covers: R6.2\nRounds: spec 1 · code 1 · escalations 0\n", encoding="utf-8", newline="\n"
+        )
+        (self.root / "a.txt").write_text("a\n", encoding="utf-8")
+        git(self.root, "add", "-A")
+        git(self.root, *IDENTITY, "commit", "-q", "-F", str(message_file))
+        files_before = {path: path.read_bytes() for path in (message_file, note_file)}
+
+        completed = self.run_record()
+
+        stderr = completed.stderr.decode("utf-8", "replace")
+        self.assertEqual(completed.returncode, 1, stderr)
+        self.assertNotIn("Traceback", stderr)
+        self.assertNotIn("already have a note", stderr)
+        self.assertTrue(
+            "identity" in stderr.lower() or "please tell me who you are" in stderr.lower(),
+            f"Git's own error is missing from stderr: {stderr!r}",
+        )
+        self.assertEqual((self.notes_ref(), self.notes()), ("", ""))
+        self.assertEqual({path: path.read_bytes() for path in files_before}, files_before)
 
 
 if __name__ == "__main__":
