@@ -3474,5 +3474,202 @@ class FlowDataInNotesTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
 
+# Live publishing (003 R1.1-R1.4, R2.1-R2.3, R3.1-R3.6, R9.1): develop-feature asks at plan approval whether to publish
+# while it builds, records `- **Publish:** live|local`, and in live mode pushes each slice branch and each flow commit.
+# These check keywords of each rule inside its section, on blocks from _blocks (lowercased, no backticks).
+_LIVE = re.compile(r"\bpublish:(?:\*\*)? ?live\b|\blive\b")
+_LIVE_LINE = re.compile(r"\bpublish:(?:\*\*)? ?live\b")
+_LIVE_LOCAL = re.compile(r"\bpublish:(?:\*\*)? ?local\b|\blocal\b")
+_LIVE_PUSH = re.compile(r"\bpush\w*")
+_LIVE_PUBLISH = re.compile(r"\bpublish\w*")
+_LIVE_ASK = re.compile(r"\bask\w*|\bquestion\b")
+_LIVE_SEPARATE = re.compile(r"\b(?:separate|apart|own)\b")
+_LIVE_REMOTE_CHECK = re.compile(r"\bgit remote get-url origin\b")
+_LIVE_GH_CHECK = re.compile(r"\bgh repo view\b")
+_LIVE_MISSING = re.compile(r"\bmissing\b|\blacks?\b|\bwithout\b|\bfails?\b")
+_LIVE_SAYS = re.compile(r"\bone line\b|\bone-line\b|\bsay\w*|\btell\w*|\bnam(?:e|es|ing)\b")
+_LIVE_EXPLICIT_YES = re.compile(r"\byes\b|\brequest\b|\basked for\b")
+_LIVE_WITHOUT_THE_LINE = re.compile(r"\b(?:without|lacks?|no)\b(?: \S+){0,4} line\b")
+_LIVE_RESUMES = re.compile(r"\bresum\w*")
+_LIVE_NEVER_ASKS = re.compile(r"\b(?:never|not|without|no)\b(?: \S+){0,4} ask\w*")
+_LIVE_SWITCH_C = re.compile(r"\bgit switch -c feat/<nnn-slug>-s<k>")
+_LIVE_PUSH_U = re.compile(r"\bgit push (?:-u|--set-upstream) origin feat/<nnn-slug>-s<k>")
+_LIVE_FIRST_SLICE = re.compile(r"\bs1\b|\bfirst slice\b")
+_LIVE_PLAN_COMMIT = re.compile(r"\bplan\b")
+_LIVE_PREVIOUS_SLICE = re.compile(r"\b(?:previous|earlier|prior) slice\b|\bslice before\b")
+_LIVE_TIP = re.compile(r"\btip\b|\bhead\b|\bbranch\b")
+_LIVE_ALREADY_EXISTS = re.compile(r"\balready exists?\b|\bexists already\b")
+_LIVE_SWITCH = re.compile(r"\bswitch\w*")
+_LIVE_NOT_AGAIN = re.compile(r"\b(?:never|not|without|no)\b(?: \S+){0,4} (?:creat\w*|again|anew)")
+_LIVE_GIT_PUSH = re.compile(r"\bgit push\b")
+_LIVE_NEXT_TASK = re.compile(r"\b(?:next|following) task\b")
+_LIVE_FLOW_COMMITS = {
+    "the slice summary": re.compile(r"\bsummar\w*"),
+    "plan changes": re.compile(r"\bplan (?:change|edit)\w*"),
+    "partition integration": re.compile(r"\bintegrat\w*"),
+    "the feature's closing commit": re.compile(r"\bfinal\b|\bclos\w*|\bfinish\w*"),
+}
+_LIVE_AFTER = re.compile(r"\b(?:after|once|when)\b")
+_LIVE_CHECK_PASSES = re.compile(r"\bcheck\b(?: \S+){0,4} (?:pass\w*|green)\b")
+_LIVE_PARTITION_BRANCH = re.compile(r"\bwave/|\bpartition(?:'s|s'|s)? branch")
+_LIVE_UNPUSHED = re.compile(r"\bremote\b|\bupstream\b|\bunpushed\b|\bnot (?:yet )?pushed\b")
+_LIVE_FIRST = re.compile(r"\bfirst\b|\bbefore\b")
+_LIVE_FAILS = re.compile(r"\bfail\w*|\breject\w*")
+_LIVE_ERROR = re.compile(r"\berror\b")
+_LIVE_NEVER_FORCES = re.compile(r"\b(?:never|not|no|nor|without)\b(?: \S+){0,4} (?:--force\b|forc\w*)")
+_LIVE_NEVER_PULLS = re.compile(r"\b(?:never|not|no|nor|without)\b(?: \S+){0,6} (?:pull(?!\w* requests?\b)|fetch)\w*")
+_LIVE_ONLY_MAIN = re.compile(r"\bonly\b(?: \S+){0,6} main session\b")
+_LIVE_TEMPLATE_LINE = re.compile(r"- \*\*publish:\*\* local\b")
+_LIVE_NOT_LIVE = re.compile(r"\b(?:without|unless|no)\b(?: \S+){0,2} publish:(?:\*\*)? ?live\b")
+_LIVE_NOTHING_PUSHED = re.compile(r"\b(?:nothing|never|not|no)\b(?: \S+){0,4} push\w*")
+_LIVE_BEFORE = re.compile(r"\bbefore\b")
+_LIVE_PHASE_4 = re.compile(r"\bphase 4\b")
+_LiveRules = dict[str, tuple[list[str], tuple[re.Pattern[str], ...]]]
+
+
+def _live_rule_gaps(rules: _LiveRules) -> list[str]:
+    """Return the name of each rule no sentence of its blocks matches with every one of its patterns."""
+    return [
+        rule for rule, (blocks, patterns) in rules.items() if not any(_in_one_sentence(b, *patterns) for b in blocks)
+    ]
+
+
+def _live_develop_feature_rules(skill: Path) -> _LiveRules:
+    """Return each live-publishing rule of develop-feature's SKILL.md, with the blocks that must hold it."""
+    prepare = _section_blocks(skill, "Phase 0: Prepare")
+    plan = _section_blocks(skill, "Phase 2: Plan")
+    loop = _section_blocks(skill, "Phase 3: Task loop")
+    partitions = _section_blocks(skill, "Parallel partitions")
+    finish = _section_blocks(skill, "Phase 4: Finish")
+    everything = _blocks(skill)
+    rules: _LiveRules = {
+        "Phase 2 lacks (R1.1): a separate question whether to publish while building": (
+            plan,
+            (_LIVE_ASK, _LIVE_SEPARATE, _LIVE_PUBLISH),
+        ),
+        "Phase 2 lacks (R1.1): Publish: live recorded only on an explicit yes or the request": (
+            plan,
+            (_LIVE_LINE, _LIVE_EXPLICIT_YES),
+        ),
+        "Phase 2 lacks (R1.2): saying in one line what is missing and recording local": (
+            plan,
+            (_LIVE_MISSING, _LIVE_SAYS, _LIVE_LOCAL),
+        ),
+        "Phase 2 lacks (R1.3): a tasks.md without the Publish line reads as local": (
+            plan,
+            (_LIVE_PUBLISH, _LIVE_WITHOUT_THE_LINE, _LIVE_LOCAL),
+        ),
+        "Phase 0 or 2 lacks (R1.4): a resumed session follows the Publish choice without asking again": (
+            prepare + plan,
+            (_LIVE_RESUMES, _LIVE_PUBLISH, _LIVE_NEVER_ASKS),
+        ),
+        # The invariant of R1.3: a plan that does not say live (or predates the line) publishes nothing early.
+        "Phase 3 lacks (R1.3): without Publish: live, nothing is pushed before Phase 4's question": (
+            loop,
+            (_LIVE_NOT_LIVE, _LIVE_NOTHING_PUSHED, _LIVE_BEFORE, _LIVE_PHASE_4),
+        ),
+        "Phase 4 lacks (R1.3): asking before pushing": (finish, (_LIVE_ASK, _LIVE_BEFORE, _LIVE_PUSH)),
+        "Phase 3 lacks (R2.1): S1's branch cut from the commit that adds the spec and plan": (
+            loop,
+            (_LIVE_FIRST_SLICE, _LIVE_PLAN_COMMIT),
+        ),
+        "Phase 3 lacks (R2.2): slice k's branch cut from the tip of the previous slice's branch": (
+            loop,
+            (_LIVE_PREVIOUS_SLICE, _LIVE_TIP),
+        ),
+        # The branch may exist without an upstream (its first push failed), and a bare `git push` fails there.
+        "Phase 3 lacks (R2.3): switching to a slice branch that already exists instead of creating it, then"
+        " git push -u origin feat/<NNN-slug>-s<k>": (
+            loop,
+            (_LIVE_ALREADY_EXISTS, _LIVE_SWITCH, _LIVE_NOT_AGAIN, _LIVE_PUSH_U),
+        ),
+        "Phase 3 lacks (R3.1): git push of each task commit before the next task": (
+            loop,
+            (_LIVE_GIT_PUSH, _LIVE_NEXT_TASK),
+        ),
+        "Parallel partitions lacks (R3.3): pushing integrated commits after the check passes": (
+            partitions,
+            (_LIVE_PUSH, _LIVE_AFTER, _LIVE_CHECK_PASSES),
+        ),
+        "Parallel partitions lacks (R3.3): never pushing a partition's branch": (
+            partitions,
+            (_NEVER_PUSHES, _LIVE_PARTITION_BRANCH),
+        ),
+        "Phase 0 lacks (R3.4): a resumed live feature first pushes what the remote lacks with"
+        " git push -u origin feat/<NNN-slug>-s<k>": (
+            prepare,
+            (_LIVE_PUSH, _LIVE_UNPUSHED, _LIVE_FIRST, _LIVE_PUSH_U),
+        ),
+        "develop-feature lacks (R3.5): a failed push stops with BLOCKED: quoting Git's error": (
+            everything,
+            (_BLOCKED, _LIVE_PUSH, _LIVE_FAILS, _LIVE_ERROR),
+        ),
+        "develop-feature lacks (R3.5): a push is never forced": (everything, (_LIVE_PUSH, _LIVE_NEVER_FORCES)),
+        "develop-feature lacks (R3.5): a failed push pulls nothing from the remote": (
+            everything,
+            (_LIVE_PUSH, _LIVE_NEVER_PULLS),
+        ),
+        "develop-feature lacks (R3.6): publishing only from the main session": (
+            everything,
+            (_LIVE_PUSH, _LIVE_ONLY_MAIN),
+        ),
+    }
+    for kind, pattern in _LIVE_FLOW_COMMITS.items():
+        rules[f"develop-feature lacks (R3.2): pushing {kind} as soon as it is made in live mode"] = (
+            everything,
+            (_LIVE, _LIVE_PUSH, pattern),
+        )
+    return rules
+
+
+def _live_develop_feature_gaps() -> list[str]:
+    """Return one message per live-publishing rule develop-feature's SKILL.md lacks in the section that owns it."""
+    skill = DEVELOP_FEATURE_DIR / "SKILL.md"
+    plan = _section_blocks(skill, "Phase 2: Plan")
+    loop = _section_blocks(skill, "Phase 3: Task loop")
+    gaps = _live_rule_gaps(_live_develop_feature_rules(skill))
+    if not any(_LIVE_REMOTE_CHECK.search(block) and _LIVE_GH_CHECK.search(block) for block in plan):
+        gaps.append("Phase 2 lacks (R1.1, R1.2): git remote get-url origin and gh repo view before the question")
+    if not any(_LIVE_SWITCH_C.search(block) and _LIVE_PUSH_U.search(block) and _LIVE.search(block) for block in loop):
+        gaps.append(
+            "Phase 3 lacks (R2.1, R2.2): in live mode, git switch -c feat/<NNN-slug>-s<k> and"
+            " git push -u origin feat/<NNN-slug>-s<k>"
+        )
+    return gaps
+
+
+class LivePublishingFlowTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_live_publishing_pushes_each_slice_branch_and_commit(self) -> None:
+        """R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6: 003 develop-feature publishes
+        a feature while it builds it only when the plan says so (R9.1: checked here, without a model).
+
+        Phase 2 checks the remote (`git remote get-url origin`) and `gh repo view`, asks a separate question, records
+        `- **Publish:** live` only on an explicit yes or the request, otherwise says in one line what is missing and
+        records local; a plan without the line reads as local and a resumed session never asks again. Phase 3 cuts
+        `feat/<NNN-slug>-s<k>` with `git switch -c` (S1 from the plan's commit, slice k from the previous slice's
+        tip), switches to an existing one instead of creating it, pushes it with `git push -u origin` and runs
+        `git push` after each task commit, before the next task. Every other flow commit (summary, plan change,
+        integration, final commit) is pushed too in live mode; integrated partitions go up after the check passes and
+        their branches never; a resume, and a switch to an existing slice branch, first push what the remote lacks
+        with `git push -u origin feat/<NNN-slug>-s<k>`, which also sets the upstream; a failed push stops with
+        `BLOCKED:` quoting Git's error, never forced nor pulled; only the main session publishes, and the implementer
+        and test-writer never push. The tasks.md template carries `- **Publish:** local`."""
+        template = (SKILLS_DIR / "writing-plans" / "templates" / "tasks.md").read_text(encoding="utf-8")
+        header = _split_blocks(template.split("\n## ")[0].splitlines())
+
+        gaps = _live_develop_feature_gaps()
+        gaps += [
+            f"agents/{agent}.md lacks (R3.6): never pushing"
+            for agent in ("implementer", "test-writer")
+            if not any(_never_pushes(block) for block in _blocks(PLUGIN_ROOT / "agents" / f"{agent}.md"))
+        ]
+        if not any(_LIVE_TEMPLATE_LINE.match(item) for item in header):
+            gaps.append("writing-plans tasks.md template lacks (R1.1): - **Publish:** local in its header")
+
+        self.assertEqual(gaps, [])
+
+
 if __name__ == "__main__":
     unittest.main()

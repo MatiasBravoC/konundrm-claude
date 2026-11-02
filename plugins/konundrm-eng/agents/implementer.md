@@ -51,7 +51,7 @@ skills are not already in your context, load them with the Skill tool before sta
   changing tests is done only as far as the tests stay untouched and green; list the test-side
   part under "Notes" so the orchestrator hands it to the test-writer.
 - No new third-party dependency without listing it under "Notes" with the reason.
-- Do not commit and do not edit `requirements.md`, `design.md` or `tasks.md`.
+- Do not commit, push or open pull requests, and do not edit `requirements.md`, `design.md` or `tasks.md`.
 - If the task admits two or more reasonable approaches and the plan (`tasks.md`, `design.md`) did
   not decide between them, do not choose one yourself: build neither and return `Status: DECISION`
   with the `Decision:` field filled. Unlike `BLOCKED`, the design is not wrong; it left the choice

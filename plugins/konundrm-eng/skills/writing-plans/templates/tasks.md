@@ -12,6 +12,8 @@ between slices in advance (in the request or when approving the plan) -->
 in advance (in the request or when approving the plan), apart from the pauses -->
 - **Sessions:** per-slice <!-- per-slice | single: single when the user asked to build the whole
 feature in one session (in the request, when approving the plan or at a pause) -->
+- **Publish:** local <!-- local | live: live only when the user said yes, or asked for it, to
+publishing the feature on GitHub while it is built (develop-feature asks at plan approval) -->
 
 <!-- One task = one red-green-refactor cycle = one commit. develop-feature checks the box and adds
 a "Rounds" line (review rounds and escalations, read by the impact report) at the slice's pause

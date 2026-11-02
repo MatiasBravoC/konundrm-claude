@@ -97,6 +97,9 @@ so the extra effort goes only to work that has shown it needs it.
      [Slice checkpoint](#slice-checkpoint) for that slice before the next slice's first task.
      Look for that commit with `git log --diff-filter=A --format=%h -- specs/<NNN-slug>/summaries/S<k>.md`: no
      output means it is missing.
+   - With `- **Publish:** live` in the `tasks.md` header, in the main session, stay on the slice
+     branch as [Live publishing](#phase-3-task-loop) says, then first push the commits the remote
+     does not have yet with `git push -u origin feat/<NNN-slug>-s<k>`, before the next task.
    - Continue at the task `status` names as next (in a parallel wave, the main session still builds
      only the wave's first partition). When it prints `next: none` (every task is built and every
      slice has its summary commit), go on to [Phase 4](#phase-4-finish).
@@ -163,6 +166,17 @@ otherwise; a `tasks.md` without that line reads as `per-slice`. When the user as
 finish the feature in this session, set that line to `- **Sessions:** single` there
 ([Slice checkpoint](#slice-checkpoint), step 8).
 
+Then find out whether the feature can be published on GitHub while it is built: run
+`git remote get-url origin` and `gh repo view`. When both succeed, ask a separate question, apart
+from the others: whether to publish the feature on GitHub while it is built, each slice's branch
+and each commit pushed as soon as it exists. Record the `tasks.md` header line
+`- **Publish:** live` only on an explicit yes or when the user asked for it in the request, and
+`- **Publish:** local` otherwise. When either command fails, say in one line what is missing (an
+`origin` remote, `gh` itself, a `gh auth login` session or access to the repository), do not offer
+live publishing and record `- **Publish:** local`. A `tasks.md` without that `Publish:` line reads
+as `local`: the feature is built locally and Phase 4 asks before any push. A resumed session keeps
+the publish choice and never asks again.
+
 Then commit the three documents as `docs(<scope>): add spec and plan for <slug>`, so every
 later commit contains only its task. From here on, work autonomously until the feature is done or
 an escalation rule fires.
@@ -185,6 +199,22 @@ at `high`.
 When the `tasks.md` header says `**Parallel:** yes`, build each wave of two or more partitions as
 [Parallel partitions](#parallel-partitions) says. Otherwise build each slice's tasks here, in list
 order.
+
+**Live publishing.** When the `tasks.md` header says `- **Publish:** live`, each slice gets its own
+branch on the remote from its start. Before the slice's first task, cut the branch, switch to it
+and push it: `git switch -c feat/<NNN-slug>-s<k> <start>`, then
+`git push -u origin feat/<NNN-slug>-s<k>`. S1 starts from the commit that adds the spec and plan
+(Phase 2's last commit). Slice k starts from the tip of the previous slice's branch, the commit
+that adds its summary. When the slice branch already exists (a resumed session), switch to it with
+`git switch feat/<NNN-slug>-s<k>` and stay there, without creating it again, then push it with
+`git push -u origin feat/<NNN-slug>-s<k>`, which also sets its upstream. After each task's
+commit (step 7), run `git push` before the next task. In live mode, push every other commit of the
+flow the same way, as soon as it is made: the slice summary, each plan change, each integration of
+a partition and the feature's final commit. Only the main session pushes: subagents and partition
+sessions never push nor open pull requests. When a push is rejected or fails, or the remote is
+gone, stop with a `BLOCKED:` line that quotes Git's error; the commit stays safe locally. Never
+force a push, and never pull or fetch from the remote to make one go through. Without
+`Publish: live`, nothing is pushed before Phase 4's question.
 
 Keep a tally per task: spec review rounds, code review rounds and escalations. It goes to the
 task's commit step as `--rounds` at step 7, which keeps it in the task's note, never into
@@ -267,7 +297,8 @@ failure of the same review, sends the task to [Rethink](#rethink) instead of ano
    `refs/notes/konundrm`. The commit is a plain `git commit`, so it goes through the commit
    gate like any other commit: the hook reuses the green result step 6 left for this tree and
    denies the commit on red. This commit checks no box and writes no Rounds line in `tasks.md`:
-   the task's rounds live in its note.
+   the task's rounds live in its note. With `Publish: live`, push it next, as
+   [Live publishing](#phase-3-task-loop) says.
 
 When the task was the slice's last task and the slice is built here without a parallel wave, run
 the [Slice checkpoint](#slice-checkpoint) before the next slice's first task; a parallel slice runs
@@ -400,6 +431,9 @@ slice's `### Partitions` table this way:
      `AGENTS.md` or the README says.
    - Run the check command after each partition. The history stays linear, one commit per task,
      so the pull request reads commit by commit.
+   - With `Publish: live`, push the integrated commits with `git push` once the check passes on
+     them (after step 6's fix when it was red). Never push a partition's branch: `wave/` branches
+     stay local.
 6. If the check is red after a partition, route the failure as in Phase 3 step 4 (a test problem
    to the `test-writer`, everything else to the `implementer`'s fix round, with that partition's
    last task), have `code-reviewer` review the fix, run the check again, and commit the fix with
@@ -438,7 +472,8 @@ wave is integrated:
    build it first. Commit the summary and that `tasks.md` change together with the
    `committing-changes` skill in its develop-feature mode, as
    `docs(<scope>): summarize <what it delivers>`. The commit that adds `summaries/S<k>.md` ends
-   the slice's pull request, so the summary stays inside it.
+   the slice's pull request, so the summary stays inside it. With `Publish: live`, push it with
+   `git push` as soon as it is made.
 3. Dispatch `konundrm-eng:process-reviewer` over the slice's flow record (its prompt is in
    [reference/dispatch-prompts.md](reference/dispatch-prompts.md)), then pass its report, the
    `IMPROVEMENT NOTES` block, on stdin to
@@ -509,7 +544,7 @@ plan, headless and one per slice, and its last line says how it ended:
    layer, an ownership rule), update that line in the same final commit, so the next session does
    not read stale instructions.
 7. Set the three documents to `Status: Done` and commit them with `summary.md` in a final
-   `docs(<scope>)` commit.
+   `docs(<scope>)` commit. With `Publish: live`, push it with `git push` as soon as it is made.
 8. Report: commits made, a table mapping each requirement ID to its test(s) and evidence, the
    risk level of each task, Suggestions not applied, refuted findings, each rethink (its evidence
    file and the message of any stash it left), and anything escalated.

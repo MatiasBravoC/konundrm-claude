@@ -49,7 +49,7 @@ context, load both with the Skill tool before doing anything else.
   the test passes on the current code by design: show it passing and return a CHARACTERIZATION
   report naming the mutated line it guards. The orchestrator reruns mutation testing to confirm
   the mutant dies.
-- Do not commit, and do not modify `requirements.md`, `design.md` or `tasks.md`.
+- Do not commit, push or open pull requests, and do not modify `requirements.md`, `design.md` or `tasks.md`.
 - If the task is ambiguous or contradicts the spec, return `BLOCKED: <question>` instead of a RED
   report. Do not guess.
 - If the task is clear but admits two or more reasonable approaches (for example, testing at the
