@@ -42,7 +42,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
-          plugin_marketplaces: https://github.com/konundrm/konundrm-claude.git
+          plugin_marketplaces: https://github.com/MatiasBravoC/konundrm-claude.git
           plugins: konundrm-eng@konundrm
           # Only the number reaches the prompt: the title and description are untrusted text.
           prompt: /konundrm-eng:reviewing-pull-requests ${{ github.event.pull_request.number }}

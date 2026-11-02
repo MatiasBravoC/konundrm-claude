@@ -1,7 +1,7 @@
 {
   "extraKnownMarketplaces": {
     "konundrm": {
-      "source": { "source": "github", "repo": "konundrm/konundrm-claude" }
+      "source": { "source": "github", "repo": "MatiasBravoC/konundrm-claude" }
     }
   },
   "enabledPlugins": {

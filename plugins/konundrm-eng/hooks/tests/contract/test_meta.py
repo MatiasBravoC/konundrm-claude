@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
+import subprocess
 import unittest
 from pathlib import Path
+
+from .plugin_files import PLUGIN_ROOT, read_section
 
 CONTRACT_DIR = Path(__file__).resolve().parent
 
@@ -174,3 +178,72 @@ class ContractTestsDefineEachNameOnceTest(unittest.TestCase):
 
         self.assertIn(Path(__file__).resolve(), modules)
         self.assertEqual(duplicates, [])
+
+
+# R8.1: the plugin's repository on GitHub. The org `konundrm` does not exist on GitHub, but the marketplace is still
+# named `konundrm` (`konundrm-eng@konundrm`), so only the org's paths are forbidden, never the word. They are built
+# here, not written out, so this file does not name them itself.
+_REPO_ROOT = PLUGIN_ROOT.parents[1]
+_REPOSITORY = "MatiasBravoC/konundrm-claude"
+_OLD_ORG = "konundrm"
+_OLD_ORG_PATHS = (f"{_OLD_ORG}/{_OLD_ORG}-claude", f"github.com/{_OLD_ORG}")
+_TEMPLATES_DIR = PLUGIN_ROOT / "skills" / "setup-project" / "templates"
+_MARKETPLACE_ADD = re.compile(r"claude plugin marketplace add (\S+)")
+_PLUGIN_MARKETPLACES = re.compile(r"^\s*plugin_marketplaces:\s*(\S+)", re.MULTILINE)
+
+
+def _repository_text_files() -> list[Path]:
+    """Return the repository's tracked and new (not ignored) files outside `specs/`, as absolute paths."""
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    ).stdout
+    names = [name for name in listed.split("\x00") if name and not name.startswith("specs/")]
+    return [_REPO_ROOT / name for name in names if (_REPO_ROOT / name).is_file()]
+
+
+def _old_org_mentions(path: Path) -> list[str]:
+    """Return one message per line of a text file that names the old GitHub org's paths; [] for binary files."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError:
+        return []
+    relative = path.relative_to(_REPO_ROOT).as_posix()
+    return [
+        f"{relative}:{number}: {line.strip()}"
+        for number, line in enumerate(lines, start=1)
+        if any(old in line.lower() for old in _OLD_ORG_PATHS)
+    ]
+
+
+class PluginAddressesTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_plugin_addresses_point_to_its_repository(self) -> None:
+        """R8.1, R8.2: 003 every address of the plugin points to MatiasBravoC/konundrm-claude, a private repository.
+
+        No file outside `specs/` names a path of the GitHub org `konundrm` (`_OLD_ORG_PATHS`), which does not exist;
+        the manifest's `repository`, the README's `marketplace add`, the marketplace setup-project registers and the
+        review workflow's `plugin_marketplaces` all point to MatiasBravoC/konundrm-claude; and the README's
+        installation section says the repository is private, so whoever installs it and each project's CI need access.
+        """
+        manifest = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        readme = _REPO_ROOT / "README.md"
+        settings = json.loads((_TEMPLATES_DIR / "claude-settings.json").read_text(encoding="utf-8"))
+        review = (_TEMPLATES_DIR / "claude-review.yml").read_text(encoding="utf-8")
+        installation = " ".join(read_section(readme, "Instalación").lower().split())
+
+        mentions = [mention for path in _repository_text_files() for mention in _old_org_mentions(path)]
+
+        self.assertEqual(mentions, [])
+        self.assertEqual(manifest.get("repository"), f"https://github.com/{_REPOSITORY}")
+        self.assertIn(_REPOSITORY, _MARKETPLACE_ADD.findall(readme.read_text(encoding="utf-8")))
+        self.assertEqual(settings["extraKnownMarketplaces"]["konundrm"]["source"]["repo"], _REPOSITORY)
+        self.assertEqual(_PLUGIN_MARKETPLACES.findall(review), [f"https://github.com/{_REPOSITORY}.git"])
+        self.assertIn("privad", installation, "README.md: the installation section does not say the repo is private")
+        self.assertIn("acceso", installation, "README.md: the installation section does not say who needs access")
+        self.assertRegex(installation, r"\bci\b", "README.md: the installation section does not mention CI's access")
