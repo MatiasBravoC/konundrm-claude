@@ -1,32 +1,18 @@
 ## What and why
 
-<!-- The problem and what this pull request delivers, in two or three sentences. -->
+<!-- The problem this change solves and what this pull request delivers, in two or three
+sentences, in plain English. -->
 
-## Requirements → tests → evidence
+## Where to look first
 
-| Requirement | Test | Evidence |
-| --- | --- | --- |
-|  |  |  |
+<!-- Each change's risk in plain words (low, medium or high). For high-risk changes: the files
+and lines a reviewer should read first, and what they guard. -->
 
-## Risk and where to look first
+## How it was verified
 
-<!-- Each change's risk (low, medium, high). For high risk: the files and lines a reviewer must
-read first, and what they guard. -->
-
-## Verification
-
-<!-- The check command's result and anything verified by hand: commands, output, screenshots. -->
-
-## Commits, one per task
-
-<!-- Every commit in order, oldest first (git log --reverse), each as its task ID (T<n>, from
-the Task: line in its body), short SHA and subject. -->
+<!-- The check command's result, each behavior with the test that proves it, and the end-to-end
+evidence: commands, output, screenshots. -->
 
 ## Not in this pull request
 
-<!-- Later slices, known follow-ups. -->
-
-## How it was built
-
-<!-- Who approved the spec and the plan, and whether an AI agent wrote code, tests or reviews.
-A person approves every pull request (Standards → Git and pull requests). -->
+<!-- What the next pull requests bring, suggestions not applied, known follow-ups, or None. -->

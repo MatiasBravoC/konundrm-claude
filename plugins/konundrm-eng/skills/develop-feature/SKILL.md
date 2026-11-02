@@ -571,8 +571,8 @@ plan, headless and one per slice, and its last line says how it ended:
    and **ask before pushing** or opening pull requests. On a yes, offer two deliveries: one stacked pull request
    per slice (the default) or a single pull request with every slice. When any task is high risk,
    warn that with a single pull request `risk:high` will cover the whole feature. Then run the
-   `opening-pull-requests` skill with the choice: each pull request carries its traceability
-   table, and `risk:high` on the slices that hold a high-risk task so CI repeats mutation testing
+   `opening-pull-requests` skill with the choice: each pull request carries a plain-English
+   description that says what to read first and how it was verified, and `risk:high` on the slices that hold a high-risk task so CI repeats mutation testing
    on them.
 
 To see whether the workflow is paying off across features, run `/konundrm-eng:measure-impact`.

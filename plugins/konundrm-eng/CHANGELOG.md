@@ -5,6 +5,62 @@ All notable changes to `konundrm-eng` are documented here. The format follows
 [Semantic Versioning](https://semver.org/). Bump `version` in `.claude-plugin/plugin.json` with
 every release; installed copies only update when it changes.
 
+## [0.8.0] - 2026-11-01
+
+Features you can follow on GitHub while they are built, and commits and pull requests any
+developer can read without knowing the flow. Opt in when you approve the plan: each slice gets its
+branch on GitHub as it starts, each task's commit is pushed as soon as it passes its reviews and
+the check, and each finished slice opens a pull request stacked on the previous one. The flow's
+data moves out of commit messages into Git notes, and the plugin points at its real repository.
+
+### Added
+
+- Live publishing. After the plan is approved, develop-feature asks, as a separate question,
+  whether to publish the feature live, and records `- **Publish:** live` or `local` in the
+  `tasks.md` header; it only offers it when the repository has a remote and `gh`, signed in, can
+  see it. Live, each slice starts on its own branch, `feat/<NNN-slug>-s<k>`, pushed before its
+  first task; every commit is pushed as soon as it is made (never forced, a rejected push stops
+  with `BLOCKED:`); a finished slice opens its pull request, ready for review, stacked on the
+  previous slice's; and the end of the feature lists every pull request in merge order instead of
+  asking to push. A resumed session pushes what is missing and opens the pull request a finished
+  slice lacks. Subagents and partition sessions never push. Plans without the `Publish:` line stay
+  local and ask before any push, as before.
+- `task_ledger.py record` attaches the pending note that `message` leaves to the commit just
+  made; a resumed session runs it first, so a session cut between a commit and its note never
+  builds that task twice.
+
+### Changed
+
+- The flow's data lives in Git notes under `refs/notes/konundrm`, not in commit messages. Every
+  commit the plugin makes says only what changed: no task, requirement, slice or partition IDs and
+  no `Task:`, `Covers:`, `Rounds:` or `Escaped-gate:` lines. A task's note holds its
+  `Task: T<n> · Covers: …` and `Rounds: …` lines, a fix-bug's its `Covers: B1` and
+  `Escaped-gate:` lines, and integrating a partition copies each note to its integrated commit.
+  The skills, `task_ledger.py` and the impact report read the notes and still read the old
+  message lines of features started before this version, also when a feature mixes both.
+- Stacked pull requests state their merge order: each title ends with `(k/N)`, and each
+  description starts with `Merge order: <k> of <N>. Merge #<n> first.` A pull request goes against
+  the default branch only once the previous one is merged and its branch is gone; `risk:high` is
+  added only when the repository has the label, never created; a branch with an open pull request
+  never gets a second one.
+- The pull request text follows the repository's pull request template word for word
+  (`pull_request_template.md` in `.github/`, the root or `docs/`, in any letter case), else four
+  fixed sections: What and why, Where to look first, How it was verified and Not in this pull
+  request. Title and description are in plain English and leave the flow's data out: no IDs, no
+  word "slice", no flow lines, no review rounds and no role names. setup-project's pull request
+  template has those four sections.
+- Slices aim at 300–500 changed lines of code and tests, not counting the feature's documents,
+  and the default pull request budget is 500 changed lines instead of 400. Each slice summary
+  counts its changed lines apart from the documents', and the pause warns when a slice goes over
+  the budget, and by how much.
+
+### Fixed
+
+- The plugin's manifest, the README's install commands and setup-project's marketplace and review
+  workflow templates point at `MatiasBravoC/konundrm-claude`, the plugin's real repository, which
+  is private: whoever installs the plugin, and the CI of each project that uses it, needs access to
+  it.
+
 ## [0.7.0] - 2026-11-01
 
 A cheaper feature flow. The run that built 0.6.0 (80 tasks, 5 sessions, 380 subagents) spent
