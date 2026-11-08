@@ -1,4 +1,4 @@
 # Tools for developing the plugin (see pyproject.toml). The hooks need only the standard library.
 # Dependabot keeps these pins current.
-ruff==0.17.0
-mypy==2.4.0
+ruff==0.17.3
+mypy==2.4.1
