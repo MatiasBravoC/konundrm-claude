@@ -119,6 +119,11 @@ _PIN_PLAN_RULES: _PinRules = (
     ),
     (
         "writing-plans",
+        "R1.6 the self-review takes a merged chore by the chore rule, not by the owner condition",
+        (r"\bchore line merged into the task it prepares or documents\b", r"\bin place of the second\b"),
+    ),
+    (
+        "writing-plans",
         "R1.7 the approval names the tasks the other Consolidation: choice would merge",
         (r"\bconsolidation: line\b", r"\bnaming the tasks that choice would merge\b"),
     ),
@@ -480,8 +485,9 @@ _PIN_REQUEST_RULES: _PinRules = (
     ),
     (
         _PROCEDURE,
-        "R4.3 the tests of a change the code already makes do not stay in the tree",
-        (r"\bdo not leave its changes in the tree\b", r"\bstash\b"),
+        "R4.3, R4.10 the tests of a change the code already makes do not stay in the tree, except on a task in"
+        " progress, where they stay in that task",
+        (r"\bexcept on a task in progress\b", r"\bdo not leave its changes in the tree\b", r"\bstash\b"),
     ),
     (
         _PROCEDURE,
@@ -495,8 +501,14 @@ _PIN_REQUEST_RULES: _PinRules = (
     ),
     (
         _PROCEDURE,
-        "R4.5 a Task: line of a commit made after the feature's final commit names a later feature's task",
-        (r"\btask: line of a commit made after the feature's final commit\b", r"\blater feature's task\b"),
+        "R4.5 a Task: line of a commit made after the feature's final commit names a later feature's task, so on a"
+        " finished feature the lookup ends at its final commit",
+        (
+            r"\btask: line of a commit made after the feature's final commit\b",
+            r"\blater feature's task\b",
+            r"\bend the range not at head but at its final commit\b",
+            r"-s'\*\*status:\*\* done'",
+        ),
     ),
     (
         _PROCEDURE,
@@ -599,6 +611,31 @@ _PIN_REQUEST_RULES: _PinRules = (
         "R4.9 a branch that holds only adjustments to a merged feature is one pull request against the default branch",
         (r"\bholds only adjustments to a feature already merged\b", r"\bone pull request against the default branch\b"),
     ),
+    (
+        "opening-pull-requests",
+        "R4.9 the list and the measure go against origin/<base> when the local default branch is behind it",
+        (r"\bagainst origin/<base>", r"\bhere and in step 2\b", r"\blocal default branch is behind it\b"),
+    ),
+    (
+        _PROCEDURE,
+        "R4.9 with Publish: live the feature's own branch is its last slice's",
+        (r"\bpublish: live\b", r"\bfeature's branch is its last slice's\b"),
+    ),
+    (
+        _RETHINK,
+        "R4.10 the set-aside also keeps design.md out of the stash when a change was recorded for the task",
+        (r"\bkeep those files out of the stash\b", r":\(exclude\)specs/<nnn-slug>/design\.md"),
+    ),
+    (
+        _PHASE_0,
+        "R4.2 the first two reopening conditions name the command that checks them",
+        (r"\bgh pr list --head <branch> --state merged\b", r"\bgit log --oneline <base>\.\.head -- specs\b"),
+    ),
+    (
+        _ADJUSTMENTS,
+        "R4.5 a diff that changed code in a file no task lists or changed is a plan change",
+        (r"\bturns out to be a plan change\b", r"\bcode in a file no task lists or changed\b"),
+    ),
 )
 _PIN_OUTPUT_RUNS = (re.compile(r"\b5 runs\b"), re.compile(r"\b1 run\b"))
 
@@ -633,7 +670,7 @@ class RightSizedFlowPinsTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
     def test_planning_keeps_the_edges_of_what_it_merges(self) -> None:
-        """R1.1, R1.3, R1.4, R1.5, R1.7, R1.8, R1.9, R3.9, R5.4: 004 planning keeps the edges of a merge.
+        """R1.1, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R3.9, R5.4: 004 planning keeps the edges of a merge.
 
         The lines are merged before the tasks are written, the default is `low` and a plan change renumbers no task.
         An invariant goes on the line whose code makes it hold and gets a `property` line of its own only when it

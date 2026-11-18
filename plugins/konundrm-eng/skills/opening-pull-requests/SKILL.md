@@ -33,7 +33,9 @@ clear enough that the reviewer knows what to check first (Standards → Git and 
 `git rev-parse --show-toplevel`, the current branch, and `git status` (must be clean: commit
 first with `committing-changes`). The base is the default branch
 (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`, or `origin/HEAD`). Never open a
-pull request from the default branch. List what would go out: `git log --oneline <base>..HEAD`.
+pull request from the default branch. List what would go out: `git log --oneline <base>..HEAD`,
+or against `origin/<base>`, here and in step 2, when the local default branch is behind it
+(`git rev-list --count <base>..origin/<base>` is not 0), as for adjustments to a merged feature.
 Check `gh auth status`; without `gh`, give the user the push command and the description to paste.
 
 ### 2. Green and size

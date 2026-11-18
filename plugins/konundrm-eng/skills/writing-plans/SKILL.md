@@ -188,9 +188,10 @@ develop-feature can build the partitions of one wave at the same time when the u
 - Every acceptance criterion maps to at least one task; no behavior task lacks a criterion.
 - Checked against the first list: every consolidated task meets the four conditions of step 5
   (with `low and medium` in the header, a task of `medium` lines meets that paragraph's
-  conditions in place of the first) and merges no `high` or `property` line, no `medium` line
-  unless the header says `low and medium`, none that needs a `- Decision:` field and none that
-  adds a dependency.
+  conditions in place of the first, and a `chore` line merged into the task it prepares or
+  documents meets step 5's rule for `chore` lines in place of the second) and merges no `high`
+  or `property` line, no `medium` line unless the header says `low and medium`, none that needs
+  a `- Decision:` field and none that adds a dependency.
 - Every behavior of a consolidated task has its own test in `Tests:`, with its criterion.
 - Every task has a risk level, and every money, auth, personal-data, data-deletion or
   external-contract task is high.

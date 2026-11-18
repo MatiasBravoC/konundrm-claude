@@ -27,8 +27,9 @@ when; this file is the procedure. Its prompts are in [dispatch-prompts.md](dispa
    pull request of its own; with `Publish: live`, its first push is
    `git push -u origin feat/<NNN-slug>-<short-slug>`. When it is not merged and you are on
    another feature's branch, switch to the feature's own branch first: the default branch does
-   not hold its code yet. Never commit an adjustment on the default branch nor push it to a
-   merged branch.
+   not hold its code yet. With `Publish: live` the feature's branch is its last slice's,
+   `feat/<NNN-slug>-s<N>`: a branch named `feat/<NNN-slug>` holds only the spec and plan. Never
+   commit an adjustment on the default branch nor push it to a merged branch.
 2. **Criterion first.** When the request changes a detail an acceptance criterion states (a text,
    a value, a limit), edit that line of `requirements.md` yourself, before any dispatch, so the
    writers and the reviewers read the new criterion. Only you can: the plugin denies the feature's
@@ -48,7 +49,8 @@ when; this file is the procedure. Its prompts are in [dispatch-prompts.md](dispa
    after). Read that one as step 1 of the task loop reads a CHARACTERIZATION and keep it when it
    asserts what the request asks for. When none of its tests fails, the code already does what
    was asked: stop and tell the user, and for a reported defect say that the test could not
-   reproduce it. Do not leave its changes in the tree: when the user wants the tests kept, go on
+   reproduce it. Except on a task in progress, where its tests stay in that task and the task
+   goes on, do not leave its changes in the tree: when the user wants the tests kept, go on
    from step 5 and commit them as the adjustment, otherwise set them aside with the stash
    command below. When the test-writer added, renamed or removed a test, update that task's
    `Test:` or `Tests:` line and its `Verify:` line in `tasks.md` now, before the implementer
@@ -89,9 +91,10 @@ when; this file is the procedure. Its prompts are in [dispatch-prompts.md](dispa
   the `Task:` line of every task whose commit changed it, from its note or, in a feature started
   before 0.8.0, from its message, also when the plan did not list that file or a later task
   renamed it; a `Task:` line of a commit made after the feature's final commit names a later
-  feature's task, not this plan's; where the notes are missing, as in a clone or after a squash
-  merge, go by the plan's `Files:` lines and count a file a `high` task could have changed as
-  changed by it). Do not commit it: set it aside with
+  feature's task, so on a finished feature end the range not at `HEAD` but at its final commit
+  (`git log -1 --format=%h -S'**Status:** Done' -- specs/<NNN-slug>/tasks.md`); where the notes
+  are missing, as in a clone or after a squash merge, go by the plan's `Files:` lines and count a
+  file a `high` task could have changed as changed by it). Do not commit it: set it aside with
   `git add -A && git stash push --include-untracked -m "<NNN-slug> adjustment set aside: <the request in a few words>"`,
   tell the user that message and propose the plan change. Write those few words with letters,
   digits and spaces only: inside the double quotes the shell would run a backtick or expand a

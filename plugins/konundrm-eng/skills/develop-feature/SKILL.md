@@ -71,8 +71,11 @@ and its fix round is a fix round.
      [Adjustments](#adjustments). `status` finds a built task by its commit's note, and notes do
      not travel in a clone nor survive a squash merge or a rebase, so after any of them it names
      as next a task that is built. A plan change there reopens the feature only while its pull
-     requests are not merged, no later feature has commits after it and `status` still lists
-     every one of its tasks as committed: with the user's yes, set the three documents back to
+     requests are not merged (`gh pr list --head <branch> --state merged` lists none), no later
+     feature has commits after it
+     (`git log --oneline <base>..HEAD -- specs ':(exclude)specs/<NNN-slug>'` lists none of
+     another feature) and `status` still lists every one of its tasks as committed: with the
+     user's yes, set the three documents back to
      `Approved`, put its new tasks in a new slice after the last one, so the finished slices keep
      their summaries and pull requests, build them through Phase 3 and run Phase 4 again. Once
      it is merged, a later feature has commits after it or its notes are gone, propose the change
@@ -467,8 +470,9 @@ review, or when the same review fails a third time, stop the fix rounds and:
      `test-writer` line keeps the current test, end that command with
      `-- . ':(exclude)<test file>'` so the test stays. When you recorded a decision or a change
      the user asked for during this task (its `- Decision:` or `- Change:` line in `tasks.md`, a
-     criterion edited in `requirements.md`), keep those two files out of the stash the same way,
-     with `':(exclude)specs/<NNN-slug>/tasks.md' ':(exclude)specs/<NNN-slug>/requirements.md'`
+     criterion edited in `requirements.md`, a line of `design.md` that stated the old detail or
+     name), keep those files out of the stash the same way, with
+     `':(exclude)specs/<NNN-slug>/tasks.md' ':(exclude)specs/<NNN-slug>/requirements.md' ':(exclude)specs/<NNN-slug>/design.md'`
      after `-- .`, so the task built again still carries them. Check with `git status` that
      nothing else is left, then build the task again from step 1 of the task loop, or from step 2
      when the test stays (rerun its verify command and pass that output as the RED report).
@@ -692,8 +696,8 @@ anything and tell the user which it is in one line:
   first, then the writers (its test first and red when it changes what the code does), the
   reviews that [Reviews after a change](#reviews-after-a-change) names for its diff, the gate,
   and a commit of its own with its note. A diff that turns out to be a plan change (it reached a
-  file a `high` task lists or changed, or code no task lists) is never committed: the reference
-  says how to set it aside.
+  file a `high` task lists or changed, or code in a file no task lists or changed) is never
+  committed: the reference says how to set it aside.
 
 When the request reports that built work does not do what an approved criterion says, it is a
 defect, not a preference: make it as an adjustment is made, its test first and red for the
