@@ -49,8 +49,9 @@ it already passes because the behavior exists. Do not create or edit any non-tes
 
 When a test goes back to a test-writer (in step 1 it errored for another reason, passed with a RED
 report or does not assert its criterion; in step 2 the implementer returned `BLOCKED` on it or
-found it green before its code; in a fix round a review found it missing or wrong), add this
-paragraph above the last one, so the tests that are ready stay untouched:
+found it green before its code; in a fix round a review found it missing or wrong; at the gate
+the check failed in its file), add this paragraph above the last one, so the tests that are ready
+stay untouched:
 
 ```
 Tests already written, to leave exactly as they are: <path>::<name>, one per test
@@ -306,8 +307,9 @@ Change the user asked for, verbatim:
 
 Find every test that asserts what the request changes, or uses a name it changes (search the test
 folders for the old text, value or name), and change each one to assert or use what the request
-asks for; add a test in the task's test file when none asserts it. Leave every other test as it
-is. Run the tests you changed or added: each must fail because the code still does what it did,
+asks for; add a test in the task's test file when the request changes what the code does and
+none asserts it. Leave every other test as it is. Run the tests you changed or added: each must
+fail because the code still does what it did,
 and gets a RED report. The one exception is a test the code as it stands already satisfies (when
 a limit moves, one of its two boundary tests passes before and after): leave it as the request
 needs it, never bend it to make it fail, and return a CHARACTERIZATION report for it. Do not

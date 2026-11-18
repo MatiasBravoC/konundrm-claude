@@ -1551,10 +1551,10 @@ class PullRequestTextTest(unittest.TestCase):
         self.assertEqual(gaps, [], "\n".join(gaps))
 
 
-# Consolidation (004 R1.1-R1.7): writing-plans lists one behavior per task, then merges related low-risk tasks into one
-# consolidated task that keeps one test per behavior. Keywords of each rule inside one sentence of a block of its
-# SKILL.md (lowercased, without backticks, single-spaced): outside its Self-review and Approval steps, inside its
-# Self-review step, or inside its Approval step. The template shows such a task, and still parses.
+# Consolidation (004 R1.1-R1.9, R3.9): writing-plans lists one behavior per task, then merges related low-risk tasks
+# into one consolidated task that keeps one test per behavior. Keywords of each rule inside one sentence of a block
+# of its SKILL.md (lowercased, without backticks, single-spaced): outside its Self-review and Approval steps, inside
+# its Self-review step, or inside its Approval step. The template shows such a task, and still parses.
 _MERGE = re.compile(r"\bmerg\w*|\bconsolidat\w*")
 _MERGE_CONSOLIDATED_TASK = re.compile(r"\bconsolidated tasks?\b")
 _MERGE_FIRST = re.compile(r"\bfirst\b")
@@ -1591,6 +1591,7 @@ _MERGE_COVERS = re.compile(r"\bcovers\b")
 _MERGE_HEADER_LINE = re.compile(r"\bconsolidation:")
 _MERGE_USER = re.compile(r"\buser\b")
 _MERGE_LOW = re.compile(r"\blow\b")
+_MERGE_UNLESS = re.compile(r"\bunless\b")
 _MERGE_LOW_AND_MEDIUM = re.compile(r"\blow and medium\b")
 _MERGE_ONE_RULE = re.compile(r"\bone rule\b")
 _MERGE_THREE = re.compile(r"\b(?:at most|no more than|up to) (?:three|3)\b")
@@ -1600,7 +1601,7 @@ _MERGE_BEHAVIORS_IN_TASKS = re.compile(r"\bbehaviou?rs in <m> tasks\b")
 _MERGE_STAYED_APART = re.compile(r"\bstay(?:ed|s)? apart\b")
 _MERGE_PLAN_CHANGE = re.compile(r"\bplan change\b")
 _MERGE_WITHOUT_THAT_LINE = re.compile(r"\bwithout that line\b")
-_MERGE_READS_AS_LOW = re.compile(r"\breads as low\b")
+_MERGE_READS_AS_LOW = re.compile(r"\b(?:reads|counts) as low\b")
 _MERGE_ONLY_WITH_MEDIUM = re.compile(r"\bonly with other medium lines\b")
 _MERGE_FILES_LINE = re.compile(r"\bfiles: line\b")
 _MERGE_INVARIANTS = re.compile(r"\binvariants\b")
@@ -1608,6 +1609,11 @@ _MERGE_COVERING_PROPERTY_TASK = re.compile(r"\bproperty task that covers it\b")
 _MERGE_MEDIUM_LINES = re.compile(r"\bmedium lines\b")
 _MERGE_SAME_WAY = re.compile(r"\bsame way\b")
 _MERGE_RENUMBERED = re.compile(r"\brenumber\w*")
+_MERGE_FIRST_LIST = re.compile(r"\bfirst list\b")
+_MERGE_SAME_TEST_FILE = re.compile(r"\bsame test file\b")
+_MERGE_TESTS_OF_A_CONSOLIDATED_TASK = re.compile(r"\btests of a consolidated task\b")
+_MERGE_AMONG_THEMSELVES = re.compile(r"\bamong themselves\b")
+_MERGE_KEEPS_ITS_ID = re.compile(r"\bkeeps its id\b")
 _MERGE_WHY = re.compile(r"\bwhy\b")
 _MERGE_CHANGE = re.compile(r"\bchange\b")
 _MERGE_TEMPLATE_HEADER = re.compile(r"(?m)^- \*\*Consolidation:\*\* low\b")
@@ -1673,21 +1679,35 @@ _MERGE_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
         _MERGE_ONE_TEST_PER_BEHAVIOR,
         _MERGE_CRITERION,
     ),
+    "R1.4 the verify command runs just the tests of a consolidated task": (
+        _MERGE_VERIFY_COMMAND,
+        _MERGE_TESTS_OF_A_CONSOLIDATED_TASK,
+    ),
     "R1.8 the header's Consolidation: line holds the user's choice, low unless the user says otherwise": (
         _MERGE_HEADER_LINE,
         _MERGE_USER,
         _MERGE_LOW,
+        _MERGE_UNLESS,
     ),
     "R1.8 with low and medium, medium lines that are cases of one rule merge too, at most three per task": (
         _MERGE_LOW_AND_MEDIUM,
         _MERGE_MEDIUM,
         _MERGE_ONE_RULE,
+        _MERGE_SAME_TEST_FILE,
         _MERGE_THREE,
+        _MERGE_INVARIANTS,
     ),
     "R1.8 with none, one task per line": (_MERGE_NONE, _MERGE_ONE_TASK_PER_LINE),
     "R1.7 the totals go on the header's Consolidation: line": (_MERGE_HEADER_LINE, _MERGE_BEHAVIORS_IN_TASKS),
-    "R1.9 tasks a plan change adds to a plan that is being built are consolidated the same way, and no task is"
-    " renumbered": (_MERGE_PLAN_CHANGE, _MERGE, _MERGE_SAME_WAY, _MERGE_RENUMBERED),
+    "R1.9 tasks a plan change adds to a plan that is being built are consolidated the same way, among themselves"
+    " only: a task that has its commit keeps its ID, and no task is renumbered": (
+        _MERGE_PLAN_CHANGE,
+        _MERGE,
+        _MERGE_SAME_WAY,
+        _MERGE_AMONG_THEMSELVES,
+        _MERGE_KEEPS_ITS_ID,
+        _MERGE_RENUMBERED,
+    ),
     "R1.9 a plan without the Consolidation: line reads as low for the tasks a plan change adds": (
         _MERGE_WITHOUT_THAT_LINE,
         _MERGE_READS_AS_LOW,
@@ -1703,10 +1723,13 @@ _MERGE_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
     ),
 }
 _MERGE_SELF_REVIEW_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
-    "R1.6 every consolidated task meets the conditions of the consolidation step": (
+    "R1.6 checked against the first list, every consolidated task meets the conditions of the consolidation step": (
+        _MERGE_FIRST_LIST,
         _MERGE_CONSOLIDATED_TASK,
         _MERGE_CONDITIONS,
     ),
+    "R1.6 no consolidated task merges a high or property line, one that needs a Decision: field or one that adds a"
+    " dependency": (_MERGE_HIGH, _MERGE_PROPERTY, _MERGE_DECISION_FIELD, _MERGE_DEPENDENCY),
     "R1.6 every behavior of a consolidated task has its own test": (
         _MERGE_BEHAVIOR,
         _MERGE_CONSOLIDATED_TASK,
@@ -1737,7 +1760,7 @@ def _merge_rule_gaps(where: str, blocks: list[str], rules: dict[str, tuple[re.Pa
 
 
 def _merge_skill_gaps(skill_text: str) -> list[str]:
-    """Return the consolidation rules (R1.1-R1.7) a writing-plans SKILL.md text lacks, one message per rule."""
+    """Return the consolidation rules (R1.1-R1.9, R3.9) a writing-plans SKILL.md text lacks, one message per rule."""
     lines = skill_text.splitlines()
     review_lines, without_review = _split_self_review(lines)
     approval_lines, body_lines = _split_approval(without_review)
@@ -1811,7 +1834,7 @@ class WritingPlansConsolidationTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
     def test_writing_plans_consolidates_related_low_risk_tasks(self) -> None:
-        """R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9: 004 writing-plans merges related low-risk behaviors.
+        """R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R3.9: 004 writing-plans merges related low-risk lines.
 
         Outside its Self-review and Approval steps, writing-plans says, each part in one sentence: every behavior is
         first listed on its own line; the lines that belong together merge into one consolidated task, built in a
@@ -1826,7 +1849,8 @@ class WritingPlansConsolidationTest(unittest.TestCase):
         one test per behavior with its criterion; the header's `Consolidation:` line holds the user's choice (`low`
         unless the user says otherwise; `low and medium` also merges medium lines that are cases of one rule, at most
         three per task; `none` writes one task per line) and the totals; and the tasks a plan change adds to a plan
-        that is already being built are consolidated the same way, with no task renumbered. Its Self-review checks
+        that is already being built are consolidated the same way, among themselves only, a task that has its
+        commit keeping its ID and no task renumbered. Its Self-review checks
         that every consolidated task meets those conditions and that each behavior has its own test; its Approval
         shows the number of behaviors of each consolidated task, the plan's totals, why the other tasks stayed apart,
         and that the user may change the `Consolidation:` line, after which the plan is merged again and shown again.
@@ -1870,6 +1894,8 @@ _SIZED_ALWAYS = re.compile(r"\balways\b")
 _SIZED_ONE_BEHAVIOR = re.compile(r"\b(?:one|a single) behaviou?r\b")
 _SIZED_VERSION = re.compile(r"(?<![\d.])0\.9\.0(?![\d.])")
 _SIZED_ROUNDS = re.compile(r"\brounds?\b")
+_SIZED_ONLY_THE_REVIEWS_IT_CONCERNS = re.compile(r"\bonly the reviews it concerns\b")
+_SIZED_TASKS_DONE = re.compile(r"\btasks done\b")
 _SIZED_COMPARE = re.compile(r"\bcompar\w*|\blower\b|\bfewer\b")
 _SIZED_ADJUSTMENT = re.compile(r"\badjustments?\b")
 _SIZED_FIXES_PER_FEATURE = re.compile(r"\bfixes per feature\b")
@@ -1916,6 +1942,8 @@ _SIZED_STANDARDS_RULES: tuple[tuple[str, str, tuple[re.Pattern[str], ...]], ...]
 _SIZED_IMPACT_LIMIT = (
     _SIZED_VERSION,
     _SIZED_BEHAVIOR,
+    _SIZED_ONLY_THE_REVIEWS_IT_CONCERNS,
+    _SIZED_TASKS_DONE,
     _SIZED_ROUNDS,
     _SIZED_COMPARE,
     _SIZED_ADJUSTMENT,

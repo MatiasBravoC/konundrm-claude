@@ -217,7 +217,7 @@ _ADJUSTMENT_ENTRY_PARTS = {
     "the reviews that ran": re.compile(r"\breviews: <"),
     "why the other reviews were not needed": re.compile(r"\bnot needed\b|\bdid not need\b|\bno review\b"),
     "the criterion it updated": re.compile(r"\bcriterion: <"),
-    "none when there were no adjustments": re.compile(r"\bnone\b"),
+    "none when there were no adjustments": re.compile(r'\bwrite "none"'),
 }
 _ADJUSTMENT_ENTRY_SHA = re.compile(r"\bsha\b")
 _REVIEWS_NOT_REPEATED = re.compile(r"\breviews not repeated after a change\b")

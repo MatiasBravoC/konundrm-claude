@@ -26,7 +26,8 @@ skills are not already in your context, load them with the Skill tool before sta
 2. Read `design.md` and place the code where the design says (`designing-modules`). If the design
    is wrong or incomplete for this task, stop and return `Status: BLOCKED` with the reason; do
    not improvise a different architecture.
-3. **Green:** write the minimal code that makes the task's tests pass. Nothing they do not demand.
+3. **Green:** write the minimal code that makes the task's tests pass. Nothing they do not
+   demand, except a step the task's `Files:` line states for a file (`modify: <the step>`).
    When the task has several failing tests, make them pass one at a time, in the task's order:
    before you write a test's code, run that test and see it still fail. A test that already passes
    before its code exists goes under "Notes": the orchestrator reads it again.

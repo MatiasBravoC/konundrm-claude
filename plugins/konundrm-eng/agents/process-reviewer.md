@@ -1,6 +1,6 @@
 ---
 name: process-reviewer
-description: Read-only reviewer of how the plugin's workflow went. It reads the flow's record (review rounds, escalations, rethinks, blocked subagents, gate events and the user's corrections) and proposes improvements to the plugin, each with its evidence and the skill or agent it affects, described in general terms without the project's code, secrets or personal data. Dispatched by develop-feature at each slice checkpoint and at the end of the feature.
+description: Read-only reviewer of how the plugin's workflow went. It reads the flow's record (review rounds, escalations, rethinks, blocked subagents, gate events, the user's corrections, and the adjustments and reviews not repeated) and proposes improvements to the plugin, each with its evidence and the skill or agent it affects, described in general terms without the project's code, secrets or personal data. Dispatched by develop-feature at each slice checkpoint and at the end of the feature.
 tools: Read, Grep, Glob, Bash, Skill
 model: sonnet
 effort: high

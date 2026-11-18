@@ -3895,7 +3895,7 @@ class LivePublishingFlowTest(unittest.TestCase):
 # table row is one block).
 _SIZED_SKILL = DEVELOP_FEATURE_DIR / "SKILL.md"
 _SIZED_PROMPTS = DEVELOP_FEATURE_DIR / "reference" / "dispatch-prompts.md"
-_SIZED_ONE_DISPATCH = re.compile(r"\b(?:one|a single|the same) dispatch\b")
+_SIZED_ONE_DISPATCH = re.compile(r"\b(?:one|a single|the same) dispatch writes (?:every|each|all) tests?\b")
 _SIZED_SAME_DISPATCH = re.compile(r"\bsame dispatch\b")
 _SIZED_EVERY_TEST = re.compile(r"\b(?:every|each|all)\b(?: \S+){0,2} tests?\b")
 _SIZED_TESTS_LIST = re.compile(r"\btests: list\b")
@@ -3912,7 +3912,7 @@ _SIZED_NEW_TEST_WRITER = re.compile(r"\bnew test-writer\b")
 _SIZED_LEAVE_AS_THEY_ARE = re.compile(r"\bleave\b(?: \S+){0,2} as they are\b")
 _SIZED_IMPLEMENTER = re.compile(r"\bimplementer\b")
 _SIZED_ONE_AT_A_TIME = re.compile(r"\bone(?: test)? at a time\b")
-_SIZED_TASKS_ORDER = re.compile(r"\btask's order\b")
+_SIZED_TASKS_ORDER = re.compile(r"\btask's order\b|\border the task lists\b")
 _SIZED_RED_BEFORE_ITS_CODE = re.compile(r"\bred before its code\b")
 _SIZED_STILL_FAIL = re.compile(r"\bstill fail\b")
 _SIZED_MEDIUM_OR_HIGH = re.compile(r"\bmedium or high\b")
@@ -4006,9 +4006,10 @@ _AFTER_FIXED = re.compile(r"\bfix(?:es|ed)?\b")
 _AFTER_THAT_REVIEW = re.compile(r"\bthat review\b")
 _AFTER_ADDED_TESTS = re.compile(r"\badded tests\b")
 _AFTER_NOTHING_ELSE = re.compile(r"\bnothing else\b")
-_AFTER_TEST_THAT_WAS_THERE = re.compile(r"\btest that was there\b")
+_AFTER_TEST_THAT_WAS_THERE = re.compile(r"\btest that was there\b|\bexisting test\b")
 _AFTER_WHAT_THE_CODE_DOES = re.compile(r"\bwhat the code does\b")
 _AFTER_HOW_BUILT = re.compile(r"\bhow the code is built\b")
+_AFTER_SILENCER = re.compile(r"\bsilencer\b")
 _AFTER_SPEC_REVIEWER = re.compile(r"\bspec[- ]review(?:er)?\b")
 _AFTER_CODE_REVIEWER = re.compile(r"\bcode[- ]review(?:er)?\b")
 _AFTER_REVIEWER = re.compile(r"\breview\w*")
@@ -4035,7 +4036,7 @@ _AFTER_THE_INDEX = re.compile(r"\bthe index\b")
 _AFTER_WITHOUT_THE_SHA = re.compile(r"\bwithout the sha\b")
 _AFTER_RED_CHECK = re.compile(r"\bred check\b")
 _AFTER_GIT_GREP = re.compile(r"\bgit grep\b")
-_AFTER_LEAVES_OUT = re.compile(r"\bleaves out a review\b")
+_AFTER_LEAVES_OUT = re.compile(r"\b(?:leaves out|skips|does not repeat) a review\b")
 _AFTER_SLICE_SUMMARY = re.compile(r"\bslice summary\b")
 _AFTER_CODE_REVIEW_ALWAYS = re.compile(r"\bcode review always\b")
 _AFTER_STATUS_PORCELAIN = re.compile(r"\bgit status --porcelain\b")
@@ -4092,7 +4093,7 @@ _AFTER_TABLE_RULES: tuple[
     ),
     (
         "R3.1 a change to how the code is built, or to what configures a gate, goes to the code review alone",
-        (_AFTER_HOW_BUILT, _AFTER_GATE),
+        (_AFTER_HOW_BUILT, _AFTER_SILENCER, _AFTER_GATE),
         (_AFTER_CODE_REVIEWER,),
         (_AFTER_SPEC_REVIEWER,),
     ),
@@ -4162,9 +4163,10 @@ _AFTER_SECTION_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
 }
 # What Phase 3 must say to send its later changes through that section, each in one sentence.
 _AFTER_PHASE_3_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
-    "R3.7 the task is marked with git add -A && git write-tree before its fix round": (
+    "R3.7 the task is marked with git add -A && git write-tree, keeping its SHA, before its one fix round": (
         _AFTER_GIT_ADD,
-        _AFTER_FIX_ROUND,
+        _AFTER_SHA,
+        _ONE_FIX_ROUND,
     ),
     "R3.1 after a fix round only the reviews the section names run again": (
         _AFTER_FIX_ROUND,
@@ -4182,6 +4184,7 @@ _AFTER_PHASE_3_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
         _CHANGED,
         _AFTER_ONE_RE_REVIEW,
         _AFTER_REVIEWS,
+        _COMMIT_CONCERNS,
         _AFTER_AGAIN,
         _AFTER_LINK,
     ),
@@ -4231,6 +4234,7 @@ _ADJUST_PLAN_CHANGE = re.compile(r"\bplan change\b")
 _ADJUST_CRITERION = re.compile(r"\bacceptance criteri(?:on|a)\b")
 _ADJUST_A_CRITERION = re.compile(r"\bcriteri(?:on|a)\b")
 _ADJUST_ADDS_OR_REMOVES = re.compile(r"\badds?\b.*\bremoves?\b|\bremoves?\b.*\badds?\b")
+_ADJUST_NO_CRITERION_COVERS = re.compile(r"\bbehaviou?r no criterion covers\b")
 _ADJUST_DESIGN = re.compile(r"\bdesign\b")
 _ADJUST_INTERFACE = re.compile(r"\binterface\b")
 _ADJUST_DEPENDENCY = re.compile(r"\bdependency\b")
@@ -4252,12 +4256,14 @@ _ADJUST_ESCAPED_GATE = re.compile(r"\bescaped-gate:")
 _ADJUST_NOTE = re.compile(r"\bnote\b")
 _ADJUST_TASK_IN_PROGRESS = re.compile(r"\btask in progress\b")
 _ADJUST_BEFORE_ITS_COMMIT = re.compile(r"\bbefore its commit\b")
-_ADJUST_JOINS_THAT_TASK = re.compile(r"\bjoins that task\b")
+_ADJUST_JOINS_THAT_TASK = re.compile(r"\bjoins that task\b|\b(?:becomes|is) part of that task\b")
 _ADJUST_CHANGE_LINE = re.compile(r"- change: <")
 _ADJUST_ADJUSTMENT_PROMPTS = re.compile(r"\badjustment prompts\b")
+_ADJUST_MARKS_THE_TREE = re.compile(r"\bmark the tree\b")
 _ADJUST_RE_REVIEW_PROMPT = re.compile(r"\bre-review prompt\b")
 _ADJUST_HANDED_OVER = re.compile(r"\bhanded the feature over\b")
-_ADJUST_MAKES_NONE = re.compile(r"\bmakes none\b")
+_ADJUST_BEFORE_THE_HAND_OVER = re.compile(r"\bbefore it hands the feature over\b")
+_ADJUST_MAKES_NONE = re.compile(r"\bmakes none\b|\b(?:makes no|does not make) adjustments?\b")
 _ADJUST_REOPENS = re.compile(r"\breopens\b")
 _ADJUST_APPROVED = re.compile(r"\bapproved\b")
 _ADJUST_TASK_LINE = re.compile(r"\btask: line\b")
@@ -4299,10 +4305,11 @@ _ADJUST_VERIFY = re.compile(r"\bverify command\b")
 _ADJUST_DIFF = re.compile(r"\bdiff\b")
 _ADJUST_REVIEWS = re.compile(r"\breviews\b")
 _ADJUST_GATE = re.compile(r"\bgate\b")
+_ADJUST_STEP_6 = re.compile(r"\bstep 6\b")
 _ADJUST_COMMIT = re.compile(r"\bcommit\b")
 _ADJUST_COMMITTING_CHANGES = re.compile(r"\bcommitting-changes\b")
 _ADJUST_LIVE = re.compile(r"\bpublish: live\b")
-_ADJUST_PUSH = re.compile(r"\bpush\b")
+_ADJUST_PUSH = re.compile(r"\bpush it\b")
 _ADJUST_PULL_REQUESTS_OPEN = re.compile(r"\bpull requests\b(?: \S+){0,2} open\b")
 _ADJUST_ASK_BEFORE_PUSHING = re.compile(r"\bask before pushing\b")
 _ADJUST_TELLS = re.compile(r"\btell\b|\breport\b|\bsay\b")
@@ -4311,7 +4318,7 @@ _ADJUST_NOT_NEEDED = re.compile(r"\b(?:did not|didn't|does not|not) need\w*")
 _ADJUST_OLD = re.compile(r"\bold\b")
 _ADJUST_NEW = re.compile(r"\bnew\b")
 _ADJUST_NOT_COMMITTED = re.compile(r"\b(?:do not|don't|never|not) commit\b|\bwithout committing\b")
-_ADJUST_STASH_PUSH = re.compile(r"\bgit stash push\b")
+_ADJUST_STASH_PUSH = re.compile(r"\bgit stash push (?:--include-untracked|-u)\b")
 _ADJUST_STASH_LIST = re.compile(r"\bgit stash list --grep=")
 _ADJUST_STASH_FORMAT = re.compile(r"--format=%h\b")
 _ADJUST_STASH_APPLY = re.compile(r"\bgit stash apply <sha>")
@@ -4324,16 +4331,17 @@ _ADJUST_RETHINK = re.compile(r"\brethink\b")
 _ADJUST_NEXT_SUMMARY = re.compile(r"\bnext summary\b")
 _ADJUST_DO_NOT_EDIT = re.compile(r"\b(?:do not|don't|never) edit\b")
 _ADJUST_SUMMARY = re.compile(r"\bsummary\b")
-_ADJUST_NEXT_SLICE = re.compile(r"\bnext slice\b")
+_ADJUST_NEXT_SLICE = re.compile(r"\bbelongs to the next slice\b")
 _ADJUST_NEXT_SLICES_BRANCH = re.compile(r"\bnext slice's branch\b")
 _ADJUST_SUMMARY_MD = re.compile(r"\bsummary\.md\b")
 _ADJUST_DOCS_COMMIT = re.compile(r"\bdocs commit\b")
 _ADJUST_GIT_LOG = re.compile(r"\bgit log\b")
 _ADJUST_NOTES_REF = re.compile(r"--notes=refs/notes/konundrm\b")
 _ADJUST_GREP = re.compile(r"--grep '\^adjusts:'")
-_ADJUST_NOTES_ADD = re.compile(r"\bgit notes --ref[= ]refs/notes/konundrm add\b")
-_ADJUST_ADD_AND_COMMIT = re.compile(r"\bgit add -a && git commit\b")
-_ADJUST_NOTE_LINES = (re.compile(r"\badjusts:"), re.compile(r"\breviews:"), re.compile(r"\basked:"))
+_ADJUST_COMMIT_AND_NOTE = re.compile(
+    r'\bgit add -a && git commit -m "[^"]*" --trailer "[^"]*" && git notes --ref[= ]refs/notes/konundrm add'
+    r' -m "adjusts:[^"]*" -m "reviews:[^"]*" -m "asked:[^"]*" head\b'
+)
 _ADJUST_FIX_TYPE = re.compile(r"\bfix\b")
 _ADJUST_NEVER_AMEND = re.compile(r"\bnever amend\b")
 _ADJUST_ONCE_PER_ADJUSTMENT = re.compile(r"\bonce per adjustment\b")
@@ -4347,10 +4355,11 @@ _ADJUST_MUST_MEET = re.compile(r"\bmust meet\b")
 _ADJUST_SECTION_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
     "R4.1 a change asked during the build, at a pause or once the feature is done is classified before anything is"
     " touched": (_ADJUST_CLASSIFIES, _ADJUST_BEFORE, _ADJUST_TOUCHING, _ADJUST_PAUSE, _ADJUST_DONE),
-    "R4.2 a plan change when it adds or removes an acceptance criterion": (
+    "R4.2 a plan change when it adds or removes an acceptance criterion, or a behavior no criterion covers": (
         _ADJUST_PLAN_CHANGE,
         _ADJUST_ADDS_OR_REMOVES,
         _ADJUST_CRITERION,
+        _ADJUST_NO_CRITERION_COVERS,
     ),
     "R4.2 a plan change when it changes the design, a public interface or a dependency": (
         _ADJUST_DESIGN,
@@ -4401,16 +4410,23 @@ _ADJUST_SECTION_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
         _ADJUST_CHANGE_LINE,
         _ADJUST_ONE_MORE_CRITERION,
     ),
-    "R4.10 the request goes to the task's writers with the adjustment prompts, and the test-writer's test must fail"
-    " first": (_ADJUST_ADJUSTMENT_PROMPTS, _ADJUST_TEST_WRITER, _ADJUST_MUST_FAIL),
+    "R3.7, R4.10 the tree is marked, the request goes to the task's writers with the adjustment prompts, and the"
+    " test-writer's test must fail first": (
+        _ADJUST_MARKS_THE_TREE,
+        _ADJUST_ADJUSTMENT_PROMPTS,
+        _ADJUST_TEST_WRITER,
+        _ADJUST_MUST_FAIL,
+    ),
     "R4.10 once step 3 has run, the reviews that Reviews after a change names run again with the re-review prompt": (
         _AFTER_LINK,
         _ADJUST_RE_REVIEW_PROMPT,
     ),
     "R4.10 it is not a failed review": (_ADJUST_NOT_A_FAILED_REVIEW,),
-    "R4.11 only the feature's main session makes adjustments, at the next clean point": (
+    "R4.11 only the feature's main session makes adjustments, before it hands the feature over, at the next clean"
+    " point": (
         _ADJUST_ONLY,
         _ADJUST_MAIN_SESSION,
+        _ADJUST_BEFORE_THE_HAND_OVER,
         _ADJUST_CLEAN_POINT,
     ),
     "R4.11 a session that has already handed the feature over makes none": (
@@ -4474,9 +4490,11 @@ _ADJUST_REFERENCE_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
         _ADJUST_REQUIREMENTS_MD,
         _ADJUST_BEFORE_ANY_DISPATCH,
     ),
-    "R4.3 the test-writer goes first when the request changes what the code does, and its tests must fail": (
+    "R4.3 the test-writer goes first when the request changes what the code does, and its tests, which the"
+    " orchestrator runs itself, must fail": (
         _ADJUST_TEST_WRITER,
         _ADJUST_WHAT_THE_CODE_DOES,
+        _ADJUST_YOURSELF,
         _ADJUST_MUST_FAIL,
     ),
     "R4.7 a test added, renamed or removed updates the task's lines in tasks.md": (
@@ -4503,6 +4521,7 @@ _ADJUST_REFERENCE_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
     ),
     "R4.4, R4.6 the gate comes before its own commit, which committing-changes makes with its note": (
         _ADJUST_GATE,
+        _ADJUST_STEP_6,
         _ADJUST_COMMIT,
         _ADJUST_COMMITTING_CHANGES,
         _ADJUST_NOTE,
@@ -4537,10 +4556,12 @@ _ADJUST_REFERENCE_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
         _ADJUST_STASH_FORMAT,
         _ADJUST_STASH_APPLY,
     ),
-    "R4.5 an adjustment that only grew past about 50 lines is kept and gets both reviews": (
+    "R4.5 an adjustment that only grew past about 50 lines is kept, gets both reviews and the user is told": (
         _ADJUST_FIFTY_LINES,
         _ADJUST_KEEP,
         _ADJUST_BOTH_REVIEWS,
+        _ADJUST_TELLS,
+        _USER,
     ),
     "R4.5 when a review still fails after the fix round, it was not an adjustment": (
         _ADJUST_STILL_FAILS,
@@ -4690,12 +4711,7 @@ def _adjustment_commit_gaps() -> list[str]:
         _section_blocks(SKILLS_DIR / "committing-changes" / "SKILL.md", "Workflow"), "### inside develop-feature"
     )
     gaps = []
-    if not any(
-        _ADJUST_ADD_AND_COMMIT.search(block)
-        and _ADJUST_NOTES_ADD.search(block)
-        and all(line.search(block) for line in _ADJUST_NOTE_LINES)
-        for block in committing
-    ):
+    if not any(_ADJUST_COMMIT_AND_NOTE.search(block) for block in committing):
         gaps.append(
             "committing-changes ### Inside develop-feature lacks (R4.6): the adjustment's commit and note in one"
             " command, git add -A && git commit ... && git notes --ref=refs/notes/konundrm add, with its Adjusts:,"
@@ -4735,7 +4751,7 @@ class RightSizedFlowTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
     def test_only_the_reviews_a_change_concerns_run_again(self) -> None:
-        """R3.1, R3.2, R3.3, R3.5, R3.6, R3.7, R3.8, R3.9: 004 after a change, only the reviews it concerns run again.
+        """R3.1, R3.2, R3.3, R3.5, R3.6, R3.7, R3.8, R3.9, R4.10: 004 after a change, only the reviews it concerns run.
 
         The table of develop-feature's `## Reviews after a change` has a row for each case: a change that fixed a
         review's finding goes back to that review; one that only added tests goes to the spec review alone; a change
@@ -4779,11 +4795,12 @@ class RightSizedFlowTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
     def test_a_change_the_user_asks_for_is_classified_first(self) -> None:
-        """R4.1, R4.2, R4.3, R4.6, R4.10, R4.11: 004 a change the user asks for is an adjustment or a plan change.
+        """R1.9, R3.8, R4.1, R4.2, R4.3, R4.6, R4.8, R4.10, R4.11: 004 a requested change is classified first.
 
         develop-feature's `## Adjustments` section says, each part in one sentence: a change asked during the build,
         at a pause or once the feature is done is classified before anything is touched; it is a plan change when it
-        adds or removes an acceptance criterion, changes the design, a public interface or a dependency, touches a
+        adds or removes an acceptance criterion or a behavior no criterion covers, changes the design, a public
+        interface or a dependency, touches a
         file a high task lists or anything the High row of the Standards names, changes code in a file no task of
         the feature lists, or is expected to take more than about 50 changed lines, and then becomes new tasks,
         written as writing-plans writes them with its consolidation, that the user approves and the task loop builds;
@@ -4817,7 +4834,7 @@ class RightSizedFlowTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
     def test_an_adjustment_follows_its_procedure(self) -> None:
-        """R4.3, R4.4, R4.5, R4.7, R4.8, R4.9: 004 reference/adjustments.md is how an adjustment is made.
+        """R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9: 004 reference/adjustments.md is how an adjustment is made.
 
         It says, each part in one sentence: a criterion the request changes is edited in requirements.md before any
         dispatch; the test-writer goes first when the request changes what the code does, and its tests must fail; a
@@ -4888,7 +4905,7 @@ _EDGE_SOURCES: dict[str, Callable[[], list[str]]] = {
     "develop-feature Parallel partitions": lambda: _section_blocks(_SIZED_SKILL, "Parallel partitions"),
     "develop-feature Slice checkpoint": lambda: _section_blocks(_SIZED_SKILL, "Slice checkpoint"),
     "develop-feature Adjustments": lambda: _section_blocks(_SIZED_SKILL, _ADJUST_SECTION),
-    "reference/adjustments.md": lambda: _blocks(_ADJUST_REFERENCE),
+    "reference/adjustments.md": lambda: _blocks(_ADJUST_REFERENCE) if _ADJUST_REFERENCE.is_file() else [],
     "fix-bug step 6": lambda: _subsection_blocks(_section_blocks(_EDGE_FIX_BUG, "Workflow"), "### 6. reviews"),
     "fix-bug step 9": lambda: _subsection_blocks(_section_blocks(_EDGE_FIX_BUG, "Workflow"), "### 9. report"),
     "committing-changes Inside fix-bug": lambda: _subsection_blocks(
@@ -4918,7 +4935,7 @@ _EDGE_EVIDENCE_FILE = re.compile(r"\bevidence file\b")
 _EDGE_RUNS_ONLY_IT = re.compile(r"\bruns only it\b")
 _EDGE_REPORT = re.compile(r"\breport\b")
 _EDGE_FINISHED = re.compile(r"\bfinished\b")
-_EDGE_WHATEVER = re.compile(r"\bwhatever\b")
+_EDGE_WHATEVER = re.compile(r"\bwhatever\b|\bregardless\b|\bno matter\b")
 _EDGE_NOT_MERGED = re.compile(r"\bnot merged\b")
 _EDGE_MERGED = re.compile(r"\bmerged\b")
 _EDGE_NEW_FEATURE = re.compile(r"\bnew feature\b")
@@ -4954,7 +4971,8 @@ _EDGE_FILE_NO_TASK = re.compile(r"\bfile no task\b")
 _EDGE_BODY_AND_NOTE = re.compile(r"--format='%b%n'")
 _EDGE_FOLLOW = re.compile(r"--follow\b")
 _EDGE_PLAIN_MESSAGE = re.compile(r"\bletters, digits and spaces only\b")
-_EDGE_BEFORE_THE_TURN_ENDS = re.compile(r"\bbefore you end the turn\b")
+_EDGE_ASIDE_THE_SAME_WAY = re.compile(r"\bset it aside the same way\b")
+_EDGE_BEFORE_THE_TURN_ENDS = re.compile(r"\bbefore you end the turn\b|\bbefore the turn\b(?: \S+){0,4} ends\b")
 _EDGE_NEVER_BEND = re.compile(r"\bnever bend\b")
 _EDGE_STAGE = re.compile(r"\bstage\b")
 _EDGE_MARK = re.compile(r"\bmark\b")
@@ -4964,6 +4982,14 @@ _EDGE_SPLIT = re.compile(r"\bsplit\b")
 _EDGE_WHOLE_ATTEMPT_ASIDE = re.compile(r"\bwhole attempt aside\b")
 _EDGE_EVERY_PART = re.compile(r"\bevery part\b")
 _EDGE_STEP_1 = re.compile(r"\bstep 1\b")
+_EDGE_USERS_YES = re.compile(r"\buser's yes\b")
+_EDGE_DISPATCH_IMPLEMENTER = re.compile(r"\bdispatch implementer\b")
+_EDGE_ADJUSTMENT_PROMPT = re.compile(r"\badjustment prompt\b")
+_EDGE_AFTER_WHICH_CHANGE = re.compile(r"<review> after <the fix round \| verifying by risk \|")
+_EDGE_WHAT_IT_TOUCHED = re.compile(r"<what the change touched>")
+_EDGE_KEEPS_THE_TASKS_ID = re.compile(r"\bkeeps the task's id for its first part\b")
+_EDGE_NEXT_UNUSED_ID = re.compile(r"\bnext unused id\b")
+_EDGE_NEVER_RENUMBER = re.compile(r"\bnever renumber\b")
 _EDGE_KEEPS_THE_PLAN_FILES = re.compile(re.escape(":(exclude)specs/<nnn-slug>/tasks.md"))
 _EDGE_STAGED_STASH = re.compile(r"\bgit add -a && git stash push\b")
 _EDGE_EVERY_REVIEW_OF_STEP_3 = re.compile(r"\bevery review of step 3\b")
@@ -4981,7 +5007,7 @@ _EDGE_RECORD_RULES: _EdgeRules = (
     (
         "develop-feature Reviews after a change",
         "R3.8 after the task's commit each one is appended to the task's note as a Not repeated: line",
-        (_EDGE_NOTES_APPEND, _EDGE_NOT_REPEATED_LINE),
+        (_EDGE_NOTES_APPEND, _EDGE_NOT_REPEATED_LINE, _EDGE_AFTER_WHICH_CHANGE, _EDGE_WHAT_IT_TOUCHED),
     ),
     (
         "develop-feature Reviews after a change",
@@ -5069,9 +5095,15 @@ _EDGE_BUILD_RULES: _EdgeRules = (
     ("develop-feature Rethink", "R2.5 every part is then built from step 1", (_EDGE_EVERY_PART, _EDGE_STEP_1)),
     (
         "develop-feature Rethink",
+        "R2.5 a split keeps the task's ID for its first part and gives each other part the next unused ID",
+        (_EDGE_SPLIT, _EDGE_KEEPS_THE_TASKS_ID, _EDGE_NEXT_UNUSED_ID),
+    ),
+    ("develop-feature Rethink", "R2.5 a split never renumbers a task", (_EDGE_NEVER_RENUMBER,)),
+    (
+        "develop-feature Rethink",
         "R4.10 the set-aside keeps tasks.md and requirements.md out of the stash when a decision or a change was"
         " recorded for the task",
-        (_EDGE_KEEPS_THE_PLAN_FILES, _ADJUST_REQUIREMENTS_MD),
+        (_EDGE_KEEPS_THE_PLAN_FILES, re.compile(re.escape(":(exclude)specs/<nnn-slug>/requirements.md"))),
     ),
     (
         "develop-feature Rethink",
@@ -5099,7 +5131,7 @@ _EDGE_REQUEST_RULES: _EdgeRules = (
     (
         "develop-feature Phase 0",
         "R4.2 a plan change reopens a finished feature only while its pull requests are not merged",
-        (_ADJUST_REOPENS, _EDGE_NOT_MERGED),
+        (_ADJUST_REOPENS, _EDGE_NOT_MERGED, _EDGE_USERS_YES),
     ),
     (
         "develop-feature Phase 0",
@@ -5115,6 +5147,11 @@ _EDGE_REQUEST_RULES: _EdgeRules = (
         "develop-feature Adjustments",
         "R4.10 a plan change to what the task itself builds stops the task",
         (_EDGE_ITSELF_BUILDS, _EDGE_STOPS_THE_TASK),
+    ),
+    (
+        "develop-feature Adjustments",
+        "R4.10 a change on the task in progress first waits for the subagents that are running",
+        (re.compile(r"(?<!not )(?<!never )\bwait for the subagents that are running\b"),),
     ),
     (
         "develop-feature Adjustments",
@@ -5190,8 +5227,14 @@ _EDGE_PROCEDURE_RULES: _EdgeRules = (
     ),
     (
         "reference/adjustments.md",
-        "R4.4 a doubtful Critical finding goes to a finding-verifier before the one fix round",
-        (_EDGE_FINDING_VERIFIER, _EDGE_ONE_FIX_ROUND),
+        "R3.7, R4.4 a doubtful Critical finding goes to a finding-verifier before the one fix round, and the tree is"
+        " marked before that round",
+        (_EDGE_FINDING_VERIFIER, _EDGE_ONE_FIX_ROUND, _ADJUST_MARKS_THE_TREE),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.3 the implementer makes the change, with the adjustment prompt",
+        (_EDGE_DISPATCH_IMPLEMENTER, _EDGE_ADJUSTMENT_PROMPT),
     ),
     (
         "reference/adjustments.md",
@@ -5207,6 +5250,11 @@ _EDGE_PROCEDURE_RULES: _EdgeRules = (
         "reference/adjustments.md",
         "R4.5 the set-aside message is written with letters, digits and spaces only",
         (_EDGE_PLAIN_MESSAGE,),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.5 a change whose review still fails is set aside the same way and proposed as a plan change",
+        (_EDGE_ASIDE_THE_SAME_WAY, _ADJUST_PLAN_CHANGE),
     ),
     (
         "reference/adjustments.md",
@@ -5261,7 +5309,8 @@ class RightSizedFlowEdgesTest(unittest.TestCase):
         went back to the test-writer, told which tests already pass; sends a red check in a test file to a new
         test-writer; and does not treat the evidence file as a change. An integration fix on a file a `high` task
         lists gets every review of step 3. The test-writer prompt runs such a property test with a command of its
-        own and the implementer prompt names the tests that already pass. A rethink's split always sets the whole
+        own and the implementer prompt names the tests that already pass. A rethink's split keeps the task's ID for
+        its first part, gives each other part the next unused ID, never renumbers a task, always sets the whole
         attempt aside and builds every part from step 1; its stash is staged first and keeps tasks.md and
         requirements.md out when a decision or a change was recorded. fix-bug marks the tree before its fix round,
         and committing-changes stages the fix in the same command as its commit.
@@ -5300,7 +5349,8 @@ class RightSizedFlowEdgesTest(unittest.TestCase):
         is kept as a CHARACTERIZATION; when none of its tests fails it stops and tells the user; a doubtful Critical
         finding goes to a finding-verifier before the one fix round; the diff is checked against every condition of
         the classification; the lookup of the tasks that changed a file reads the note or the message and follows
-        renames; the set-aside message uses letters, digits and spaces only; and on a finished feature the entries
+        renames; the set-aside message uses letters, digits and spaces only; a change whose review still fails is set
+        aside the same way and proposed as a plan change; and on a finished feature the entries
         go to summary.md before the turn ends. The test-writer (adjustment) prompt changes the tests that use a
         name the request changes and returns a CHARACTERIZATION report, never a bent test, for one the code
         already satisfies.

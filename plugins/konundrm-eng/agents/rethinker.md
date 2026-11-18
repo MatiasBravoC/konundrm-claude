@@ -62,7 +62,7 @@ Alternatives:
 1. <approach> — <how it meets every criterion and the open findings> — <risk>
 2. <approach> — <how it meets every criterion and the open findings> — <risk>
 Recommended: <its number, and why>
-Current attempt: KEEP (adjust it) | SET ASIDE (build the task again)
+Current attempt: KEEP (adjust it) | SET ASIDE (build the task again; always when you split the task)
 Instructions:
 - test-writer: <what the test must assert (for a task with several tests, each test that changes), or "keep the current test">
 - implementer: <the steps of the approach: files, boundaries, what not to touch>

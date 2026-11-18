@@ -71,12 +71,14 @@ and its fix round is a fix round.
      [Adjustments](#adjustments). `status` finds a built task by its commit's note, and notes do
      not travel in a clone nor survive a squash merge or a rebase, so after any of them it names
      as next a task that is built. A plan change there reopens the feature only while its pull
-     requests are not merged and no later feature has commits after it: with the user's yes, set
-     the three documents back to `Approved`, put its new tasks in a new slice after the last one,
-     so the finished slices keep their summaries and pull requests, build them through Phase 3
-     and run Phase 4 again. Once it is merged, propose the change as a new feature instead:
-     `status` counts every task commit after this plan's base, so a later feature's `T13` would
-     count as this feature's new `T13`.
+     requests are not merged, no later feature has commits after it and `status` still lists
+     every one of its tasks as committed: with the user's yes, set the three documents back to
+     `Approved`, put its new tasks in a new slice after the last one, so the finished slices keep
+     their summaries and pull requests, build them through Phase 3 and run Phase 4 again. Once
+     it is merged, a later feature has commits after it or its notes are gone, propose the change
+     as a new feature instead: `status` counts every task commit after this plan's base, so a
+     later feature's `T13` would count as this feature's new `T13`, and without its notes the
+     next session would build its built tasks again.
    - When the plan is `Approved`, some slice has a wave of two or more partitions and `tasks.md`
      has no `- **Parallel:**` line yet (the session stopped between the approval and recording the
      answer), ask the parallel question now, before Phase 3, and record the answer as
@@ -332,8 +334,9 @@ failure of the same review, sends the task to [Rethink](#rethink) instead of ano
    shell call, with no pipe, redirection or other command around it: it must pass, and running
    it on the exact files you will commit lets the commit hook reuse its green result. If the
    check fails, mark the task (`git add -A && git write-tree`), send the failure to the
-   `implementer` (fix-round prompt), or to a new `test-writer` when what fails is in a test file,
-   which the implementer cannot edit, rerun the verify command and the reviews that fix needs
+   `implementer` (fix-round prompt) or, when the fix belongs in a test file, which the
+   implementer cannot edit, to a new `test-writer` as in step 4 (test-writer prompt, naming the
+   tests to leave as they are), rerun the verify command and the reviews that fix needs
    ([Reviews after a change](#reviews-after-a-change)), the code review always among them, as
    after step 4's fix round, take the task through step 5 (verify by risk) again, then repeat
    this step.
@@ -401,35 +404,35 @@ whole task: right before the change's first writer runs, mark the tree with
 change alone is `git diff --stat <sha>`, its hunks, and the files `git status --porcelain` lists
 as `??`. Compare with that tree, never with the index, which a writer that stages moves; without
 the SHA, treat the whole task as changed and run both reviews. An adjustment starts from a clean
-tree, so there `git diff HEAD` and those `??` files are the change. Reviewers keep reading
-`git diff HEAD`.
+tree, so there `git diff HEAD` and those `??` files are the change.
 
 | What the change did | Reviews that run again |
 | --- | --- |
 | It fixed a finding of a review | that review, whatever else applies |
 | It added tests and changed nothing else: no line of a test that was there, no fixture, mock or snapshot, no production code | `spec-reviewer` |
-| It changed a test that was there (edited what it sets up or asserts, removed it, added or changed a fixture, a mock or a snapshot) or what the code does for some input: a result, an error, a side effect, or a value the code decides with (a limit, a default, a pattern, a flag), whether or not a test asserts it yet | `spec-reviewer` and `code-reviewer` |
+| It changed a test that was there (edited what it sets up or asserts, removed it, added or changed a fixture, a mock or a snapshot) or what the code does for some input: a result, an error, a side effect, or a value the code decides with (a limit, a default, a pattern, a flag), whether or not a test asserts it yet | `spec-reviewer` and `code-reviewer`; the `spec-reviewer` alone when all it changed is the wording of a message shown to a person, in the code and in the tests that assert it, and its old text is left nowhere in code |
 | It changed how the code is built without changing what it does (its structure, a name, a move, an extraction, an import), with at most that name or path replaced in the tests that use it, added a silencer or a skip, or touched what configures a gate: the check, the test runner, a linter, the type checker, coverage, mutation testing, the Git hooks or CI | `code-reviewer` |
 | It changed only text that nothing reads: comments that are not tool directives, prose that nothing loads, runs or tests (a README, a changelog, the wording of a doc-comment), formatting made by the project's formatter, or the wording of a message shown to a person that no test asserts, no criterion states and no code matches | none |
 | Anything, on a `high` task | every review of step 3, `security-reviewer` included |
 
 A file the product, a tool or a test reads is code whatever its extension: a prompt, a skill, an
 agent or a template in Markdown, a `requirements.txt`, a fixture. Before calling a message's
-wording text that nothing reads, search for its old text (`git grep -n -F '<old text>'`, with
+wording text that nothing reads, search for its old text (`git grep -n -F -e '<old text>'`, with
 `MSYS_NO_PATHCONV=1` before `git` when the text holds a `/`, which Git Bash on Windows would
 rewrite as a path): a hit in code or tests makes it code. A change can match several rows: run
 every review they name, at the same time. The row with no review holds only when every changed line is plainly that kind of
 text; when you cannot tell which row a change falls in, run both reviews, and when the user asks
 for a review the table would skip, run it. The fix of a red check (step 6) always gets the code
 review again, whatever it changed: that fix is where a gate gets bent. Whatever the rows say,
-rerun the verify command first when code or tests changed, and the gate still needs the check
-green before the commit (step 6).
+rerun the verify command first when code or tests changed, with the command of a test the
+change added that it does not cover (step 1), and the gate still needs the check green before
+the commit (step 6).
 
 Each time this rule leaves out a review that step 3 ran, note it in the task's todo item with
 what the change touched (`T12 · not repeated: code review, the round only added a test`). A todo
 item ends with its session, so right after the task's commit and its `record` (step 7) append
 each one to the task's note, which a partition's integration copies and a resumed session reads:
-`git notes --ref=refs/notes/konundrm append -m "Not repeated: <review> (<what the change touched>)" HEAD`.
+`git notes --ref=refs/notes/konundrm append -m "Not repeated: <review> after <the fix round | verifying by risk | the fix of a red check | a change the user asked for> (<what the change touched>)" HEAD`.
 The slice summary lists them from those notes and the process-reviewer's flow record carries
 them.
 
@@ -544,7 +547,8 @@ slice's `### Partitions` table this way:
      `git cherry-pick --abort`, report which partition and which files conflicted, and stop with a
      `BLOCKED:` line. Only after the user's go-ahead, redo the cherry-pick and hand each conflicted
      file, with both sides, to the `implementer` (the `test-writer` for a test), have
-     `code-reviewer` review the resolution, stage the resolved files (`git add <files>`), then run
+     `code-reviewer` review the resolution (every review of step 3 when the file is one a `high`
+     task lists), stage the resolved files (`git add <files>`), then run
      `git cherry-pick --continue`. The resolution belongs to the commit being picked, not to a
      separate fix commit, and the rest of the partition's range is then picked as usual.
    - After a partition that changed dependencies or generated files, set the checkout up as
@@ -677,15 +681,19 @@ anything and tell the user which it is in one line:
   than about 50 changed lines of code and tests. Turn it into new tasks in `tasks.md`, written as
   `writing-plans` writes them (its consolidation included), or into a plan change to
   `design.md`/`tasks.md`, wait for the user to approve them and build them through the task loop.
-  When you cannot tell which of the two a request is, it is a plan change.
+  On a finished feature, first reopen it as [Phase 0](#phase-0-prepare) says, or propose a new
+  feature when Phase 0 does not let it reopen. When you cannot tell which of the two a request
+  is, it is a plan change.
 - **An adjustment** otherwise: a small change inside the criteria the spec already has, to how a
   behavior is built, worded or presented, or to a detail one criterion states (a text, a value, a
-  limit). The request is its approval: make it now, as
-  [reference/adjustments.md](reference/adjustments.md) says. In short: the criterion first, then
-  the writers (its test first and red when it changes what the code does), the reviews that
-  [Reviews after a change](#reviews-after-a-change) names for its diff, the gate, and a commit of
-  its own with its note. It is not the rethinker's `ADJUST` verdict, which is about a task's
-  current attempt.
+  limit). A rename changes no design while nothing outside the files the feature's tasks list
+  uses the old name, also when `design.md` gives that name. The request is its approval: make it
+  now, as [reference/adjustments.md](reference/adjustments.md) says. In short: the criterion
+  first, then the writers (its test first and red when it changes what the code does), the
+  reviews that [Reviews after a change](#reviews-after-a-change) names for its diff, the gate,
+  and a commit of its own with its note. A diff that turns out to be a plan change (it reached a
+  file a `high` task lists or changed, or code no task lists) is never committed: the reference
+  says how to set it aside.
 
 When the request reports that built work does not do what an approved criterion says, it is a
 defect, not a preference: make it as an adjustment is made, its test first and red for the
@@ -697,13 +705,16 @@ way, and on a `high` task it is always a plan change, because it touches a file 
 lists. A plan change waits for the user while the task goes on, unless it changes what that task
 itself builds: then stop the task and wait, as when the plan turns out to be wrong
 ([Escalation](#escalation-stop-and-ask-the-user-when)). Anything else joins that task, and
-changes asked together join it in one round:
+changes asked together join it in one round (a step these items name by number is a step of the
+task loop):
 
 1. Wait for the subagents that are running.
 2. Edit the criterion in `requirements.md` first when the request changes a detail it states,
-   then record the request under the task in `tasks.md` as
-   `- Change: <the request, verbatim> (user)`, as an open decision is recorded, so every later
-   dispatch and review reads it in the task block as one more criterion.
+   and the plan's lines that still state the old detail or name
+   ([reference/adjustments.md](reference/adjustments.md), step 2), then record the request under
+   the task in `tasks.md` as `- Change: <the request, verbatim> (user)`, as an open decision is
+   recorded, so every later dispatch and review reads it in the task block as one more
+   criterion.
 3. While the task's code is not written yet (step 2 has not run), nothing else is needed: steps
    1 and 2 go on with the task block as it now reads, and a test already written that the
    request changes goes back to a new `test-writer` first. Otherwise mark the tree and send the

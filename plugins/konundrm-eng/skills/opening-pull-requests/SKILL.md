@@ -79,7 +79,8 @@ first mutation check.
    nothing). A branch that was never pushed, as in a local delivery before step 5, has no merged
    pull request, so it stays the base of S<k>.
 
-Without slices (a fix, a small change) the branch is one pull request.
+Without slices (a fix, a small change, or a branch that holds only adjustments to a feature
+already merged) the branch is one pull request against the default branch.
 
 ### 4. Title and description
 

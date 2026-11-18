@@ -62,8 +62,10 @@ writes the tasks, so each task is written once and each ID is given once. Rules 
 - **2–5 minutes of work:** one failing test plus the minimal code to pass it.
 - **Order** from the walking skeleton outward: happy path first, then edges, then errors.
 - **Properties:** each invariant the spec implies (round-trip, totals preserved, idempotence,
-  ordering) gets its own `property` line after the example lines that pin the basic cases, with
-  the generator's valid domain stated.
+  ordering) goes on the `Invariants` of the `medium` or `high` line whose code makes it hold,
+  with the generator's valid domain stated: its property test is written with that line's test.
+  It gets its own `property` line, after the lines it needs, only when it takes several lines,
+  or a `low` one, to make it hold over that whole domain.
 - **Risk:** every line gets `low`, `medium` or `high` following Standards → Verification by risk.
   When unsure between two levels, pick the higher one.
 - Work with nothing to test (config, scaffolding, docs) is a `chore` line.
@@ -78,10 +80,10 @@ together when no dependency forbids it. Merge them when every one of these holds
 
 - **Low risk, all of them.** A `high` line is never merged, with anything, and a `medium` line
   only with other `medium` lines, when the header says `low and medium` (below).
-- **One owner.** Their files belong to one row of the design's ownership table (one
-  responsibility, in one file or several), or they apply one and the same rule to several owners
-  (the same setting, wording or check repeated in each), and one verify command runs exactly
-  their tests.
+- **One owner.** They have the same owner in the first list, one row of the design's ownership
+  table (one responsibility, in one file or several), or they apply one and the same rule to
+  several owners (the same setting, wording or check repeated in each), and one verify command
+  runs exactly their tests.
 - **One logical change.** One title says what the merged task delivers, without an "and" joining
   things a reviewer would read apart: the cases of one function (happy path, edges, errors), the
   fields of one form, the options of one command, the steps of one piece of wiring or setup.
@@ -93,16 +95,17 @@ together when no dependency forbids it. Merge them when every one of these holds
 Never merge a `property` line, a line that needs a `- Decision:` field or one that adds a
 dependency. `chore` lines merge with each other when one title states them (the steps of one
 setup, or small edits of one kind such as wording or tidy-ups), within the same limit, or into the
-low-risk task they prepare when they change one of its files. When one condition is in doubt,
-keep the lines apart: a wrong merge costs a failed review of a bigger change.
+low-risk task they prepare or document: when they change one of its files, or write the README
+or changelog lines about what that task builds. When one condition is in doubt, keep the lines
+apart: a wrong merge costs a failed review of a bigger change.
 
 The header line `- **Consolidation:**` holds the user's choice: `low` unless the user says
 otherwise in the request or when approving the plan. With `low and medium`, also merge `medium`
 lines that are cases of one rule: the same function or class and the same test file, at most three
 behaviors per task, each of their invariants kept on the merged task. With `none`, write one task
-per line. A `high` line is never merged. A `tasks.md` without that line (a plan written before
-0.9.0) reads as `low` for the tasks a plan change adds: add the line then, and count each task
-the plan already had as one behavior in its totals.
+per line. A `tasks.md` without that line (a plan written before 0.9.0) reads as `low` for the
+tasks a plan change adds: add the line then, and count each task the plan already had as one
+behavior in its totals.
 
 Then write the tasks, numbered in their final order. Rules for each task:
 
@@ -207,7 +210,8 @@ Show the ownership table, the threats (if any) and the task list grouped by slic
 and risk only, plus the number of behaviors of each consolidated task) with each slice's
 partitions. Then give the plan's totals in one line (`<n> behaviors in <m> tasks`) and, in one
 more, why the other tasks stayed apart (`9 stay apart: 5 medium, 3 with another owner, 1 over the
-limit`), and say that the user may change the `Consolidation:` line (`low and medium`, `none`).
+limit`), and say that the user may change the `Consolidation:` line to `none` or to
+`low and medium`, naming the tasks that choice would merge (`low and medium` would merge T4–T6).
 When the user changes it, merge again with that choice (steps 5 to 8) and show the plan again.
 Ask for an explicit yes before setting `Status: Approved`. When called from `develop-feature`,
 return control to it.

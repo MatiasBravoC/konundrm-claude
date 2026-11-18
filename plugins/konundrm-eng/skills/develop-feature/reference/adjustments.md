@@ -13,24 +13,32 @@ when; this file is the procedure. Its prompts are in [dispatch-prompts.md](dispa
 ## Steps
 
 1. **Clean tree, right branch.** Start between tasks, from a clean tree: finish and commit the
-   task in progress first. At a slice's pause with `Publish: live`, cut and push the next slice's
-   branch now, as [Where it is recorded](#where-it-is-recorded) says, so the commit of step 7
-   lands there and not in the pull request that is already open. On a finished feature, check
-   where you are: when you are on the default branch or on another feature's branch, or the pull
-   request of the feature's branch is merged (`gh pr list --head <branch> --state merged` lists
-   it), cut a new branch from the default branch
-   (`git switch -c feat/<NNN-slug>-<short-slug> <default-branch>`) and make the adjustment there.
-   Never commit an adjustment on the default branch nor push it to a merged branch, and tell the
-   user it needs a pull request of its own.
+   task in progress first. At a slice's pause with `Publish: live`, when another slice is left,
+   cut and push the next slice's branch now, as [Where it is recorded](#where-it-is-recorded)
+   says, so the commit of step 7 lands there and not in the pull request that is already open;
+   after the last slice, stay on its branch, as the feature's final commit does. On a finished
+   feature, check where you are: when the pull request of the feature's branch is merged
+   (`gh pr list --head <branch> --state merged` lists it) or you are on the default branch, cut
+   a new branch from the default branch that holds the feature, the remote's after a fetch
+   (`git fetch origin <default-branch>`, then
+   `git switch -c feat/<NNN-slug>-<short-slug> --no-track origin/<default-branch>`), because a
+   merge made on GitHub is not in your local default branch, or the local one when there is no
+   remote or the merge was made locally. Make the adjustment there and tell the user it needs a
+   pull request of its own; with `Publish: live`, its first push is
+   `git push -u origin feat/<NNN-slug>-<short-slug>`. When it is not merged and you are on
+   another feature's branch, switch to the feature's own branch first: the default branch does
+   not hold its code yet. Never commit an adjustment on the default branch nor push it to a
+   merged branch.
 2. **Criterion first.** When the request changes a detail an acceptance criterion states (a text,
    a value, a limit), edit that line of `requirements.md` yourself, before any dispatch, so the
    writers and the reviewers read the new criterion. Only you can: the plugin denies the feature's
-   documents to subagents. Then search the plan for the old detail
-   (`git grep -n -F '<old text or value>' -- specs/<NNN-slug>/tasks.md specs/<NNN-slug>/design.md`)
-   and update each line that still states it, above all in tasks that are not built yet: their
-   dispatches paste the task block as it is written.
+   documents to subagents. Then, and for a rename too, search the plan for the old detail
+   (`git grep -n -F -e '<old text, value or name>' -- specs/<NNN-slug>/tasks.md specs/<NNN-slug>/design.md`,
+   with `MSYS_NO_PATHCONV=1` before `git` as in step 3) and update each line that still states
+   it, above all in tasks that are not built yet: their dispatches paste the task block as it is
+   written.
 3. **Tests first.** Search the tests for what the request changes
-   (`git grep -n -F '<old text, value or name>' -- <test folders>`, with `MSYS_NO_PATHCONV=1`
+   (`git grep -n -F -e '<old text, value or name>' -- <test folders>`, with `MSYS_NO_PATHCONV=1`
    before `git` when the text holds a `/`, which Git Bash on Windows would rewrite as a path, so
    the search would find nothing). When a test asserts it or uses a name it changes (a rename the
    tests call), or the request changes what the code does for some input, dispatch `test-writer`
@@ -40,7 +48,9 @@ when; this file is the procedure. Its prompts are in [dispatch-prompts.md](dispa
    after). Read that one as step 1 of the task loop reads a CHARACTERIZATION and keep it when it
    asserts what the request asks for. When none of its tests fails, the code already does what
    was asked: stop and tell the user, and for a reported defect say that the test could not
-   reproduce it. When the test-writer added, renamed or removed a test, update that task's
+   reproduce it. Do not leave its changes in the tree: when the user wants the tests kept, go on
+   from step 5 and commit them as the adjustment, otherwise set them aside with the stash
+   command below. When the test-writer added, renamed or removed a test, update that task's
    `Test:` or `Tests:` line and its `Verify:` line in `tasks.md` now, before the implementer
    runs, so the tree its check passes on is the one you commit.
 4. **The change.** Dispatch `implementer` (adjustment prompt). You write no code and no test
@@ -78,10 +88,11 @@ when; this file is the procedure. Its prompts are in [dispatch-prompts.md](dispa
   `git log --notes=refs/notes/konundrm --format='%b%N' --follow <base>..HEAD -- <file>` prints
   the `Task:` line of every task whose commit changed it, from its note or, in a feature started
   before 0.8.0, from its message, also when the plan did not list that file or a later task
-  renamed it; where the notes are missing, as in a clone or after a squash merge, go by the
-  plan's `Files:` lines and count a file a `high` task could have changed as changed by it). Do
-  not commit it: set it aside with
-  `git stash push --include-untracked -m "<NNN-slug> adjustment set aside: <the request in a few words>"`,
+  renamed it; a `Task:` line of a commit made after the feature's final commit names a later
+  feature's task, not this plan's; where the notes are missing, as in a clone or after a squash
+  merge, go by the plan's `Files:` lines and count a file a `high` task could have changed as
+  changed by it). Do not commit it: set it aside with
+  `git add -A && git stash push --include-untracked -m "<NNN-slug> adjustment set aside: <the request in a few words>"`,
   tell the user that message and propose the plan change. Write those few words with letters,
   digits and spaces only: inside the double quotes the shell would run a backtick or expand a
   `$`, and `--grep` reads `[`, `*` or `\` as a pattern. To recover it, the user runs
