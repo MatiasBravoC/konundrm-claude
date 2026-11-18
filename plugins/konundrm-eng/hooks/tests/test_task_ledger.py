@@ -829,6 +829,36 @@ class CloseSliceTest(LedgerRepositoryTest):
             self.assertEqual(second.returncode, 0, second.stderr.decode("utf-8", "replace"))
             self.assertEqual(second_bytes, expected)
 
+    # R2.8, R4.5: the Rounds line close-slice rewrites is the task's own `- Rounds:` field. A Rounds text that
+    # another field wraps onto a line of its own (a `- Change:` request that quotes one) stays as written, and the
+    # commit's rounds go into the field itself or, in a block without one, into a new last line.
+    def test_close_slice_leaves_a_rounds_text_wrapped_inside_another_field(self) -> None:
+        base = commit(self.root, "chore: start the feature branch\n")
+        commit(self.root, "feat: build T3\n\nTask: T3 · Covers: R2.8, R4.5\nRounds: spec 2 · code 3 · escalations 1\n")
+        plan = self.root / PLAN_PATH
+        plan.parent.mkdir(parents=True)
+        header = [
+            "# Tasks: efficient feature flow",
+            "",
+            f"- **Base commit:** `{base}`",
+            "",
+            "## Slice S2: the pause",
+            "",
+        ]
+        task = "**T3** close-slice checks the boxes · `behavior` · Risk: medium · Covers: R2.8, R4.5"
+        wrapped = ["  - Change: show the tally as", "    Rounds: spec 9 · code 9 · escalations 9 (user)"]
+        closed = [*header, f"- [x] {task}", *wrapped, "  - Rounds: spec 2 · code 3 · escalations 1", ""]
+
+        for own_field in ([], ["  - Rounds: spec 1 · code 1 · escalations 0"]):
+            with self.subTest(own_field=own_field):
+                opened = [*header, f"- [ ] {task}", *wrapped, *own_field, ""]
+                plan.write_text("\n".join(opened), encoding="utf-8", newline="\n")
+
+                completed = self.run_close_slice("S2")
+
+                self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8", "replace"))
+                self.assertEqual(plan.read_text(encoding="utf-8"), "\n".join(closed))
+
     # R2.8, R4.5 (T13 invariants): over seeded plans with the real layout and LF, CRLF or mixed
     # line endings, a second close-slice leaves the file byte-identical, and the first changes
     # nothing but the named slice's task boxes ([ ] → [x], only for a task committed after the base)

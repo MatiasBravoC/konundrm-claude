@@ -128,10 +128,16 @@ class TasksDocument:
     is_readable: bool = True
 
 
+def rounds_field(line: str) -> re.Match[str] | None:
+    """Match a line that is a task's own ``- Rounds:`` field; a Rounds text another field quotes or wraps is none."""
+    field = line.strip()
+    return ROUNDS.match(field[2:]) if field.startswith("- ") else None
+
+
 def _rounds(block: str) -> tuple[int, int, int] | None:
     """The rounds on the task's own ``- Rounds:`` line; a Rounds text another field quotes does not count."""
     for line in block.splitlines():
-        match = ROUNDS.match(line.strip().removeprefix("- "))
+        match = rounds_field(line)
         if match is not None:
             spec, code, escalations = (int(value) for value in match.groups())
             return spec, code, escalations

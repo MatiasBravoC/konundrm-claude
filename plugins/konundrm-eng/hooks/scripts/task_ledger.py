@@ -40,7 +40,7 @@ from pathlib import Path
 from project_paths import project_root
 from quality_check import green_tree
 from task_commits import NOTES_REF, GitError, TaskCommit, task_commits, task_key
-from tasks_document import HTML_COMMENT, ROUNDS, SLICE_HEADING, TASK, Task, TasksDocument, next_tasks, read_tasks
+from tasks_document import HTML_COMMENT, SLICE_HEADING, TASK, Task, TasksDocument, next_tasks, read_tasks, rounds_field
 from working_tree import GitCommandError, git_path, head_tree, run_git, run_git_checked, snapshot_tree
 
 REFUSED_EXIT = 1
@@ -301,7 +301,7 @@ def _task_block(masked: list[str], task_line: int, task_id: str) -> _TaskBlock:
     rounds_line = None
     while last_line + 1 < len(masked) and masked[last_line + 1][:1] in (" ", "\t") and masked[last_line + 1].strip():
         last_line += 1
-        if rounds_line is None and ROUNDS.match(masked[last_line].strip().removeprefix("- ")):
+        if rounds_line is None and rounds_field(masked[last_line]) is not None:
             rounds_line = last_line
     return _TaskBlock(task_id, task_line, rounds_line, last_line)
 
