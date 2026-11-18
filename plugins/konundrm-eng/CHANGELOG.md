@@ -5,6 +5,59 @@ All notable changes to `konundrm-eng` are documented here. The format follows
 [Semantic Versioning](https://semver.org/). Bump `version` in `.claude-plugin/plugin.json` with
 every release; installed copies only update when it changes.
 
+## [0.9.0] - 2026-11-18
+
+Fewer review cycles for the same work. A plan no longer pays one full cycle of test-writer,
+implementer and two reviews for every behavior: related low-risk behaviors are merged into
+consolidated tasks, built and reviewed once. After a change, only the reviews that change concerns
+run again. And a small change you ask for on work already built is made right away, as an
+adjustment, instead of becoming a new task that goes through the whole flow.
+
+### Added
+
+- Consolidated tasks. writing-plans first lists one behavior per line, then merges the low-risk
+  lines that have one owner in the design, make one logical change and fit in five behaviors and
+  about 300 changed lines of code and tests. A consolidated task is one task of the plan (one ID,
+  one commit, one note) with a `Tests:` list that keeps one test per behavior and its criterion.
+  Medium- and high-risk lines, property tests, open decisions and new dependencies stay in tasks
+  of their own. The plan's approval shows how many behaviors each task holds and why the others
+  stayed apart, and the new header line `- **Consolidation:**` holds the choice: `low` (the
+  default), `low and medium` (also merges the cases of one medium-risk rule, up to three per
+  task) or `none`.
+- One cycle per consolidated task. One test-writer dispatch writes every test of the task and
+  reports on each one; a test that does not hold goes back alone. One implementer makes them pass
+  one at a time, seeing each one fail before its code, and the spec review checks every listed
+  behavior against its own test. The property tests of a task's invariants are written in that
+  same red step, so verifying by risk no longer forces a second round of reviews.
+- Reviews after a change. A new section of develop-feature decides, from the change's own diff,
+  which reviews run again after a fix round, a change from verifying by risk or the fix of a red
+  check: the review whose finding was fixed; the spec review alone when the change only added
+  tests; both reviews when it changed an existing test or what the code does; the code review
+  alone when it changed how the code is built or what configures a gate; none when it changed
+  only text that nothing reads. High-risk tasks repeat every review, a doubt runs both, and each
+  review that was not repeated is noted in the slice summary. fix-bug follows the same rule.
+- Adjustments. A change the user asks for on built work is classified first. A plan change (it
+  adds or removes a criterion, changes the design, touches high-risk work or is expected to take
+  more than about 50 changed lines) still becomes tasks the user approves. Anything else is an
+  adjustment, made at once: the criterion is updated first, a change in what the code does gets
+  its failing test first, then come the implementer, the verification, only the reviews its diff
+  needs, the check and a commit of its own. Its Git note records the tasks it adjusts, the
+  reviews that ran and what was asked, and the next summary lists it. A change asked on the task
+  in progress joins that task. `reference/adjustments.md` holds the procedure.
+- Evals `behavior-plan-consolidates-related-tasks` and `behavior-adjustment-runs-needed-reviews`.
+
+### Changed
+
+- After a fix round, develop-feature and fix-bug no longer repeat every review: they run only
+  the reviews the round concerns. A task's first reviews, and every review of a high-risk task,
+  run as they did.
+- A change asked at a slice's pause is no longer always a new task: an adjustment is made right
+  away, and only a plan change waits for approval.
+- measure-impact warns that tasks done, review rounds per task and fixes per feature are not
+  comparable with features planned before this version.
+- Plans written with earlier versions are built as before: a task with a single `Test:` line
+  keeps its one-test cycle, and nothing consolidates a plan that is already approved.
+
 ## [0.8.0] - 2026-11-01
 
 Features you can follow on GitHub while they are built, and commits and pull requests any

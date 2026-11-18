@@ -47,8 +47,8 @@ subagentes (`code-reviewer`, como en la documentación de subagentes).
 | --- | --- | --- |
 | `engineering-standards` | Claude y los subagentes | Fuente única: SOLID, Definition of Done, tests (propiedades, tests inestables, regresión), nombres, docs, Git y pull requests pequeños, severidad de revisión, errores, seguridad, verificación según riesgo e integridad de los gates |
 | `writing-specs` | Claude o `/konundrm-eng:writing-specs` | Entrevista y escribe `requirements.md` con criterios EARS y IDs trazables |
-| `writing-plans` | Claude o `/konundrm-eng:writing-plans` | Escribe `design.md` (con amenazas si hay riesgo alto) y `tasks.md`: tareas de 2–5 minutos con su riesgo, agrupadas en entregas del tamaño de un pull request y, dentro de cada una, en particiones que se pueden construir en paralelo. Deja los enfoques abiertos como decisiones, con pros, contras y una recomendación. Sube su propio esfuerzo a `xhigh` |
-| `test-driven-development` | Claude y el `test-writer` | Escribe un test en rojo (de ejemplo o de propiedad) y se detiene; exige cinco corridas verdes |
+| `writing-plans` | Claude o `/konundrm-eng:writing-plans` | Escribe `design.md` (con amenazas si hay riesgo alto) y `tasks.md`: lista un comportamiento de 2–5 minutos por línea, consolida en una tarea los afines de riesgo bajo y agrupa las tareas, cada una con su riesgo, en entregas del tamaño de un pull request y, dentro de cada una, en particiones que se pueden construir en paralelo. Deja los enfoques abiertos como decisiones, con pros, contras y una recomendación. Sube su propio esfuerzo a `xhigh` |
+| `test-driven-development` | Claude y el `test-writer` | Escribe un test en rojo (de ejemplo o de propiedad) y se detiene; exige cinco corridas verdes. Solo el `test-writer`, en una tarea consolidada, escribe todos sus tests en un despacho |
 | `designing-modules` | Claude y el `implementer` | Decide qué módulo es dueño de cada responsabilidad y busca duplicados con `find_duplicates.py` |
 | `adding-test-coverage` | Claude | Cubre código existente con tests de ejemplo y de propiedades; agrega mutation testing |
 | `documenting-code` | Claude y el `implementer` | Doc-comments estilo Google y el encabezado de cada módulo |
@@ -56,7 +56,7 @@ subagentes (`code-reviewer`, como en la documentación de subagentes).
 | `committing-changes` | Claude | Commits atómicos en Conventional Commits, sin emojis, solo con el check en verde |
 | `opening-pull-requests` | Claude | Hace push (con permiso) y abre un pull request apilado por entrega, o uno solo con todas. Arma cada descripción desde el resumen de la entrega, con la plantilla de PR del repositorio o con cuatro secciones fijas, en inglés simple y sin los IDs ni la jerga del flujo |
 | `reviewing-pull-requests` | Claude, o la CI con `claude-review.yml` | Revisa un PR con los revisores del plugin y publica solo hallazgos verificados; nunca aprueba |
-| `develop-feature` | Solo `/konundrm-eng:develop-feature` | Orquestador de features: encadena todo, construye en paralelo si lo apruebas, replantea las tareas trabadas, se detiene tras cada entrega con su resumen, verifica según el riesgo, escribe el resumen de la feature y termina en pull requests (ver [Cómo avanza una feature](#cómo-avanza-una-feature)) |
+| `develop-feature` | Solo `/konundrm-eng:develop-feature` | Orquestador de features: encadena todo, construye en paralelo si lo apruebas, replantea las tareas trabadas, hace en el momento los ajustes chicos que pidas, se detiene tras cada entrega con su resumen, verifica según el riesgo, escribe el resumen de la feature y termina en pull requests (ver [Cómo avanza una feature](#cómo-avanza-una-feature)) |
 | `fix-bug` | Solo `/konundrm-eng:fix-bug` | Orquestador de bugs: reproduce, test de regresión en rojo, causa raíz, arreglo mínimo, revisiones (con replanteo si el arreglo se traba) y un commit `fix` con `Escaped-gate:` |
 | `migrate-code` | Solo `/konundrm-eng:migrate-code` | Migraciones grandes: inventario determinista, receta aprobada, codemods primero, cada archivo con su gate y lotes del tamaño de un PR, cada uno en su rama y con su pull request |
 | `tidy-codebase` | Solo `/konundrm-eng:tidy-codebase` | Limpieza periódica: duplicados, silenciadores viejos, código sin uso e instrucciones desactualizadas, en cambios pequeños, cada uno en su rama y con su pull request |
@@ -104,6 +104,38 @@ rol, edita el frontmatter de su agente.
 
 ### Cómo avanza una feature
 
+- **Tareas del tamaño justo.** `writing-plans` lista primero un comportamiento por línea y después
+  junta en una sola tarea los que van juntos. Las tareas consolidadas reúnen solo comportamientos
+  de riesgo bajo, con un mismo dueño en el diseño y un solo cambio lógico, hasta cinco
+  comportamientos y unas 300 líneas cambiadas de código y tests. Cada una conserva un test por
+  comportamiento con su criterio, y pasa una sola vez por el ciclo de test, implementación,
+  revisiones, check y commit: el `test-writer` escribe todos sus tests y el `implementer` los hace
+  pasar de a uno, viendo fallar cada uno antes de escribir su código. El riesgo medio y el alto,
+  las pruebas de propiedad y las decisiones abiertas quedan en tareas propias. Al aprobar el plan
+  ves cuántos comportamientos reúne cada tarea y por qué las demás quedaron separadas, y puedes
+  cambiar el criterio en la línea `- **Consolidation:**` del encabezado de `tasks.md`: `low` (por
+  defecto), `low and medium` (junta además los casos de una misma regla de riesgo medio, hasta
+  tres por tarea) o `none`.
+- **Revisiones proporcionales al cambio.** Las primeras revisiones de una tarea corren siempre
+  todas. Después de un cambio (una ronda de arreglo, la verificación por riesgo, el arreglo de un
+  check en rojo) se repiten solo las revisiones a las que ese cambio concierne, decididas desde su
+  diff: la que levantó el hallazgo que se arregló; solo la de spec si el cambio agregó tests y
+  nada más; la de spec y la de código si tocó un test que ya existía o lo que el código hace; solo
+  la de código si cambió cómo está construido o tocó la configuración de un gate; y ninguna si
+  cambió solo texto que nada lee. En riesgo alto se repiten todas, y ante la duda corren las dos.
+  Cada revisión que no se repitió queda anotada, con su motivo, en el resumen de la entrega.
+  `fix-bug` sigue la misma regla.
+- **Ajustes en el momento.** Cuando pides un cambio chico sobre algo que la feature ya construyó
+  (durante la construcción, en una pausa o con la feature terminada), el orquestador lo clasifica
+  antes de tocar nada. Los ajustes se hacen en el momento, sin tarea nueva ni otra aprobación: si
+  cambia lo que el código hace, primero su test en rojo; después el `implementer`, la
+  verificación, solo las revisiones que su diff necesita, el check y un commit propio. Si el
+  pedido cambia un detalle que un criterio dice (un texto, un valor, un límite), actualiza ese
+  criterio y te lo dice. Es un cambio de plan, que sigue esperando tu aprobación, si agrega o
+  quita un criterio, cambia el diseño, toca riesgo alto o se espera que pase de unas 50 líneas;
+  ante la duda, también. Un pedido sobre la tarea en curso se hace dentro de esa tarea, sin
+  empezarla de nuevo. Cada ajuste queda en una nota de Git (qué tareas ajusta, qué revisiones
+  corrieron y qué pediste) y en el próximo resumen.
 - **Particiones en paralelo.** `writing-plans` cierra cada entrega con una tabla `### Partitions`
   que agrupa sus tareas en particiones (tareas que una sesión construye en orden) y olas
   (particiones sin dependencias entre sí ni archivos compartidos, salvo `tasks.md` y `evidence/`;
@@ -133,8 +165,8 @@ rol, edita el frontmatter de su agente.
   decisiones, rondas de revisión y replanteos, y un orden de lectura con archivos y líneas. Te lo
   muestra, te hace dos o tres preguntas sobre el código de la entrega y, si una respuesta está
   mal, explica la correcta con archivo y líneas. Espera tu visto bueno, que nunca depende de las
-  respuestas; lo que pidas cambiar ahí pasa a ser tareas nuevas o un cambio de plan aprobado antes
-  de la entrega siguiente. Con `- **Checkpoints:** pre-approved` en el encabezado de `tasks.md`
+  respuestas; lo que pidas cambiar ahí se clasifica: un ajuste chico se hace en ese momento, y lo
+  demás pasa a ser tareas nuevas o un cambio de plan aprobado antes de la entrega siguiente. Con `- **Checkpoints:** pre-approved` en el encabezado de `tasks.md`
   (queda así si apruebas las pausas al pedir la feature o con el plan) escribe el resumen y pasa a
   la entrega siguiente sin detenerse ni preguntarte. Aprobar las pausas no aprueba las decisiones:
   sin `- **Decisions:** pre-approved`, una decisión abierta sigue pausando su tarea.
@@ -148,7 +180,8 @@ rol, edita el frontmatter de su agente.
   en la misma sesión; `per-slice` es el valor por defecto.
 - **Un check por tarea y revisiones a la vez.** Cada tarea corre el check completo una vez, salvo
   que algo cambie después de pasar, y sus revisiones de spec, de código y de seguridad corren al
-  mismo tiempo, con una sola ronda de arreglo para todos sus hallazgos.
+  mismo tiempo, con una sola ronda de arreglo para todos sus hallazgos. Las pruebas de propiedad
+  de los invariantes de una tarea se escriben junto con su test, antes de esas revisiones.
 - **Resumen de la feature.** Al final escribe `specs/<NNN-slug>/summary.md`: el problema, qué
   módulo es dueño de qué, los resúmenes de cada entrega, las decisiones, los requisitos con sus
   tests y evidencia, los replanteos, los hallazgos refutados, las sugerencias no aplicadas y cómo
@@ -164,7 +197,7 @@ rol, edita el frontmatter de su agente.
 - **Datos del flujo en notas de Git.** Los mensajes de commit hablan solo del cambio. La tarea,
   los requisitos que cubre y sus rondas de revisión (y en un `fix-bug`, el criterio y el gate que
   se escapó) quedan en una nota de Git bajo `refs/notes/konundrm`, que `task_ledger.py record`
-  pega al commit recién hecho. Las notas se quedan en tu repositorio local: no viajan en un clon
+  pega al commit recién hecho. El commit de un ajuste lleva su propia nota. Las notas se quedan en tu repositorio local: no viajan en un clon
   ni sobreviven al squash de GitHub. Las features empezadas antes de 0.8.0 conservan esas líneas
   en el mensaje y se siguen leyendo.
 - **Entrega.** En vivo, al terminar la feature sube el commit final y lista los pull requests en
@@ -274,7 +307,14 @@ apaga el guard. `KONUNDRM_PR_BUDGET` cambia el presupuesto de líneas por pull r
 - **mutmut no corre en Windows nativo, y el sandbox de Claude Code tampoco.** Para las tareas de
   riesgo alto en Python, la mutación se exige en el job `risk:high` de la CI (o usa WSL).
 - **Las métricas son una aproximación.** "Defecto escapado" es un `fix` que toca archivos que una
-  tarea cambió en los 30 días anteriores; los eventos de los gates se registran por máquina.
+  tarea cambió en los 30 días anteriores; los eventos de los gates se registran por máquina. Desde
+  0.9.0 una tarea puede reunir varios comportamientos y los ajustes son commits que no son tareas,
+  así que las tareas hechas, las rondas por tarea y los fixes por feature no se comparan con los
+  de features planificadas antes.
+- **Qué se consolida, qué revisiones se repiten y qué cuenta como ajuste son instrucciones, no
+  hooks.** Las sostienen pruebas de contrato sobre el texto de las skills y dos evals; ningún hook
+  comprueba que el orquestador haya elegido bien. Lo que deja escrito (la nota de cada ajuste y
+  los resúmenes) permite revisarlo después. El riesgo alto queda fuera de las tres reglas.
 - **`measure-impact` no junta los eventos de los gates de sesiones paralelas.** Cada worktree
   registra los suyos por separado.
 - **La mutación en CI de un pull request `risk:high` cubre todo lo que cambia**, no solo los
@@ -343,7 +383,9 @@ puede ver.
    y el plan, eligiendo en las decisiones de diseño que quedaron abiertas, y, si hace falta, dirás
    si construir en paralelo. Después el orquestador trabaja solo y se detiene tras cada entrega
    para mostrarte su resumen y hacerte unas preguntas, salvo que hayas aprobado las pausas de
-   antemano; la entrega siguiente sigue en una sesión nueva. Al final te pregunta antes de hacer
+   antemano; la entrega siguiente sigue en una sesión nueva. Si en el camino pides un cambio
+   chico sobre lo ya construido, lo hace en el momento como un ajuste. Al final te pregunta antes
+   de hacer
    push y te deja elegir entre un pull request apilado por entrega o uno solo (ver
    [Cómo avanza una feature](#cómo-avanza-una-feature)).
 3. Para retomar una feature, o seguirla en la sesión de su próxima entrega:
@@ -410,16 +452,17 @@ claude plugin eval plugins/konundrm-eng --allow-tools Bash Write Edit
 Los casos de comportamiento escriben archivos, crean repos y hacen commits, así que necesitan
 `--allow-tools`; sin ese permiso el runner los marca como "not granted". Los casos que usan
 subagentes (`behavior-review-*`, `behavior-verifier-*`, `behavior-fix-bug-*`,
-`behavior-develop-feature-*` y los cinco del flujo por entregas: `behavior-slice-checkpoint`,
-`behavior-design-decision`, `behavior-slice-summary`, `behavior-feature-summary` y
-`behavior-improvement-notes`) se comparan mejor con `--ablation none`, porque en el brazo sin
-plugin los agentes no existen. `behavior-develop-feature-end-to-end` corre una feature completa:
+`behavior-develop-feature-*`, `behavior-adjustment-*` y los cinco del flujo por entregas:
+`behavior-slice-checkpoint`, `behavior-design-decision`, `behavior-slice-summary`,
+`behavior-feature-summary` y `behavior-improvement-notes`) se comparan mejor con
+`--ablation none`, porque en el brazo sin plugin los agentes no existen. `behavior-develop-feature-end-to-end` corre una feature completa:
 es largo y caro, para antes de publicar una versión.
 
 En Windows el runner no tiene sandbox para la shell y rechaza cualquier caso con `Bash`
 concedido. Ahí usa `--allow-tools Write Edit`: los casos que necesitan git
-(`behavior-commit-*`, `behavior-fix-bug-*`, `behavior-develop-feature-*` y los cinco del flujo
-por entregas) solo pueden pasar en Linux o macOS.
+(`behavior-commit-*`, `behavior-fix-bug-*`, `behavior-develop-feature-*`,
+`behavior-adjustment-*` y los cinco del flujo por entregas) solo pueden pasar en Linux o macOS.
+`behavior-plan-consolidates-related-tasks` no necesita git y corre también en Windows.
 
 Los evals cubren tres cosas: que cada skill se active con su pedido (`triggers-*`), que no se
 active la skill vecina ni ninguna en preguntas ajenas (`not-*`, `no-trigger-*`), y que las skills
@@ -428,8 +471,9 @@ rojo, la spec entrevista antes de escribir, el commit no hace push sin permiso, 
 se respeta en vez de saltarse, un bug empieza con su test de regresión, la revisión aprueba un
 cambio limpio sin inventar hallazgos, la cobertura incluye propiedades, un hallazgo falso se
 refuta con evidencia, una feature completa sigue el flujo, cada entrega termina en una pausa con
-su resumen, una decisión abierta se te pregunta, la feature termina con su resumen y el
-`process-reviewer` deja notas de mejora).
+su resumen, una decisión abierta se te pregunta, la feature termina con su resumen, el
+`process-reviewer` deja notas de mejora, el plan consolida los comportamientos afines de riesgo
+bajo y un ajuste chico pasa solo por las revisiones que necesita).
 
 Para publicar un cambio, sube `version` en `plugin.json` siguiendo versionado semántico y anota el
 cambio en `CHANGELOG.md`. Sin ese cambio de versión, las instalaciones existentes no se actualizan.
