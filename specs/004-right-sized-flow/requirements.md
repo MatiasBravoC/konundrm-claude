@@ -113,10 +113,12 @@ se quede sin su test en rojo.
   exigir cinco corridas seguidas en verde y pasarla una sola vez por el ciclo de revisiones, check
   y commit; después de un cambio se repiten las revisiones de `R3.1`.
 - `R2.4` WHILE la skill `test-driven-development` trabaja con una persona, o la tarea tiene un solo
-  test, THE SYSTEM SHALL seguir escribiendo un test por vez y deteniéndose en rojo.
+  test y su despacho no pide pruebas de propiedad (`R3.9`), THE SYSTEM SHALL seguir escribiendo
+  un test por vez y deteniéndose en rojo.
 - `R2.5` WHEN el replanteo de una tarea consolidada concluye que reúne comportamientos que no van
   juntos, THE SYSTEM SHALL proponer dividirla como un cambio de plan que aprueba el usuario,
-  conservando su ID para la primera parte y sin renumerar ninguna otra tarea.
+  conservando su ID para la primera parte y sin renumerar ninguna otra tarea; el intento se
+  aparta completo y cada parte se construye desde el primer paso del ciclo.
 - `R2.6` WHEN revisa contra la spec una tarea que lista varios tests, THE SYSTEM SHALL comprobar
   cada comportamiento de la lista contra su propio test, no una vez por criterio.
 
@@ -129,9 +131,10 @@ las que ese arreglo afecta, para no pagar revisiones que no pueden encontrar nad
   su commit (una ronda de arreglo, la verificación por riesgo o el arreglo de un check en rojo),
   THE SYSTEM SHALL repetir solo: cada revisión que levantó un hallazgo que ese cambio corrige;
   solo la de spec cuando el cambio agregó tests y nada más; las revisiones de spec y de código
-  cuando el cambio tocó un test que ya existía o lo que el código hace para alguna entrada; solo
-  la de código cuando cambió cómo está construido el código sin cambiar lo que hace, o tocó algo
-  que dobla un gate (un silenciador, un test saltado, la configuración del check, de los tests,
+  cuando el cambio tocó lo que prepara o afirma un test que ya existía, o lo que el código hace
+  para alguna entrada; solo la de código cuando cambió cómo está construido el código sin cambiar
+  lo que hace, aunque en los tests que lo usan cambie ese mismo nombre o ruta, o tocó algo que
+  dobla un gate (un silenciador, un test saltado, la configuración del check, de los tests,
   del linter, de los tipos, de la cobertura, de la mutación, de los hooks o de la CI); siempre la
   de código después de arreglar un check en rojo; y ninguna cuando cambió solo texto que nada lee.
 - `R3.2` WHERE la tarea es de riesgo alto, THE SYSTEM SHALL repetir todas sus revisiones después de
@@ -144,15 +147,17 @@ las que ese arreglo afecta, para no pagar revisiones que no pueden encontrar nad
   correr el comando de verificación antes de repetir revisiones, y el check completo sigue siendo
   obligatorio antes del commit.
 - `R3.6` WHEN `fix-bug` repite revisiones después de una ronda de arreglo, THE SYSTEM SHALL seguir
-  la misma regla.
+  la misma regla, marcando el árbol antes de la ronda, y su commit incluye lo que la ronda cambió.
 - `R3.7` THE SYSTEM SHALL decidir qué revisiones se repiten desde el diff del cambio y no desde el
   informe de quien lo hizo: dentro de una tarea, marca el árbol antes del cambio y guarda su
   identificador, para que el diff contra esa marca muestre solo ese cambio aunque alguien mueva el
   índice de Git; IF pierde la marca, THEN THE SYSTEM SHALL correr las dos revisiones.
-- `R3.8` THE SYSTEM SHALL anotar cada revisión que no se repitió después de un cambio y por qué, y
-  llevarla al resumen del slice y al registro que lee el `process-reviewer`.
+- `R3.8` THE SYSTEM SHALL anotar cada revisión que no se repitió después de un cambio y por qué,
+  guardarla junto al commit de su tarea, donde la encuentran una sesión retomada y la integración
+  de una partición, y llevarla al resumen del slice y al registro que lee el `process-reviewer`.
 - `R3.9` WHEN construye una tarea de riesgo medio o alto que lista invariantes, THE SYSTEM SHALL
   escribir sus tests de propiedad junto con el test de la tarea, antes de las primeras revisiones,
+  salvo los que cubre una tarea `property` del plan, y correrlos en cada verificación de la tarea;
   y WHEN la verificación por riesgo cambia algo, THE SYSTEM SHALL repetir las revisiones una sola
   vez, cuando ese paso termina.
 
@@ -173,11 +178,14 @@ completo.
   un archivo que ninguna tarea de la feature lista; o se espera que pase de unas 50 líneas
   cambiadas de código y tests. IF no está claro cuál de los dos es, THEN es un cambio de plan; y
   WHEN el cambio de plan llega sobre una feature ya terminada, THE SYSTEM SHALL reabrirla con el
-  sí del usuario.
+  sí del usuario solo mientras sus pull requests no estén fusionados, y proponerlo como una
+  feature nueva si ya lo están.
 - `R4.3` WHEN el pedido es un ajuste, THE SYSTEM SHALL hacerlo en el momento con los mismos roles
-  (el `test-writer` cambia los tests y el `implementer` el resto; si cambia lo que el código hace,
-  primero su test en rojo), sin tareas nuevas ni otra aprobación; el orquestador solo edita él
-  mismo los documentos de la feature y la prosa que nada carga, ejecuta ni prueba.
+  (el `test-writer` cambia los tests, también los que solo usan un nombre que cambia, y el
+  `implementer` el resto; si cambia lo que el código hace, primero su test en rojo, salvo el test
+  que el código ya cumple, que se conserva sin forzarlo a fallar), sin tareas nuevas ni otra
+  aprobación; el orquestador solo edita él mismo los documentos de la feature y la prosa que nada
+  carga, ejecuta ni prueba.
 - `R4.4` WHEN el ajuste está hecho, THE SYSTEM SHALL correr cinco veces los tests que cambió o
   agregó y una vez el comando de verificación de las tareas cuyo comportamiento ajusta, decidir
   desde su diff las revisiones que `R3.1` indica, y pasar el check antes del commit.
@@ -195,28 +203,33 @@ completo.
 - `R4.7` WHEN un ajuste cambia un detalle que un criterio de aceptación dice (un texto, un valor,
   un límite), THE SYSTEM SHALL actualizar ese criterio antes de despachar a quien lo construye,
   dejarlo en el mismo commit y decirle al usuario qué criterio cambió, con el texto anterior y el
-  nuevo; y WHEN agrega, renombra o quita un test, THE SYSTEM SHALL actualizar las líneas de esa
-  tarea en el plan.
+  nuevo, y actualizar las líneas del plan que repiten el detalle anterior; y WHEN agrega, renombra
+  o quita un test, THE SYSTEM SHALL actualizar las líneas de esa tarea en el plan.
 - `R4.8` THE SYSTEM SHALL anotar cada ajuste en el próximo resumen que se escribe (el del slice o
   el de la feature), a partir de lo guardado con su commit, con lo pedido, las revisiones que
   corrieron, las que no hicieron falta y el criterio que cambió; WHERE la feature ya terminó, THE
-  SYSTEM SHALL agregarlo al resumen de la feature.
+  SYSTEM SHALL agregarlo al resumen de la feature en ese mismo turno.
 - `R4.9` WHERE la feature se publica en vivo, THE SYSTEM SHALL subir el commit de cada ajuste como
   los demás commits del flujo, y el ajuste pedido en la pausa de un slice va a la rama del slice
   siguiente; WHERE se construye en local y sus pull requests ya están abiertos, THE SYSTEM SHALL
-  preguntar antes de subirlo.
+  preguntar antes de subirlo; y WHERE la feature ya terminó y su rama está fusionada, THE SYSTEM
+  SHALL hacer el ajuste en una rama nueva desde la rama principal, nunca en la rama principal.
 - `R4.10` WHEN el usuario pide un cambio sobre la tarea en curso, antes de su commit, THE SYSTEM
   SHALL clasificarlo como en `R4.2`, hacerlo dentro de esa tarea (primero el criterio que cambie,
   después el pedido anotado en la tarea del plan para que lo lean quienes la construyen y la
   revisan, y su test en rojo antes del código cuando cambia lo que el código hace) y repetir solo
-  las revisiones que `R3.1` indica, sin contarlo como una revisión fallida.
+  las revisiones que `R3.1` indica, sin contarlo como una revisión fallida; WHERE la tarea es de
+  riesgo alto, todo cambio pedido es un cambio de plan; y IF el cambio de plan cambia lo que esa
+  misma tarea construye, THEN THE SYSTEM SHALL detener la tarea y esperar al usuario.
 - `R4.11` THE SYSTEM SHALL hacer los ajustes solo en la sesión principal de la feature, en el
-  próximo punto limpio entre tareas y antes de pasar la feature a otra sesión; WHILE una ola en
-  paralelo está en construcción, THE SYSTEM SHALL esperar a que se integre; una sesión de
-  partición no hace ajustes y se detiene con `BLOCKED:`, y una sesión que ya pasó la feature a
-  otra le dice al usuario que lo pida en la que la está construyendo; y WHEN retoma una feature
-  ya terminada, THE SYSTEM SHALL atender el cambio pedido sin volver a correr el cierre de la
-  feature.
+  próximo punto limpio entre tareas y antes de pasar la feature a otra sesión (un pedido que el
+  usuario deja para más adelante se hace entonces, si esa sesión sigue construyendo la feature);
+  WHILE una ola en paralelo está en construcción, THE SYSTEM SHALL esperar a que se integre y
+  decirle al usuario que el pedido queda en espera; una sesión de partición no hace ajustes y se
+  detiene con `BLOCKED:`, y una sesión que ya pasó la feature a otra le dice al usuario que lo
+  pida en la que la está construyendo; y WHEN retoma una feature ya terminada, THE SYSTEM SHALL
+  reconocerla por sus documentos, no por el libro de tareas, y atender el cambio pedido sin
+  volver a correr el cierre de la feature.
 
 ### US5. Acuerdos protegidos y documentados
 
@@ -237,7 +250,9 @@ para que no se pierda en la próxima versión.
 ## Constraints
 
 - Solo cambia texto: skills, agentes, plantillas, evals, documentación y pruebas de contrato.
-  Ningún hook ni script del flujo cambia, y un plan consolidado usa el formato que ya leen
+  Ningún hook cambia, y el único cambio de script es una corrección del lector del plan
+  (`tasks_document.py` lee las rondas de una tarea solo de su línea `Rounds:`, para que el pedido
+  anotado en la tarea no se confunda con ellas). Un plan consolidado usa el formato que ya leen
   `task_ledger.py`, `session_doctor.py`, `run_slices.py` y `metrics_report.py`: una tarea
   consolidada es una tarea, con un ID, un commit y una nota.
 - Los planes y los historiales de antes de esta versión siguen funcionando igual.

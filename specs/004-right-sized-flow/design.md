@@ -95,10 +95,12 @@ archivos nuevos de `git status --porcelain`.
 ```text
 it fixed a finding of a review                              → that review, always
 it added tests and changed nothing else                     → spec review
-it changed a test that was there, or what the code does
-  for some input (a value the code decides with included)   → spec review and code review
+it changed what a test that was there sets up or asserts,
+  or what the code does for some input (a value the code
+  decides with included)                                    → spec review and code review
 it changed how the code is built without changing what it
-  does, added a silencer or a skip, or touched what
+  does (a rename included, also in the tests that use the
+  name), added a silencer or a skip, or touched what
   configures a gate                                         → code review
 it changed only text that nothing reads                     → no review: verify and the check
 anything, on a high task                                    → every review of step 3
@@ -126,8 +128,16 @@ Comandos que las skills piden (los corre Claude):
   además `Escaped-gate:`.
 - Ajustes hechos desde el resumen del slice anterior:
   `git log --notes=refs/notes/konundrm --format='%h %s%n%N' --grep '^Adjusts:' <from>..HEAD`.
-- Qué tareas cambiaron un archivo, aunque el plan no lo liste:
-  `git log --notes=refs/notes/konundrm --format=%N <base>..HEAD -- <file>`.
+- Qué tareas cambiaron un archivo, aunque el plan no lo liste o una tarea posterior lo haya
+  renombrado (la línea `Task:` está en la nota del commit o, en una feature empezada antes de la
+  0.8.0, en su mensaje):
+  `git log --notes=refs/notes/konundrm --format='%b%N' --follow <base>..HEAD -- <file>`.
+- Revisiones que una tarea no repitió, junto a su commit:
+  `git notes --ref=refs/notes/konundrm append -m "Not repeated: <review> (<what the change touched>)" HEAD`,
+  y en el resumen del slice
+  `git log --notes=refs/notes/konundrm --format='%h %s%n%N' --grep '^Not repeated:' <from>..HEAD`.
+- Commit de un `fix-bug`, que ahora prepara el índice en el mismo comando porque la marca deja en
+  él un árbol anterior: `git add -A && git commit -F <message file> … && git notes … add …`.
 - Apartar un ajuste que resultó ser un cambio de plan:
   `git stash push --include-untracked -m "<NNN-slug> adjustment set aside: <request>"`.
 
@@ -153,8 +163,11 @@ nota.
 
 ## Dependency rules
 
-Solo cambia texto de skills, agentes y plantillas, y las pruebas de contrato. Ningún script ni
-hook cambia, y no hay dependencias nuevas entre módulos: `fix-bug` ya enlaza `develop-feature`.
+Solo cambia texto de skills, agentes y plantillas, y las pruebas de contrato. Ningún hook cambia
+y no hay dependencias nuevas entre módulos: `fix-bug` ya enlaza `develop-feature`. La única
+excepción es una corrección de `hooks/scripts/tasks_document.py`: lee las rondas de una tarea solo
+de su línea `Rounds:`, porque el pedido del usuario anotado en la tarea (`- Change:`) es texto
+libre y podía citar una.
 `engineering-standards` enlaza la sección de `develop-feature` sin repetir su tabla.
 
 ## Alternatives considered
@@ -221,3 +234,7 @@ feature planificada con la 0.9.0).
 - Las métricas dejan de compararse entre versiones — `measure-impact` lo avisa.
 - El eval del ajuste necesita Git y no corre en Windows — queda escrito y su estructura se
   comprueba en el check; correrlo queda para Linux o macOS.
+- Las notas de Git no viajan en un clon ni sobreviven a un squash — por eso una feature terminada
+  se reconoce por sus documentos, la búsqueda de las tareas que cambiaron un archivo cae a las
+  líneas `Files:` del plan, y un cambio de plan sobre una feature fusionada se planifica como una
+  feature nueva.
