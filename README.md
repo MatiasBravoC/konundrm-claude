@@ -120,11 +120,12 @@ rol, edita el frontmatter de su agente.
   todas. Después de un cambio (una ronda de arreglo, la verificación por riesgo, el arreglo de un
   check en rojo) se repiten solo las revisiones a las que ese cambio concierne, decididas desde su
   diff: la que levantó el hallazgo que se arregló; solo la de spec si el cambio agregó tests y
-  nada más; la de spec y la de código si tocó un test que ya existía o lo que el código hace; solo
-  la de código si cambió cómo está construido o tocó la configuración de un gate; y ninguna si
-  cambió solo texto que nada lee. En riesgo alto se repiten todas, y ante la duda corren las dos.
-  Cada revisión que no se repitió queda anotada, con su motivo, en el resumen de la entrega.
-  `fix-bug` sigue la misma regla.
+  nada más; la de spec y la de código si tocó lo que prepara o afirma un test que ya existía, o
+  lo que el código hace; solo la de código si cambió cómo está construido (un renombre cuenta
+  aquí, aunque cambie ese nombre en los tests que lo usan) o tocó la configuración de un gate; y
+  ninguna si cambió solo texto que nada lee. En riesgo alto se repiten todas, y ante la duda
+  corren las dos. Cada revisión que no se repitió queda anotada, con su motivo, en la nota de Git
+  de su tarea y en el resumen de la entrega. `fix-bug` sigue la misma regla.
 - **Ajustes en el momento.** Cuando pides un cambio chico sobre algo que la feature ya construyó
   (durante la construcción, en una pausa o con la feature terminada), el orquestador lo clasifica
   antes de tocar nada. Los ajustes se hacen en el momento, sin tarea nueva ni otra aprobación: si
@@ -135,7 +136,8 @@ rol, edita el frontmatter de su agente.
   quita un criterio, cambia el diseño, toca riesgo alto o se espera que pase de unas 50 líneas;
   ante la duda, también. Un pedido sobre la tarea en curso se hace dentro de esa tarea, sin
   empezarla de nuevo. Cada ajuste queda en una nota de Git (qué tareas ajusta, qué revisiones
-  corrieron y qué pediste) y en el próximo resumen.
+  corrieron y qué pediste) y en el próximo resumen. Si la feature ya está terminada y fusionada,
+  el ajuste va en una rama nueva desde la rama principal, nunca directo en ella.
 - **Particiones en paralelo.** `writing-plans` cierra cada entrega con una tabla `### Partitions`
   que agrupa sus tareas en particiones (tareas que una sesión construye en orden) y olas
   (particiones sin dependencias entre sí ni archivos compartidos, salvo `tasks.md` y `evidence/`;
@@ -149,7 +151,7 @@ rol, edita el frontmatter de su agente.
   revisión de código sobre toda ella. Un plan sin esa tabla se construye en orden, como antes.
 - **Replanteo.** Una tarea que falla cinco revisiones, o tres veces la misma, no se reintenta: se
   replantea. El `rethinker` explica por qué los intentos fallan y propone un enfoque nuevo, un
-  ajuste o un cambio de plan; un cambio de plan espera tu aprobación. Si el intento actual se
+  retoque del intento actual o un cambio de plan; un cambio de plan espera tu aprobación. Si el intento actual se
   aparta, queda en `git stash` con un mensaje que nombra la tarea y se recupera por su SHA, nunca
   se descarta. El informe queda en `specs/<NNN-slug>/evidence/T<n>-rethink.md`. Si la tarea sigue
   fallando dos revisiones más, te pregunta. `fix-bug` hace lo mismo con un bug.
@@ -197,9 +199,9 @@ rol, edita el frontmatter de su agente.
 - **Datos del flujo en notas de Git.** Los mensajes de commit hablan solo del cambio. La tarea,
   los requisitos que cubre y sus rondas de revisión (y en un `fix-bug`, el criterio y el gate que
   se escapó) quedan en una nota de Git bajo `refs/notes/konundrm`, que `task_ledger.py record`
-  pega al commit recién hecho. El commit de un ajuste lleva su propia nota. Las notas se quedan en tu repositorio local: no viajan en un clon
-  ni sobreviven al squash de GitHub. Las features empezadas antes de 0.8.0 conservan esas líneas
-  en el mensaje y se siguen leyendo.
+  pega al commit recién hecho. El commit de un ajuste lleva su propia nota. Las notas se quedan
+  en tu repositorio local: no viajan en un clon ni sobreviven al squash de GitHub. Las features
+  empezadas antes de 0.8.0 conservan esas líneas en el mensaje y se siguen leyendo.
 - **Entrega.** En vivo, al terminar la feature sube el commit final y lista los pull requests en
   el orden en que se aceptan, sin preguntar. En local, después de la verificación final y solo si
   apruebas el push, te ofrece un pull request apilado por entrega (por defecto) o uno solo con
@@ -212,7 +214,8 @@ rol, edita el frontmatter de su agente.
   líneas del flujo.
 - **Notas de mejora.** Al cerrar cada entrega y al final de la feature, el `process-reviewer`
   lee el registro del flujo (rondas de revisión, escalamientos, replanteos, subagentes bloqueados,
-  eventos de los gates y tus correcciones) y propone mejoras al plugin, cada una con su evidencia.
+  eventos de los gates, tus correcciones, los ajustes y las revisiones que no se repitieron) y
+  propone mejoras al plugin, cada una con su evidencia.
   `improvement_notes.py` las guarda, sin código, secretos ni correos, en un archivo común a todos
   tus proyectos: `~/.claude/konundrm-eng/improvements.md` (o bajo `CLAUDE_CONFIG_DIR`, en
   `konundrm-eng/improvements.md`, si está definida). Si no puede escribirlo, las deja en
@@ -315,6 +318,10 @@ apaga el guard. `KONUNDRM_PR_BUDGET` cambia el presupuesto de líneas por pull r
   hooks.** Las sostienen pruebas de contrato sobre el texto de las skills y dos evals; ningún hook
   comprueba que el orquestador haya elegido bien. Lo que deja escrito (la nota de cada ajuste y
   los resúmenes) permite revisarlo después. El riesgo alto queda fuera de las tres reglas.
+- **Una feature terminada se reconoce por sus documentos (`Status: Done`), no por el libro de
+  tareas.** En un clon sin las notas de Git, o después de un squash, `task_ledger.py status`
+  nombra como pendientes tareas que ya están construidas. Por eso un cambio de plan sobre una
+  feature ya fusionada se planifica como una feature nueva.
 - **`measure-impact` no junta los eventos de los gates de sesiones paralelas.** Cada worktree
   registra los suyos por separado.
 - **La mutación en CI de un pull request `risk:high` cubre todo lo que cambia**, no solo los

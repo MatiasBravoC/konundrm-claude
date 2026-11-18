@@ -34,8 +34,10 @@ adjustment, instead of becoming a new task that goes through the whole flow.
   check: the review whose finding was fixed; the spec review alone when the change only added
   tests; both reviews when it changed an existing test or what the code does; the code review
   alone when it changed how the code is built or what configures a gate; none when it changed
-  only text that nothing reads. High-risk tasks repeat every review, a doubt runs both, and each
-  review that was not repeated is noted in the slice summary. fix-bug follows the same rule.
+  only text that nothing reads. A rename counts as how the code is built, also when the tests
+  that use the name change with it. High-risk tasks repeat every review, a doubt runs both, and
+  each review that was not repeated is appended to the task's Git note and listed in the slice
+  summary. fix-bug follows the same rule.
 - Adjustments. A change the user asks for on built work is classified first. A plan change (it
   adds or removes a criterion, changes the design, touches high-risk work or is expected to take
   more than about 50 changed lines) still becomes tasks the user approves. Anything else is an
@@ -43,7 +45,9 @@ adjustment, instead of becoming a new task that goes through the whole flow.
   its failing test first, then come the implementer, the verification, only the reviews its diff
   needs, the check and a commit of its own. Its Git note records the tasks it adjusts, the
   reviews that ran and what was asked, and the next summary lists it. A change asked on the task
-  in progress joins that task. `reference/adjustments.md` holds the procedure.
+  in progress joins that task. A finished feature is recognised by its documents, and an
+  adjustment to one that is already merged goes on a new branch. `reference/adjustments.md` holds
+  the procedure.
 - Evals `behavior-plan-consolidates-related-tasks` and `behavior-adjustment-runs-needed-reviews`.
 
 ### Changed
@@ -55,8 +59,19 @@ adjustment, instead of becoming a new task that goes through the whole flow.
   away, and only a plan change waits for approval.
 - measure-impact warns that tasks done, review rounds per task and fixes per feature are not
   comparable with features planned before this version.
-- Plans written with earlier versions are built as before: a task with a single `Test:` line
-  keeps its one-test cycle, and nothing consolidates a plan that is already approved.
+- fix-bug marks the tree before its fix round and stages the fix in the same command as its
+  commit (`git add -A && git commit …`).
+- Plans written with earlier versions need no change and are built as before, one cycle per
+  task: no task already in an approved plan is merged, and the tasks a plan change adds are
+  consolidated among themselves. Two things do change for them: on a medium- or high-risk task
+  the red step also writes the property tests of its invariants, and after a change only the
+  reviews it concerns run again.
+
+### Fixed
+
+- The plan reader takes a task's rounds only from its own `- Rounds:` line. A Rounds text quoted
+  in another field of the task (a `Test:` description, a change the user asked for) was read as
+  the task's rounds and miscounted the impact report.
 
 ## [0.8.0] - 2026-11-01
 
