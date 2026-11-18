@@ -205,5 +205,63 @@ class FeatureSummaryTemplateTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
 
+# 004 R3.8, R4.8: where a summary lists the adjustments made on work the feature had built, and what each entry
+# holds. The patterns run on the section's text lowercased and single-spaced, HTML comments included: they describe
+# the entries.
+_ADJUSTMENTS_SECTION = "Adjustments"
+_ADJUSTMENT_ENTRY_PARTS = {
+    "what the user asked": re.compile(r"\buser\b[^.]{0,40}?\bask\w*|\bask\w*[^.]{0,40}?\buser\b"),
+    "its commit": re.compile(r"\bcommit subject\b"),
+    "that it is read from the commit's note": re.compile(r"\bnote\b"),
+    "the tasks it adjusts": re.compile(r"\btasks: t<n>"),
+    "the reviews that ran": re.compile(r"\breviews: <"),
+    "why the other reviews were not needed": re.compile(r"\bnot needed\b|\bdid not need\b|\bno review\b"),
+    "the criterion it updated": re.compile(r"\bcriterion: <"),
+    "none when there were no adjustments": re.compile(r"\bnone\b"),
+}
+_ADJUSTMENT_ENTRY_SHA = re.compile(r"\bsha\b")
+_REVIEWS_NOT_REPEATED = re.compile(r"\breviews not repeated after a change\b")
+
+
+def _adjustments_section_gaps(path: Path) -> list[str]:
+    """Return what R4.8 asks of a summary template's `## Adjustments` section that the template at `path` lacks."""
+    name = path.name
+    if not path.is_file():
+        return [f"{name}: the template does not exist"]
+    section = " ".join(read_section(path, _ADJUSTMENTS_SECTION).lower().split())
+    if not section:
+        return [f"{name}: no '## {_ADJUSTMENTS_SECTION}' section"]
+    gaps = [
+        f"{name}: '## {_ADJUSTMENTS_SECTION}' does not ask for {part}"
+        for part, pattern in _ADJUSTMENT_ENTRY_PARTS.items()
+        if not pattern.search(section)
+    ]
+    if _ADJUSTMENT_ENTRY_SHA.search(section):
+        gaps.append(f"{name}: '## {_ADJUSTMENTS_SECTION}' asks for a commit SHA, which a rebase or a squash changes")
+    return gaps
+
+
+class AdjustmentsSummaryTemplateTest(unittest.TestCase):
+    maxDiff = None
+
+    def test_summaries_list_the_adjustments_and_their_reviews(self) -> None:
+        """R3.8, R4.8: 004 the slice summary and the feature summary each list the adjustments made on built work.
+
+        Both templates have an `## Adjustments` section whose entry, read from the commit's note, gives what the user
+        asked, the commit's subject and never its SHA, the tasks it adjusts, the reviews that ran and why the others
+        were not needed, and the criterion it updated, and says to write "none" when there were no adjustments. The
+        slice summary also lists, with its review rounds, the reviews not repeated after a change.
+        """
+        gaps = _adjustments_section_gaps(SLICE_SUMMARY_TEMPLATE) + _adjustments_section_gaps(FEATURE_SUMMARY_TEMPLATE)
+        rounds = " ".join(read_section(SLICE_SUMMARY_TEMPLATE, "Review rounds and rethinks").lower().split())
+        if not _REVIEWS_NOT_REPEATED.search(rounds):
+            gaps.append(
+                f"{SLICE_SUMMARY_TEMPLATE.name}: '## Review rounds and rethinks' does not list the reviews not"
+                " repeated after a change"
+            )
+
+        self.assertEqual(gaps, [])
+
+
 if __name__ == "__main__":
     unittest.main()

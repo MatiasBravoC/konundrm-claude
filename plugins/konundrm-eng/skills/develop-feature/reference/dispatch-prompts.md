@@ -20,6 +20,9 @@ where [Model and effort](../SKILL.md#model-and-effort) lists them.
 - test-writer (flaky test)
 - rethinker
 - process-reviewer
+- test-writer (adjustment)
+- implementer (adjustment)
+- adjustment review
 
 ## test-writer
 
@@ -33,10 +36,23 @@ Task:
 Acceptance criteria covered:
 <EARS lines for the IDs in "Covers">
 
-Write exactly one test for this task at the path and name the task gives (a property test when
-the task type is `property`, over the domain it states). Run it. If it fails because the behavior
-is missing, return your RED report. If it already passes because the behavior exists, return a
-CHARACTERIZATION report. Do not create or edit any non-test file.
+Property tests to write too (leave this paragraph out on a `low` task, or when there is none):
+<each of the task's `Invariants` that no `property` task covers>
+
+Write the task's tests at the paths and names the task gives: the one on its `Test:` line, or
+every test of its `Tests:` list, one test per behavior (a property test when the task type is
+`property`, over the domain it states). Run them with the task's verify command. For each test,
+return a RED report if it fails because its behavior is missing, or a CHARACTERIZATION report if
+it already passes because the behavior exists. Do not create or edit any non-test file.
+```
+
+When step 1 sends one test back (it errored for another reason, passed with a RED report or does
+not assert its criterion), add this paragraph above the last one, so the tests that are ready stay
+untouched:
+
+```
+Tests already written, to leave exactly as they are: <path>::<name>, one per test
+Write or fix only: <path>::<name> — <what was wrong: the output, or the criterion it misses>
 ```
 
 ## implementer
@@ -48,12 +64,13 @@ Check command: <command>
 Task:
 <task block from tasks.md>
 
-Failing test: <path>::<name>
-RED report:
-<RED report from test-writer>
+Failing tests: <path>::<name>, one per test of the task
+RED reports:
+<RED and CHARACTERIZATION reports from test-writer, one per test>
 
-Make the failing test pass with the minimal change that fits the design, then refactor with every
-test green. Do not edit test files. Return your GREEN report.
+Make every failing test pass with the minimal change that fits the design, one test at a time and
+in the task's order: before you write a test's code, run that test and see it still fail. Then
+refactor with every test green. Do not edit test files. Return your GREEN report.
 ```
 
 For a `chore` task, replace the failing-test lines with: `No test for this task. Done when the
@@ -65,13 +82,13 @@ verify command succeeds: <command>`.
 Fix round. Feature folder: specs/<NNN-slug>/ — follow design.md
 Check command: <command>
 Task: <task block from tasks.md>
-Task test: <path>::<name> — verify command: <command>
+Task tests: <path>::<name>, one per test of the task — verify command: <command>
 
 Problems to resolve (findings, a failing property's counterexample, or the check failure),
 verbatim, with file:line:
 <items>
 
-The task's test is already green: skip your red check. Fix the problems without editing test
+The task's tests are already green: skip your red check. Fix the problems without editing test
 files. If one can only be fixed by changing a test, say so in your report instead of working
 around it. Rerun the verify and check commands and return your GREEN report.
 ```
@@ -135,20 +152,29 @@ your SECURITY REVIEW.
 
 ## re-review
 
-For the spec, code or security reviewer after a fix round. Start from that reviewer's prompt above
-and keep its lines up to the task's criteria or Security line; replace the rest with:
+For the spec, code or security reviewer after a fix round, or after any other change that
+[Reviews after a change](../SKILL.md#reviews-after-a-change) sends back to it. Start from that
+reviewer's prompt above and keep its lines up to the task's criteria or Security line; replace the
+rest with:
 
 ```
 Re-review after a fix round. Your previous findings on this task, verbatim (or "none"):
 <previous findings of this review>
 
-Fix round's reports (each file changed and what changed in it):
-<files changed and their changes, from the fix round's GREEN and RED reports>
+Reports of every fix round since this review last ran (each file changed and what changed in it):
+<files changed and their changes, from those rounds' GREEN and RED reports>
+
+What the last round changed (`git diff --stat <sha>`, against the tree marked before the round):
+<output>
+
+Change the user asked for during this task, verbatim (a criterion for this review, also on the
+task's `- Change:` line; leave this paragraph out when there is none):
+<request>
 
 Orchestrator's verification output after the fix round (verify command: 5 runs, or 1 for a
 `chore` task): <output>
 
-Reread the files the fix round changed. Check that each previous finding is resolved and that the
+Reread the files those rounds changed. Check that each previous finding is resolved and that the
 changes broke nothing. Review what changed, not the whole task. Return the same review report as
 before.
 ```
@@ -240,7 +266,79 @@ Flow record for this scope:
   `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" metrics_report.py --days <days since the scope began>`
 - User corrections: <what the user corrected or overrode, or "none">, and the slice summaries in
   specs/<NNN-slug>/summaries/
+- Adjustments, and reviews not repeated after a change: <each one, with the reviews that ran and
+  why the others did not, or "none">
 
 Propose improvements to the plugin's workflow from this record, in general terms, without the
 project's code, names or data. Do not change any file. Return your IMPROVEMENT NOTES report.
+```
+
+## test-writer (adjustment)
+
+For an [adjustment](adjustments.md), or a change the user asks for on the task in progress, whose
+request changes what the code does for some input or something a test asserts.
+
+```
+Adjustment to work already built. Feature folder: specs/<NNN-slug>/
+Check command: <command>
+
+Task it adjusts:
+<task block from tasks.md>
+
+Acceptance criteria covered, as they read now (a criterion the request changes is already edited):
+<EARS lines for the IDs in "Covers">
+
+Change the user asked for, verbatim:
+<request>
+
+Find every test that asserts what the request changes (search the test folders for the old text
+or value) and change each one to assert what the request asks for; add a test in the task's test
+file when none asserts it. Leave every other test as it is. Run the tests you changed or added:
+each must fail because the code still does what it did. Return a RED report for each one. Do not
+create or edit any non-test file.
+```
+
+## implementer (adjustment)
+
+```
+Adjustment to work already built. Feature folder: specs/<NNN-slug>/ — follow design.md
+Check command: <command>
+
+Task it adjusts:
+<task block from tasks.md>
+Verify command: <command>
+
+Change the user asked for, verbatim:
+<request>
+
+<RED reports from the test-writer | No test changes for this adjustment: the task's tests are
+green, so skip your red check and keep them green. If the request cannot be met without changing
+what the code does for some input, or without changing a test, change nothing and return
+`Status: BLOCKED` naming that behavior: its test comes first.>
+
+Make the change with the smallest edit that fits the design, and nothing the request does not ask
+for. Do not edit test files. Rerun the verify and check commands and return your GREEN report.
+```
+
+## adjustment review
+
+For the spec or code reviewer after an adjustment (the security reviewer too when the user asks
+for it). Start from that reviewer's prompt above and keep its lines up to the task's criteria;
+replace the rest with:
+
+```
+The task was reviewed and committed before. The user then asked for this change, verbatim:
+<request>
+The criteria above read as they do after this change: the request and those criteria are what the
+change must meet.
+
+Files the adjustment changed and what changed in each:
+<files changed and their changes, from the writers' reports>
+
+Orchestrator's verification output after the adjustment (the tests it changed or added: 5 runs;
+the task's verify command: 1 run): <output>
+
+Review the uncommitted changes (`git diff HEAD`, plus untracked files from
+`git status --porcelain`): they are the adjustment alone, not the whole task. Return the same
+review report as for a task.
 ```

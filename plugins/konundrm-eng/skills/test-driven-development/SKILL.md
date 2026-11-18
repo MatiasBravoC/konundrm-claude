@@ -13,9 +13,11 @@ stop between red and green is what keeps the test honest.
 ## Contract
 
 - **Receives:** one behavior to specify, either a task from `tasks.md` (with its test path, test
-  name and requirement IDs) or a request from the user.
-- **Produces:** exactly one new failing test, evidence that it fails for the right reason, and a
-  handoff report (format below). Never production code.
+  name and requirement IDs) or a request from the user. Only for the test-writer subagent, a task
+  may list several behaviors under `Tests:`.
+- **Produces:** exactly one new failing test (for the test-writer subagent on a task with a
+  `Tests:` list, one per listed behavior), evidence that each fails for the right reason, and a
+  handoff report per test (format below). Never production code.
 
 ## Workflow
 
@@ -62,6 +64,18 @@ Constrain the generators to the valid domain the spec defines; invalid inputs be
 example tests. A property is red for the right reason when the function is missing, or when the
 runner reports a counterexample that violates the rule. Put the shrunk counterexample in the
 handoff report.
+
+#### A task with several tests
+
+A task from `tasks.md` may list several tests under `Tests:`: writing-plans merges related
+low-risk behaviors into one task. Running as the **test-writer subagent** on such a task, write
+every test of that list before you stop, still one behavior per test. The implementer has not
+run yet, so each test is seen failing first, and the implementer then makes them pass one at a
+time, seeing each one red before its code. Run them with the task's verify command and return one
+RED report per test, in the task's order, or a CHARACTERIZATION report for a test that already
+passes. The property tests a dispatch adds for the task's invariants are part of that list.
+Working with the user, or on a task with a single `Test:` line, the rule does not change: one
+test, then stop.
 
 ### 2. Stop and hand off
 
@@ -125,7 +139,7 @@ red → stop → verify cycle.
 | --- | --- |
 | "I'll add a quick stub so it compiles." | The stub is implementation. Report the missing symbol instead. |
 | "This is too simple to fail, skip running it." | Run it. A test never seen failing proves nothing. |
-| "I'll write the next two tests to save a round trip." | Batching tests breaks the cycle. One test, one stop. |
+| "I'll write the next two tests to save a round trip." | Batching tests breaks the cycle. One test, one stop. Only the test-writer subagent, on a task that lists several tests, writes them in one dispatch. |
 | "The test is hard to write; I'll test the internals." | Hard to test means the design needs a seam. Say so in the handoff. |
 | "Three examples are enough for this parser." | Examples cover the cases you thought of. Add the round-trip property. |
 

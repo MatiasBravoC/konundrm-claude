@@ -1349,10 +1349,11 @@ def _questions_gaps(skill: Path) -> list[str]:
     return gaps
 
 
-# Changes the user asks for at the slice pause (R4.4). These run on the blocks of develop-feature's
-# `## Slice checkpoint` section, each rule within one sentence (_in_one_sentence) so an unrelated sentence cannot
-# satisfy it. The approval rule asks for an approval of the changes themselves, so the go-ahead sentence alone ("wait
-# for the user's go-ahead before starting the next slice") cannot satisfy it.
+# Changes the user asks for at the slice pause (R4.4, amended by 004 R4.1 and R4.3: each change is classified, an
+# adjustment is made right away and only the other changes become new tasks or a plan change). These run on the
+# blocks of develop-feature's `## Slice checkpoint` section, each rule within one sentence (_in_one_sentence) so an
+# unrelated sentence cannot satisfy it. The approval rule asks for an approval of the changes themselves, so the
+# go-ahead sentence alone ("wait for the user's go-ahead before starting the next slice") cannot satisfy it.
 _CHANGES_WHEN = re.compile(r"\b(?:when|whenever|if)\b")
 _CHANGES_ASKED = re.compile(
     r"\b(?:ask|request)\w*(?: \S+){0,3} changes\b|\bchanges\b(?: \S+){0,3} (?:asked|requested)\b"
@@ -1366,12 +1367,28 @@ _CHANGES_APPROVES = re.compile(r"\bapprov\w*")  # not _CHECKPOINT_GO_AHEAD: the 
 _CHANGES_APPROVED_ITEM = re.compile(r"\b(?:them|changes|new tasks?|plan change)\b")
 # The negation governs the verb ("never make those changes"), so a stray "no" elsewhere in the sentence does not count.
 _CHANGES_NEVER_MAKES = re.compile(r"\b(?:never|not|don't)\b(?: \S+){0,2} (?:mak|edit|chang|appl|implement|cod)\w*")
-_CHANGES_OUTSIDE = re.compile(r"\boutside\b")
+_CHANGES_CLASSIFIES = re.compile(r"\bclassif\w*")
+_CHANGES_ADJUSTMENTS_LINK = re.compile(r"\(#adjustments\)")
+_CHANGES_ADJUSTMENT = re.compile(r"\badjustments?\b")
+_CHANGES_RIGHT_AWAY = re.compile(r"\bright away\b|\bat once\b|\bimmediately\b|\bnow\b")
+_CHANGES_OTHER = re.compile(r"\b(?:the|any|every) other changes?\b")
+_CHANGES_YOURSELF = re.compile(r"\byourself\b")
 
 # What develop-feature's `## Slice checkpoint` section must say about changes asked at the pause, each in one sentence.
 _CHANGES_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
     "R4.4 when the user asks for changes at the pause": (_CHANGES_WHEN, _USER, _CHANGES_ASKED, _CHANGES_AT_THE_PAUSE),
-    "R4.4 the changes become new tasks in tasks.md": (_CHANGES_CHANGES, _CHANGES_TURNS, _CHANGES_NEW_TASKS, _TASKS_MD),
+    "004 R4.1 each change is classified as the Adjustments section says": (
+        _CHANGES_CLASSIFIES,
+        _CHANGES_ADJUSTMENTS_LINK,
+    ),
+    "004 R4.3 an adjustment is made right away": (_CHANGES_ADJUSTMENT, _CHANGES_RIGHT_AWAY),
+    "R4.4 the other changes become new tasks in tasks.md": (
+        _CHANGES_OTHER,
+        _CHANGES_CHANGES,
+        _CHANGES_TURNS,
+        _CHANGES_NEW_TASKS,
+        _TASKS_MD,
+    ),
     "R4.4 or a plan change to design.md/tasks.md": (_CHANGES_CHANGES, _CHANGES_TURNS, _PLAN_EDIT, _CHANGES_DESIGN_MD),
     "R4.4 the user approves them before the next slice starts": (
         _CHANGES_APPROVES,
@@ -1380,11 +1397,7 @@ _CHANGES_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
         _CHECKPOINT_BEFORE,
         _CHECKPOINT_NEXT_SLICE,
     ),
-    "R4.4 the changes are never made on the spot, outside the task loop": (
-        _CHANGES_NEVER_MAKES,
-        _CHANGES_OUTSIDE,
-        _TASK_LOOP,
-    ),
+    "004 R4.3 the orchestrator never makes a change itself": (_CHANGES_NEVER_MAKES, _CHANGES_YOURSELF),
 }
 
 
@@ -2120,11 +2133,12 @@ class DevelopFeatureFlowTest(unittest.TestCase):
 
         self.assertEqual(gaps, [])
 
-    def test_changes_asked_at_a_checkpoint_become_tasks(self) -> None:
+    def test_changes_asked_at_a_checkpoint_are_adjustments_or_new_tasks(self) -> None:
         """R4.4: when the user asks for changes at the slice pause, develop-feature's `## Slice checkpoint` section
-        turns them into new tasks in tasks.md or a plan change to design.md/tasks.md, which the user approves before
-        the next slice starts (an approval of the changes, not the go-ahead alone), and never makes them on the spot,
-        outside the task loop."""
+        classifies each one as its `## Adjustments` section says (004 R4.1) and makes an adjustment right away (004
+        R4.3); it turns the other changes into new tasks in tasks.md or a plan change to design.md/tasks.md, which the
+        user approves before the next slice starts (an approval of the changes, not the go-ahead alone); and the
+        orchestrator never makes a change itself."""
         gaps = _changes_gaps(DEVELOP_FEATURE_DIR / "SKILL.md")
 
         self.assertEqual(gaps, [])
@@ -2684,11 +2698,16 @@ _RE_REVIEW_PROMPT_RULES = {
 }
 
 
-# R3.4: a task is committed only once its reviews passed on its final code, so any later change is reviewed again.
+# R3.4: a task is committed only once its reviews passed, so a later change is reviewed again. Amended by 004 R3.1
+# and R3.4: the later change goes again through the reviews it concerns, not through all of them, and the task is
+# committed when no change made after a review's pass is one that review must see again.
 _COMMIT_ANY = re.compile(r"\b(?:any|every)\b")
 _COMMIT_REVIEWED_AGAIN = (re.compile(r"\breview\w*|\bsteps? 3\W{1,3}4\b"), re.compile(r"\bagain\b|\bonce more\b"))
+_COMMIT_AFTER_ITS_PASS = re.compile(r"\bafter\b(?: \S+){0,4} pass\b")
+_COMMIT_CONCERNS = re.compile(r"\bconcerns?\b")
 _COMMIT_PHASE_3_RULES = {
-    "R3.4 commits a task only when its spec, code and (on high tasks) security reviews passed on its final code": (
+    "R3.4 commits a task only when its spec, code and (on high tasks) security reviews passed, and no change made"
+    " after a review's pass is one that review must see again (004 R3.4)": (
         re.compile(r"\bcommit\w*"),
         re.compile(r"\bonly\b"),
         _REVIEWS_SPEC,
@@ -2696,12 +2715,14 @@ _COMMIT_PHASE_3_RULES = {
         _REVIEWS_SECURITY,
         _REVIEWS_HIGH,
         re.compile(r"\bpass\w*"),
-        re.compile(r"\bfinal\b"),
+        _COMMIT_AFTER_ITS_PASS,
+        re.compile(r"\bagain\b"),
     ),
-    "R3.4 reviews again any change made after the reviews, before the commit": (
+    "R3.4 sends any change made after the reviews again through the reviews it concerns (004 R3.1)": (
         _COMMIT_ANY,
         re.compile(r"\bchang\w*|\bfix\w*"),
         *_COMMIT_REVIEWED_AGAIN,
+        _COMMIT_CONCERNS,
     ),
 }
 _COMMIT_ANY_TEST = re.compile(r"\b(?:any|every)\b(?: \S+)? tests?\b")
@@ -2762,10 +2783,11 @@ class ReviewFlowTest(unittest.TestCase):
 
         self.assertEqual(gaps, [])
 
-    def test_task_commits_only_after_its_reviews_pass_on_its_final_code(self) -> None:
+    def test_task_commits_only_after_the_reviews_its_final_code_needs(self) -> None:
         """R3.4: 002 develop-feature's Phase 3 commits a task only when its spec and code reviews (and, on high tasks,
-        its security review) passed on its final code, sends any change made after the reviews through them again,
-        and has no sentence that limits that second review to the tests added after the reviews."""
+        its security review) passed and no change made after a review's pass is one that review must see again (004
+        R3.4), sends any change made after the reviews again through the reviews it concerns (004 R3.1), and has no
+        sentence that limits that second review to the tests added after the reviews."""
         phase_3 = _section_blocks(DEVELOP_FEATURE_DIR / "SKILL.md", "Phase 3: Task loop")
 
         gaps = [
@@ -3279,19 +3301,21 @@ _FLOW_NOTES_SKILLS = (
 )
 _FLOW_NOTES_SEARCHING_SKILLS = ("develop-feature", "opening-pull-requests", "reviewing-pull-requests")
 _FLOW_NOTES_REF = "--notes=refs/notes/konundrm"
-_FLOW_LINE = re.compile(r"\b(?:task|covers|rounds|escaped-gate):")
-_FLOW_SEARCH_LINE = re.compile(r"\b(?:task|covers):")
+# The last three are the lines of an adjustment's note (004 R4.6).
+_FLOW_LINE = re.compile(r"\b(?:task|covers|rounds|escaped-gate|adjusts|reviews|asked):")
+_FLOW_SEARCH_LINE = re.compile(r"\b(?:task|covers|adjusts):")
 # Where a flow line would go if it went into the commit: its body, trailers or message, or a commit that carries it.
 _FLOW_IN_THE_MESSAGE = re.compile(
     r"\bbody\b|\btrailers?\b|\bmessage\b|\bcarr(?:y|ies|ying)\b|\bcommit (?:records?|holds?|has)\b"
-    r"|\bwith (?:the|its|that|this|a)\b(?: \S+){0,4} (?:task|covers|rounds|escaped-gate): line\b"
+    r"|\bwith (?:the|its|that|this|a)\b(?: \S+){0,4} (?:task|covers|rounds|escaped-gate|adjusts|reviews|asked):"
+    r" line\b"
 )
 _FLOW_IDS_IN_THE_BODY = re.compile(r"\btask(?: and requirement)? ids?\b(?: \S+){0,2} (?:body|message)\b")
 _FLOW_IN_A_NOTE = re.compile(r"\bnotes?\b")
 # A fenced commit message: a Conventional Commits subject line, and a flow line of its own.
 _FLOW_FENCE = re.compile(r"^```[^\n]*\n(.*?)^```", re.MULTILINE | re.DOTALL)
 _FLOW_FENCE_SUBJECT = re.compile(r"^[a-z]+(?:\([^)\n]*\))?!?: \S", re.MULTILINE)
-_FLOW_FENCE_LINE = re.compile(r"^(?:Task|Covers|Rounds|Escaped-gate):", re.MULTILINE)
+_FLOW_FENCE_LINE = re.compile(r"^(?:Task|Covers|Rounds|Escaped-gate|Adjusts|Reviews|Asked):", re.MULTILINE)
 # A commit subject template in inline code, and what R6.1 keeps out of it: slices, partitions, rounds and flow IDs.
 _FLOW_SUBJECT_SPAN = re.compile(r"^\w+\([^)]*\)!?: ")
 _FLOW_SUBJECT_NAMES_THE_FLOW = re.compile(r"\b(?:slice|partition|rounds?)\b|\b[SPTRB]<[kn]>|\b[TRB]\d", re.IGNORECASE)
@@ -3319,9 +3343,10 @@ _FLOW_FALLBACK = re.compile(r"\b(?:otherwise|fall\w* back|without|lacks?|no|when
 
 
 def _flow_lines_in_messages(skill: str) -> list[str]:
-    """Return each instruction of a skill that puts a Task:, Covers:, Rounds: or Escaped-gate: line in a commit:
-    a sentence that names such a line and its body, trailers or message (unnegated, and with no note in it), a
-    sentence that puts task or requirement IDs in the body, and a fenced commit message with such a line."""
+    """Return each instruction of a skill that puts a Task:, Covers:, Rounds: or Escaped-gate: line, or an
+    adjustment's Adjusts:, Reviews: or Asked: line (004 R4.6), in a commit: a sentence that names such a line and
+    its body, trailers or message (unnegated, and with no note in it), a sentence that puts task or requirement IDs
+    in the body, and a fenced commit message with such a line."""
     path = SKILLS_DIR / skill / "SKILL.md"
     gaps = [
         f"{skill}: puts a flow line in a commit message (R6.1): {sentence.strip()}"
@@ -3348,16 +3373,16 @@ def _flow_lines_in_messages(skill: str) -> list[str]:
 
 
 def _flow_searches_without_notes(skill: str) -> list[str]:
-    """Return each search for a Task: or Covers: line in a skill that does not read the konundrm notes: inline code
-    with `--grep` on such a line, or a sentence that names `git log` and such a line, without
-    `--notes=refs/notes/konundrm` (R6.2), plus any `--grep` on a summary subject (R6.1: the summary is found by its
-    file)."""
+    """Return each search for a Task:, Covers: or Adjusts: line in a skill that does not read the konundrm notes:
+    inline code with `--grep` on such a line, or a sentence that names `git log` and such a line, without
+    `--notes=refs/notes/konundrm` (R6.2, 004 R4.8), plus any `--grep` on a summary subject (R6.1: the summary is
+    found by its file)."""
     path = SKILLS_DIR / skill / "SKILL.md"
     spans = _FLOW_INLINE_CODE.findall(path.read_text(encoding="utf-8"))
     gaps = [
         f"{skill}: searches a flow line without {_FLOW_NOTES_REF} (R6.2): `{span}`"
         for span in spans
-        if "--grep" in span and re.search(r"\b(?:Task|Covers):", span) and _FLOW_NOTES_REF not in span
+        if "--grep" in span and re.search(r"\b(?:Task|Covers|Adjusts):", span) and _FLOW_NOTES_REF not in span
     ]
     gaps += [
         f"{skill}: git log reads a flow line without {_FLOW_NOTES_REF} (R6.2): {sentence.strip()}"
@@ -3858,6 +3883,995 @@ class LivePublishingFlowTest(unittest.TestCase):
         slice's branch and lists every URL in merge order instead of asking, while a local feature still asks before
         pushing."""
         gaps = _stacked_pull_request_gaps()
+
+        self.assertEqual(gaps, [])
+
+
+# The right-sized flow (004): a task that lists several tests is built in one cycle (R2.1-R2.3, R3.9), a change made
+# after a review passed goes again only through the reviews it concerns (R3.1-R3.8), and a small change the user asks
+# for is made right away as an adjustment (R4.1-R4.11). Keywords of each rule inside one sentence of its section of
+# develop-feature's SKILL.md or of reference/adjustments.md, or inside one block of the fenced prompts of a section
+# of reference/dispatch-prompts.md, on blocks from _split_blocks (lowercased, without backticks, single-spaced; a
+# table row is one block).
+_SIZED_SKILL = DEVELOP_FEATURE_DIR / "SKILL.md"
+_SIZED_PROMPTS = DEVELOP_FEATURE_DIR / "reference" / "dispatch-prompts.md"
+_SIZED_ONE_DISPATCH = re.compile(r"\b(?:one|a single|the same) dispatch\b")
+_SIZED_SAME_DISPATCH = re.compile(r"\bsame dispatch\b")
+_SIZED_EVERY_TEST = re.compile(r"\b(?:every|each|all)\b(?: \S+){0,2} tests?\b")
+_SIZED_TESTS_LIST = re.compile(r"\btests: list\b")
+_SIZED_REPORT_PER_TEST = re.compile(r"\breports?\b(?: \S+){0,2} (?:per|for each|for every) test\b")
+_SIZED_AGAINST_ITS_REPORT = re.compile(r"\bagainst its report\b")
+_SIZED_FAILS = re.compile(r"\bfails?\b")
+_SIZED_REASON = re.compile(r"\breason\b")
+_SIZED_RED_REPORT = re.compile(r"\bred reports?\b")
+_SIZED_RED_REPORTS = re.compile(r"\bred reports\b")
+_SIZED_PASSES = re.compile(r"\bpass(?:es)?\b")
+_SIZED_SKIPS_STEP_2 = re.compile(r"\bskip\w*(?: \S+){0,2} step 2\b")
+_SIZED_THAT_TEST = re.compile(r"\bthat test\b")
+_SIZED_NEW_TEST_WRITER = re.compile(r"\bnew test-writer\b")
+_SIZED_LEAVE_AS_THEY_ARE = re.compile(r"\bleave\b(?: \S+){0,2} as they are\b")
+_SIZED_IMPLEMENTER = re.compile(r"\bimplementer\b")
+_SIZED_ONE_AT_A_TIME = re.compile(r"\bone(?: test)? at a time\b")
+_SIZED_TASKS_ORDER = re.compile(r"\btask's order\b")
+_SIZED_RED_BEFORE_ITS_CODE = re.compile(r"\bred before its code\b")
+_SIZED_STILL_FAIL = re.compile(r"\bstill fail\b")
+_SIZED_MEDIUM_OR_HIGH = re.compile(r"\bmedium or high\b")
+_SIZED_PROPERTY_TEST = re.compile(r"\bproperty tests?\b")
+_SIZED_INVARIANT = re.compile(r"\binvariants?\b")
+_SIZED_ONE_TEST_PER_BEHAVIOR = re.compile(r"\bone test per behaviou?r\b")
+_SIZED_FOR_EACH_TEST = re.compile(r"\b(?:for each|for every|per) test\b")
+_SIZED_CHARACTERIZATION_REPORT = re.compile(r"\bcharacterization report\b")
+_SIZED_EVERY_FAILING_TEST = re.compile(r"\b(?:every|each|all)\b(?: \S+){0,1} failing tests?\b")
+_SIZED_WRITE_OR_FIX_ONLY = re.compile(r"\bwrite or fix only\b")
+_SIZED_TASK_TESTS_FIELD = re.compile(r"\btask tests:")
+_SIZED_PLACEHOLDER = re.compile(r"<[^<>]+>")
+# What Phase 3 must say about a task that lists several tests, each in one sentence.
+_SIZED_PHASE_3_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R2.1 one test-writer dispatch writes every test the task lists, on its Test: line or in its Tests: list": (
+        _SIZED_ONE_DISPATCH,
+        _SIZED_EVERY_TEST,
+        _SIZED_TESTS_LIST,
+    ),
+    "R2.1 the test-writer returns a report per test": (_SIZED_REPORT_PER_TEST,),
+    "R2.2 each test is checked against its report": (_SIZED_EVERY_TEST, _SIZED_AGAINST_ITS_REPORT),
+    "R2.2 every test fails for the reason its RED report gives": (
+        _SIZED_EVERY_TEST,
+        _SIZED_FAILS,
+        _SIZED_REASON,
+        _SIZED_RED_REPORT,
+    ),
+    "R2.2 a test that does not hold goes back alone to a new test-writer, naming the tests to leave as they are": (
+        _SIZED_THAT_TEST,
+        _SIZED_NEW_TEST_WRITER,
+        _SIZED_LEAVE_AS_THEY_ARE,
+    ),
+    "R2.2 when every test of the task already passes, step 2 is skipped": (
+        _SIZED_EVERY_TEST,
+        _SIZED_PASSES,
+        _SIZED_SKIPS_STEP_2,
+    ),
+    "R2.3 the implementer gets the RED reports and makes the tests pass one at a time, in the task's order, each"
+    " one red before its code": (
+        _SIZED_IMPLEMENTER,
+        _SIZED_RED_REPORTS,
+        _SIZED_ONE_AT_A_TIME,
+        _SIZED_TASKS_ORDER,
+        _SIZED_RED_BEFORE_ITS_CODE,
+    ),
+    "R3.9 on a medium or high task the same dispatch also writes the property test of each listed invariant": (
+        _SIZED_MEDIUM_OR_HIGH,
+        _SIZED_SAME_DISPATCH,
+        _SIZED_PROPERTY_TEST,
+        _SIZED_INVARIANT,
+    ),
+}
+# (section of dispatch-prompts.md, the rule, the patterns one sentence of its fenced prompts must all match).
+_SIZED_PROMPT_RULES: tuple[tuple[str, str, tuple[re.Pattern[str], ...]], ...] = (
+    (
+        "test-writer",
+        "R2.1 every test of the task's Tests: list, one test per behavior",
+        (_SIZED_EVERY_TEST, _SIZED_TESTS_LIST, _SIZED_ONE_TEST_PER_BEHAVIOR),
+    ),
+    (
+        "test-writer",
+        "R2.2 a RED report or a CHARACTERIZATION report for each test",
+        (_SIZED_FOR_EACH_TEST, _SIZED_RED_REPORT, _SIZED_CHARACTERIZATION_REPORT),
+    ),
+    (
+        "test-writer",
+        "R3.9 the property tests to write for the task's invariants",
+        (_SIZED_PROPERTY_TEST, _SIZED_INVARIANT, _SIZED_PLACEHOLDER),
+    ),
+    (
+        "test-writer",
+        "R2.2 the tests already written, to leave as they are",
+        (_SIZED_LEAVE_AS_THEY_ARE, _SIZED_PLACEHOLDER),
+    ),
+    ("test-writer", "R2.2 the one test to write or fix", (_SIZED_WRITE_OR_FIX_ONLY, _SIZED_PLACEHOLDER)),
+    (
+        "implementer",
+        "R2.3 every failing test made to pass, one at a time and in the task's order, seen still failing before its"
+        " code",
+        (_SIZED_EVERY_FAILING_TEST, _SIZED_PASSES, _SIZED_ONE_AT_A_TIME, _SIZED_TASKS_ORDER, _SIZED_STILL_FAIL),
+    ),
+    ("implementer (fix round)", "R2.3 the task's tests, one per test", (_SIZED_TASK_TESTS_FIELD, _SIZED_PLACEHOLDER)),
+)
+
+# Reviews after a change (R3.1-R3.8).
+_AFTER_SECTION = "Reviews after a change"
+_AFTER_LINK = re.compile(r"\(#reviews-after-a-change\)")
+_AFTER_FIX_BUG_LINK = re.compile(r"\(\.\./develop-feature/skill\.md#reviews-after-a-change\)")
+_AFTER_FINDING = re.compile(r"\bfindings?\b")
+_AFTER_FIXED = re.compile(r"\bfix(?:es|ed)?\b")
+_AFTER_THAT_REVIEW = re.compile(r"\bthat review\b")
+_AFTER_ADDED_TESTS = re.compile(r"\badded tests\b")
+_AFTER_NOTHING_ELSE = re.compile(r"\bnothing else\b")
+_AFTER_TEST_THAT_WAS_THERE = re.compile(r"\btest that was there\b")
+_AFTER_WHAT_THE_CODE_DOES = re.compile(r"\bwhat the code does\b")
+_AFTER_HOW_BUILT = re.compile(r"\bhow the code is built\b")
+_AFTER_SPEC_REVIEWER = re.compile(r"\bspec[- ]review(?:er)?\b")
+_AFTER_CODE_REVIEWER = re.compile(r"\bcode[- ]review(?:er)?\b")
+_AFTER_REVIEWER = re.compile(r"\breview\w*")
+_AFTER_GATE = re.compile(r"\bgates?\b")
+_AFTER_ONLY_TEXT = re.compile(r"\bonly text\b|\btext (?:only|alone)\b")
+_AFTER_NOTHING_READS = re.compile(r"\bnothing reads\b")
+_AFTER_NONE = re.compile(r"\bnone\b")
+_AFTER_HIGH = re.compile(r"\bhigh\b")
+_AFTER_EVERY_REVIEW = re.compile(r"\b(?:every|all|each)\b(?: \S+){0,2} reviews?\b")
+_AFTER_SECURITY = re.compile(r"\bsecurity[- ]review(?:er)?\b")
+_AFTER_CANNOT_TELL = re.compile(r"\bcannot tell\b|\bdoubt\b|\bunsure\b|\bnot sure\b|\bunclear\b")
+_AFTER_BOTH_REVIEWS = re.compile(r"\bboth reviews\b")
+_AFTER_ASKS = re.compile(r"\basks?\b")
+_AFTER_WOULD_SKIP = re.compile(r"\bwould skip\b")
+_AFTER_DIFF = re.compile(r"\bdiff\b")
+_AFTER_NEVER = re.compile(r"\bnever\b|\bnot\b")
+_AFTER_WRITERS_REPORT = re.compile(r"\bwriter's report\b")
+_AFTER_GIT_ADD = re.compile(r"\bgit add -a && git write-tree\b")
+_AFTER_SHA = re.compile(r"\bsha\b")
+_AFTER_BEFORE = re.compile(r"\bbefore\b")
+_AFTER_WRITER = re.compile(r"\bwriter\b")
+_AFTER_DIFF_STAT = re.compile(r"\bgit diff --stat <sha>")
+_AFTER_THE_INDEX = re.compile(r"\bthe index\b")
+_AFTER_WITHOUT_THE_SHA = re.compile(r"\bwithout the sha\b")
+_AFTER_RED_CHECK = re.compile(r"\bred check\b")
+_AFTER_GIT_GREP = re.compile(r"\bgit grep\b")
+_AFTER_LEAVES_OUT = re.compile(r"\bleaves out a review\b")
+_AFTER_SLICE_SUMMARY = re.compile(r"\bslice summary\b")
+_AFTER_CODE_REVIEW_ALWAYS = re.compile(r"\bcode review always\b")
+_AFTER_STATUS_PORCELAIN = re.compile(r"\bgit status --porcelain\b")
+_AFTER_PRODUCT = re.compile(r"\bproduct\b")
+_AFTER_TOOL = re.compile(r"\btool\b")
+_AFTER_READS = re.compile(r"\breads\b")
+_AFTER_IS_CODE = re.compile(r"\bis code\b")
+_AFTER_NO_REVIEW = re.compile(r"\bno reviews?\b")
+_AFTER_EVERY_CHANGED_LINE = re.compile(r"\bevery changed line\b")
+_AFTER_VERIFY = re.compile(r"\bverify command\b")
+_AFTER_RERUN = re.compile(r"\brerun\b|\brun\b(?: \S+){0,3} again\b")
+_AFTER_FIRST = re.compile(r"\bfirst\b|\bbefore\b")
+_AFTER_CODE_OR_TESTS = re.compile(r"\bcode\b.*\btests?\b|\btests?\b.*\bcode\b")
+_AFTER_GREEN = re.compile(r"\bgreen\b")
+_AFTER_COMMIT = re.compile(r"\bcommit\b")
+_AFTER_FIRST_REVIEWS = re.compile(r"\bfirst reviews\b")
+_AFTER_STEP_3 = re.compile(r"\bstep 3\b")
+_AFTER_ALWAYS = re.compile(r"\balways\b")
+_AFTER_ONLY = re.compile(r"\bonly\b")
+_AFTER_REVIEWS = re.compile(r"\breviews\b")
+_AFTER_AGAIN = re.compile(r"\bagain\b")
+_AFTER_FIX_ROUND = re.compile(r"\bfix[- ]round\b")
+_AFTER_NOTE = re.compile(r"\bnote\b")
+_AFTER_DID_NOT_REPEAT = re.compile(r"\b(?:did not|didn't) repeat\b|\bnot repeated\b")
+_AFTER_BEFORE_THE_FIRST_CHANGE = re.compile(r"\bbefore the first change\b")
+_AFTER_ONE_RE_REVIEW = re.compile(r"\bone re-review\b")
+_AFTER_CHECK_FAILS = re.compile(r"\bcheck fails\b")
+_AFTER_SINCE_LAST_RAN = re.compile(r"\bsince this review last ran\b")
+_AFTER_USER_ASKED = re.compile(r"\buser asked\b")
+_AFTER_CRITERION = re.compile(r"\bcriteri(?:on|a)\b")
+_AFTER_OLD_RULE = re.compile(r"\breviews of step 3 again\b")
+# The rows of the section's table: (the rule, what the first cell must say, what the second cell must name, what
+# the second cell must not name).
+_AFTER_TABLE_RULES: tuple[
+    tuple[str, tuple[re.Pattern[str], ...], tuple[re.Pattern[str], ...], tuple[re.Pattern[str], ...]], ...
+] = (
+    (
+        "R3.1 a change that fixed a review's finding goes back to that review",
+        (_AFTER_FIXED, _AFTER_FINDING),
+        (_AFTER_THAT_REVIEW,),
+        (),
+    ),
+    (
+        "R3.1 a change that only added tests goes to the spec review alone",
+        (_AFTER_ADDED_TESTS, _AFTER_NOTHING_ELSE),
+        (_AFTER_SPEC_REVIEWER,),
+        (_AFTER_CODE_REVIEWER,),
+    ),
+    (
+        "R3.1 a change to a test that was there, or to what the code does, goes to the spec review and the code review",
+        (_AFTER_TEST_THAT_WAS_THERE, _AFTER_WHAT_THE_CODE_DOES),
+        (_AFTER_SPEC_REVIEWER, _AFTER_CODE_REVIEWER),
+        (),
+    ),
+    (
+        "R3.1 a change to how the code is built, or to what configures a gate, goes to the code review alone",
+        (_AFTER_HOW_BUILT, _AFTER_GATE),
+        (_AFTER_CODE_REVIEWER,),
+        (_AFTER_SPEC_REVIEWER,),
+    ),
+    (
+        "R3.1 a change to text that nothing reads repeats no review",
+        (_AFTER_ONLY_TEXT, _AFTER_NOTHING_READS),
+        (_AFTER_NONE,),
+        (_AFTER_REVIEWER,),
+    ),
+    (
+        "R3.2 anything on a high task repeats every review, the security review included",
+        (_AFTER_HIGH,),
+        (_AFTER_EVERY_REVIEW, _AFTER_SECURITY),
+        (),
+    ),
+)
+# What the `## Reviews after a change` section must say around its table, each in one sentence.
+_AFTER_SECTION_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R3.7 the reviews are decided from the change's own diff, never from the writer's report": (
+        _AFTER_DIFF,
+        _AFTER_NEVER,
+        _AFTER_WRITERS_REPORT,
+    ),
+    "R3.7 inside a task the tree is marked with git add -A && git write-tree right before the change's first"
+    " writer runs, and its SHA kept": (_AFTER_GIT_ADD, _AFTER_BEFORE, _AFTER_WRITER, _AFTER_SHA),
+    "R3.7 the change alone is git diff --stat <sha> plus the untracked files git status --porcelain lists": (
+        _AFTER_DIFF_STAT,
+        _AFTER_STATUS_PORCELAIN,
+    ),
+    "R3.7 the diff is compared with that tree, never with the index": (_AFTER_NEVER, _AFTER_THE_INDEX),
+    "R3.7 without the SHA both reviews run": (_AFTER_WITHOUT_THE_SHA, _AFTER_BOTH_REVIEWS),
+    "R3.1 a message's old wording is searched for before it counts as text that nothing reads": (
+        _AFTER_GIT_GREP,
+        _AFTER_NOTHING_READS,
+    ),
+    "R3.1 the fix of a red check always gets the code review again": (
+        _AFTER_RED_CHECK,
+        _AFTER_ALWAYS,
+        _AFTER_CODE_REVIEWER,
+        _AFTER_AGAIN,
+    ),
+    "R3.8 each review the rule leaves out is noted, with what the change touched, for the slice summary": (
+        _AFTER_LEAVES_OUT,
+        _AFTER_NOTE,
+        _AFTER_SLICE_SUMMARY,
+    ),
+    "R3.1 a file the product, a tool or a test reads is code, whatever its extension": (
+        _AFTER_PRODUCT,
+        _AFTER_TOOL,
+        _AFTER_READS,
+        _AFTER_IS_CODE,
+    ),
+    "R3.1 the row with no review holds only when every changed line is that kind of text": (
+        _AFTER_NO_REVIEW,
+        _AFTER_ONLY,
+        _AFTER_EVERY_CHANGED_LINE,
+    ),
+    "R3.3 when the row is not clear, both reviews run": (_AFTER_CANNOT_TELL, _AFTER_BOTH_REVIEWS),
+    "R3.3 a review the user asks for runs even when the table would skip it": (_USER, _AFTER_ASKS, _AFTER_WOULD_SKIP),
+    "R3.5 the verify command reruns first when code or tests changed": (
+        _AFTER_VERIFY,
+        _AFTER_RERUN,
+        _AFTER_FIRST,
+        _AFTER_CODE_OR_TESTS,
+    ),
+    "R3.5 the gate still needs the check green before the commit": (_CHECK, _AFTER_GREEN, _AFTER_COMMIT),
+    "R3.1 a task's first reviews always run, all of them, in step 3": (
+        _AFTER_FIRST_REVIEWS,
+        _AFTER_STEP_3,
+        _AFTER_ALWAYS,
+    ),
+}
+# What Phase 3 must say to send its later changes through that section, each in one sentence.
+_AFTER_PHASE_3_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R3.7 the task is marked with git add -A && git write-tree before its fix round": (
+        _AFTER_GIT_ADD,
+        _AFTER_FIX_ROUND,
+    ),
+    "R3.1 after a fix round only the reviews the section names run again": (
+        _AFTER_FIX_ROUND,
+        _AFTER_ONLY,
+        _AFTER_REVIEWS,
+        _AFTER_AGAIN,
+        _AFTER_LINK,
+    ),
+    "R3.7 the task is marked the same way before the first change of the verification by risk": (
+        _AFTER_GIT_ADD,
+        _AFTER_BEFORE_THE_FIRST_CHANGE,
+    ),
+    "R3.9 the changes of the verification by risk go again, in one re-review, through the reviews the section names": (
+        _COMMIT_ANY,
+        _CHANGED,
+        _AFTER_ONE_RE_REVIEW,
+        _AFTER_REVIEWS,
+        _AFTER_AGAIN,
+        _AFTER_LINK,
+    ),
+    "R3.1 the fix of a red check is marked the same way and goes through the reviews the section names, the code"
+    " review always among them": (
+        _AFTER_GIT_ADD,
+        _AFTER_CHECK_FAILS,
+        _AFTER_REVIEWS,
+        _AFTER_LINK,
+        _AFTER_CODE_REVIEW_ALWAYS,
+    ),
+}
+# What the `## re-review` prompt and the process-reviewer prompt must carry, each in one block of the fenced prompt.
+_AFTER_PROMPT_RULES: tuple[tuple[str, str, tuple[re.Pattern[str], ...]], ...] = (
+    (
+        "re-review",
+        "R3.7 the reports of every fix round since this review last ran",
+        (_AFTER_FIX_ROUND, _AFTER_SINCE_LAST_RAN, _SIZED_PLACEHOLDER),
+    ),
+    ("re-review", "R3.7 what the last round changed, from git diff --stat", (_AFTER_DIFF_STAT, _SIZED_PLACEHOLDER)),
+    (
+        "re-review",
+        "R4.10 a change the user asked for during the task, as a criterion for the review",
+        (_AFTER_USER_ASKED, _AFTER_CRITERION, _SIZED_PLACEHOLDER),
+    ),
+    (
+        "process-reviewer",
+        "R3.8 the adjustments and the reviews not repeated after a change",
+        (_AFTER_DID_NOT_REPEAT, _SIZED_PLACEHOLDER),
+    ),
+)
+
+# Adjustments (R4.1-R4.11): what counts as one and who makes it is in SKILL.md's `## Adjustments`; the procedure is
+# in reference/adjustments.md.
+_ADJUST_SECTION = "Adjustments"
+_ADJUST_REFERENCE = DEVELOP_FEATURE_DIR / "reference" / "adjustments.md"
+_ADJUST_PROMPTS = ("test-writer (adjustment)", "implementer (adjustment)", "adjustment review")
+_ADJUST_LINK = re.compile(r"\(#adjustments\)")
+_ADJUST_REFERENCE_LINK = re.compile(r"\(reference/adjustments\.md\)")
+_ADJUST_REVIEWS_LINK = re.compile(r"\(\.\./skill\.md#reviews-after-a-change\)")
+_ADJUST_CLASSIFIES = re.compile(r"\bclassif\w*")
+_ADJUST_BEFORE = re.compile(r"\bbefore\b")
+_ADJUST_TOUCHING = re.compile(r"\btouch\w*|\bchang\w*|\bedit\w*")
+_ADJUST_PAUSE = re.compile(r"\bpause\b")
+_ADJUST_DONE = re.compile(r"\bdone\b")
+_ADJUST_PLAN_CHANGE = re.compile(r"\bplan change\b")
+_ADJUST_CRITERION = re.compile(r"\bacceptance criteri(?:on|a)\b")
+_ADJUST_A_CRITERION = re.compile(r"\bcriteri(?:on|a)\b")
+_ADJUST_ADDS_OR_REMOVES = re.compile(r"\badds?\b.*\bremoves?\b|\bremoves?\b.*\badds?\b")
+_ADJUST_DESIGN = re.compile(r"\bdesign\b")
+_ADJUST_INTERFACE = re.compile(r"\binterface\b")
+_ADJUST_DEPENDENCY = re.compile(r"\bdependency\b")
+_ADJUST_FILE_A_HIGH_TASK_LISTS = re.compile(r"\bfile a high task lists\b")
+_ADJUST_HIGH_ROW = re.compile(r"\bhigh row\b")
+_ADJUST_FILE_NO_TASK_LISTS = re.compile(r"\bfile no task\b(?: \S+){0,3} lists\b")
+_ADJUST_FIFTY_LINES = re.compile(r"(?<![\d,.])50(?![\d,])(?: \S+){0,2} lines\b")
+_ADJUST_NEW_TASKS = re.compile(r"\bnew tasks?\b")
+_ADJUST_WRITING_PLANS = re.compile(r"\bwriting-plans\b")
+_ADJUST_CONSOLIDATION = re.compile(r"\bconsolidat\w*")
+_ADJUST_APPROVES = re.compile(r"\bapprov\w*")
+_ADJUST_CANNOT_TELL = re.compile(r"\bcannot tell\b|\bdoubt\b|\bunsure\b|\bnot sure\b|\bunclear\b")
+_ADJUST_ADJUSTMENT = re.compile(r"\badjustments?\b")
+_ADJUST_REQUEST = re.compile(r"\brequest\b")
+_ADJUST_APPROVAL = re.compile(r"\bapproval\b")
+_ADJUST_DEFECT = re.compile(r"\bdefect\b")
+_ADJUST_TYPED_FIX = re.compile(r"\btype (?:its commit|it) fix\b")
+_ADJUST_ESCAPED_GATE = re.compile(r"\bescaped-gate:")
+_ADJUST_NOTE = re.compile(r"\bnote\b")
+_ADJUST_TASK_IN_PROGRESS = re.compile(r"\btask in progress\b")
+_ADJUST_BEFORE_ITS_COMMIT = re.compile(r"\bbefore its commit\b")
+_ADJUST_JOINS_THAT_TASK = re.compile(r"\bjoins that task\b")
+_ADJUST_CHANGE_LINE = re.compile(r"- change: <")
+_ADJUST_ADJUSTMENT_PROMPTS = re.compile(r"\badjustment prompts\b")
+_ADJUST_RE_REVIEW_PROMPT = re.compile(r"\bre-review prompt\b")
+_ADJUST_HANDED_OVER = re.compile(r"\bhanded the feature over\b")
+_ADJUST_MAKES_NONE = re.compile(r"\bmakes none\b")
+_ADJUST_REOPENS = re.compile(r"\breopens\b")
+_ADJUST_APPROVED = re.compile(r"\bapproved\b")
+_ADJUST_TASK_LINE = re.compile(r"\btask: line\b")
+_ADJUST_LOG_PER_FILE = re.compile(r"\bgit log --notes=refs/notes/konundrm\b.* -- <file>")
+_ADJUST_FIX_ROUND = re.compile(r"\bfix[- ]round\b")
+_ADJUST_ONE_MORE_CRITERION = re.compile(r"\bone more criterion\b")
+_ADJUST_REQUIREMENTS_MD = re.compile(r"\brequirements\.md\b")
+_ADJUST_NOT_A_FAILED_REVIEW = re.compile(r"\bnot a failed review\b")
+_ADJUST_ONLY = re.compile(r"\bonly\b")
+_ADJUST_MAIN_SESSION = re.compile(r"\bmain session\b")
+_ADJUST_CLEAN_POINT = re.compile(r"\bclean point\b")
+_ADJUST_PARTITION_SESSION = re.compile(r"\bpartition session\b")
+_ADJUST_BLOCKED = re.compile(r"\bblocked:")
+_ADJUST_WAVE = re.compile(r"\bwave\b")
+_ADJUST_HOLD = re.compile(r"\bhold\b|\bwait\b")
+_ADJUST_STATUS_DONE = re.compile(r"\bstatus: done\b")
+_ADJUST_PHASE_4 = re.compile(r"\bphase 4\b")
+_ADJUST_NOT_AGAIN = re.compile(r"\bnot\b(?: \S+){0,2} again\b")
+_ADJUST_USER_ASKS = re.compile(r"\buser asks\b")
+_ADJUST_NEVER_STARTS_OVER = re.compile(r"\bnever start\b(?: \S+){0,3} over\b")
+_ADJUST_SUMMARY_SECTION = re.compile(r"## adjustments\b")
+_ADJUST_FINAL_SLICE = re.compile(r"\b(?:final|last) slice\b")
+_ADJUST_AFTER_THIS_REPORT = re.compile(r"\bafter this report\b")
+_ADJUST_TEST_WRITER = re.compile(r"\btest-writer\b")
+_ADJUST_WHAT_THE_CODE_DOES = re.compile(r"\bwhat the code does\b")
+_ADJUST_MUST_FAIL = re.compile(r"\bmust fail\b")
+_ADJUST_BEFORE_ANY_DISPATCH = re.compile(r"\bbefore any dispatch\b")
+_ADJUST_ADDED_RENAMED_REMOVED = re.compile(r"\badded, renamed or removed\b")
+_ADJUST_NO_CODE = re.compile(r"\bno code\b")
+_ADJUST_NO_TEST = re.compile(r"\bno tests?\b")
+_ADJUST_YOURSELF = re.compile(r"\byourself\b")
+_ADJUST_DOCUMENTS = re.compile(r"\bdocuments\b")
+_ADJUST_PROSE = re.compile(r"\bprose\b")
+_ADJUST_NOTHING_LOADS = re.compile(r"\bnothing loads\b")
+_ADJUST_FIVE_TIMES = re.compile(r"\bfive times\b")
+_ADJUST_CHANGED_OR_ADDED = re.compile(r"\bchanged or added\b")
+_ADJUST_ONCE = re.compile(r"\bonce\b")
+_ADJUST_VERIFY = re.compile(r"\bverify command\b")
+_ADJUST_DIFF = re.compile(r"\bdiff\b")
+_ADJUST_REVIEWS = re.compile(r"\breviews\b")
+_ADJUST_GATE = re.compile(r"\bgate\b")
+_ADJUST_COMMIT = re.compile(r"\bcommit\b")
+_ADJUST_COMMITTING_CHANGES = re.compile(r"\bcommitting-changes\b")
+_ADJUST_LIVE = re.compile(r"\bpublish: live\b")
+_ADJUST_PUSH = re.compile(r"\bpush\b")
+_ADJUST_PULL_REQUESTS_OPEN = re.compile(r"\bpull requests\b(?: \S+){0,2} open\b")
+_ADJUST_ASK_BEFORE_PUSHING = re.compile(r"\bask before pushing\b")
+_ADJUST_TELLS = re.compile(r"\btell\b|\breport\b|\bsay\b")
+_ADJUST_RAN = re.compile(r"\bran\b")
+_ADJUST_NOT_NEEDED = re.compile(r"\b(?:did not|didn't|does not|not) need\w*")
+_ADJUST_OLD = re.compile(r"\bold\b")
+_ADJUST_NEW = re.compile(r"\bnew\b")
+_ADJUST_NOT_COMMITTED = re.compile(r"\b(?:do not|don't|never|not) commit\b|\bwithout committing\b")
+_ADJUST_STASH_PUSH = re.compile(r"\bgit stash push\b")
+_ADJUST_STASH_LIST = re.compile(r"\bgit stash list --grep=")
+_ADJUST_STASH_FORMAT = re.compile(r"--format=%h\b")
+_ADJUST_STASH_APPLY = re.compile(r"\bgit stash apply <sha>")
+_ADJUST_KEEP = re.compile(r"\bkeep\b")
+_ADJUST_BOTH_REVIEWS = re.compile(r"\bboth reviews\b")
+_ADJUST_STILL_FAILS = re.compile(r"\bstill fails\b")
+_ADJUST_NOT_AN_ADJUSTMENT = re.compile(r"\bnot an adjustment\b")
+_ADJUST_NEVER = re.compile(r"\bnever\b")
+_ADJUST_RETHINK = re.compile(r"\brethink\b")
+_ADJUST_NEXT_SUMMARY = re.compile(r"\bnext summary\b")
+_ADJUST_DO_NOT_EDIT = re.compile(r"\b(?:do not|don't|never) edit\b")
+_ADJUST_SUMMARY = re.compile(r"\bsummary\b")
+_ADJUST_NEXT_SLICE = re.compile(r"\bnext slice\b")
+_ADJUST_NEXT_SLICES_BRANCH = re.compile(r"\bnext slice's branch\b")
+_ADJUST_SUMMARY_MD = re.compile(r"\bsummary\.md\b")
+_ADJUST_DOCS_COMMIT = re.compile(r"\bdocs commit\b")
+_ADJUST_GIT_LOG = re.compile(r"\bgit log\b")
+_ADJUST_NOTES_REF = re.compile(r"--notes=refs/notes/konundrm\b")
+_ADJUST_GREP = re.compile(r"--grep '\^adjusts:'")
+_ADJUST_NOTES_ADD = re.compile(r"\bgit notes --ref[= ]refs/notes/konundrm add\b")
+_ADJUST_ADD_AND_COMMIT = re.compile(r"\bgit add -a && git commit\b")
+_ADJUST_NOTE_LINES = (re.compile(r"\badjusts:"), re.compile(r"\breviews:"), re.compile(r"\basked:"))
+_ADJUST_FIX_TYPE = re.compile(r"\bfix\b")
+_ADJUST_NEVER_AMEND = re.compile(r"\bnever amend\b")
+_ADJUST_ONCE_PER_ADJUSTMENT = re.compile(r"\bonce per adjustment\b")
+_ADJUST_REQUEST_PLACEHOLDER = re.compile(r"<request>")
+_ADJUST_OUTPUT_FIELD = (re.compile(r"\borchestrator'?s?\b"), re.compile(r"\bverif\w*"), re.compile(r"<[^<>]+>"))
+_ADJUST_EVERY_TEST_THAT_ASSERTS = re.compile(r"\bevery test that asserts\b")
+_ADJUST_EACH_MUST_FAIL = re.compile(r"\beach must fail\b")
+_ADJUST_STATUS_BLOCKED = re.compile(r"\bstatus: blocked\b")
+_ADJUST_MUST_MEET = re.compile(r"\bmust meet\b")
+# What the `## Adjustments` section of SKILL.md must say, each in one sentence.
+_ADJUST_SECTION_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R4.1 a change asked during the build, at a pause or once the feature is done is classified before anything is"
+    " touched": (_ADJUST_CLASSIFIES, _ADJUST_BEFORE, _ADJUST_TOUCHING, _ADJUST_PAUSE, _ADJUST_DONE),
+    "R4.2 a plan change when it adds or removes an acceptance criterion": (
+        _ADJUST_PLAN_CHANGE,
+        _ADJUST_ADDS_OR_REMOVES,
+        _ADJUST_CRITERION,
+    ),
+    "R4.2 a plan change when it changes the design, a public interface or a dependency": (
+        _ADJUST_DESIGN,
+        _ADJUST_INTERFACE,
+        _ADJUST_DEPENDENCY,
+    ),
+    "R4.2 a plan change when it touches a file a high task lists, or anything the High row of the Standards names": (
+        _ADJUST_FILE_A_HIGH_TASK_LISTS,
+        _ADJUST_HIGH_ROW,
+    ),
+    "R4.2 a plan change when it changes code in a file no task of the feature lists": (_ADJUST_FILE_NO_TASK_LISTS,),
+    "R4.2 a plan change when it is expected to take more than about 50 changed lines": (_ADJUST_FIFTY_LINES,),
+    "R4.2, R1.9 a plan change becomes new tasks, written as writing-plans writes them with its consolidation, that"
+    " the user approves and the task loop builds": (
+        _ADJUST_NEW_TASKS,
+        _TASKS_MD,
+        _ADJUST_WRITING_PLANS,
+        _ADJUST_CONSOLIDATION,
+        _USER,
+        _ADJUST_APPROVES,
+        _TASK_LOOP,
+    ),
+    "R4.2 when it is not clear which of the two a request is, it is a plan change": (
+        _ADJUST_CANNOT_TELL,
+        _ADJUST_PLAN_CHANGE,
+    ),
+    "R4.3 the request is the adjustment's approval, and reference/adjustments.md says how it is made": (
+        _ADJUST_REQUEST,
+        _ADJUST_APPROVAL,
+        _ADJUST_REFERENCE_LINK,
+    ),
+    "R4.6 a request that reports a defect is typed fix, with the Escaped-gate: line in its note": (
+        _ADJUST_DEFECT,
+        _ADJUST_TYPED_FIX,
+        _ADJUST_ESCAPED_GATE,
+        _ADJUST_NOTE,
+    ),
+    "R4.10 a change asked on the task in progress, before its commit, is classified the same way": (
+        _ADJUST_TASK_IN_PROGRESS,
+        _ADJUST_BEFORE_ITS_COMMIT,
+        _ADJUST_CLASSIFIES,
+    ),
+    "R4.10 anything else joins that task": (_ADJUST_JOINS_THAT_TASK,),
+    "R4.10 the criterion is edited in requirements.md first, and the request is recorded under the task in tasks.md"
+    " as a Change: line, one more criterion for every later dispatch and review": (
+        _ADJUST_REQUIREMENTS_MD,
+        _TASKS_MD,
+        _ADJUST_CHANGE_LINE,
+        _ADJUST_ONE_MORE_CRITERION,
+    ),
+    "R4.10 the request goes to the task's writers with the adjustment prompts, and the test-writer's test must fail"
+    " first": (_ADJUST_ADJUSTMENT_PROMPTS, _ADJUST_TEST_WRITER, _ADJUST_MUST_FAIL),
+    "R4.10 once step 3 has run, the reviews that Reviews after a change names run again with the re-review prompt": (
+        _AFTER_LINK,
+        _ADJUST_RE_REVIEW_PROMPT,
+    ),
+    "R4.10 it is not a failed review": (_ADJUST_NOT_A_FAILED_REVIEW,),
+    "R4.11 only the feature's main session makes adjustments, at the next clean point": (
+        _ADJUST_ONLY,
+        _ADJUST_MAIN_SESSION,
+        _ADJUST_CLEAN_POINT,
+    ),
+    "R4.11 a session that has already handed the feature over makes none": (
+        _ADJUST_HANDED_OVER,
+        _ADJUST_MAKES_NONE,
+    ),
+    "R4.11 a partition session makes none and stops with a BLOCKED: line": (
+        _ADJUST_PARTITION_SESSION,
+        _ADJUST_BLOCKED,
+    ),
+    "R4.11 during a parallel wave the adjustment is held": (_ADJUST_WAVE, _ADJUST_HOLD, _ADJUST_ADJUSTMENT),
+}
+# What the other sections of SKILL.md must say to send a change the user asks for to `## Adjustments`:
+# (section, the rule, the patterns one of its sentences must all match).
+_ADJUST_POINTER_RULES: tuple[tuple[str, str, tuple[re.Pattern[str], ...]], ...] = (
+    (
+        "Phase 0: Prepare",
+        "R4.11 a resumed feature that is already Done does not run Phase 4 again: the change goes through Adjustments",
+        (_ADJUST_STATUS_DONE, _ADJUST_PHASE_4, _ADJUST_NOT_AGAIN, _ADJUST_LINK),
+    ),
+    (
+        "Phase 0: Prepare",
+        "R4.2 a plan change on a finished feature reopens it: its documents go back to Approved",
+        (_ADJUST_PLAN_CHANGE, _ADJUST_REOPENS, _ADJUST_APPROVED),
+    ),
+    (
+        "Phase 0: Prepare",
+        "R4.11 a partition session stops with a BLOCKED: line that quotes the request",
+        (_ADJUST_USER_ASKS, _ADJUST_LINK, _ADJUST_BLOCKED, _ADJUST_REQUEST),
+    ),
+    (
+        "Phase 3: Task loop",
+        "R4.1 a change the user asks for during the build goes through Adjustments, never by starting a task over",
+        (_ADJUST_USER_ASKS, _ADJUST_LINK, _ADJUST_NEVER_STARTS_OVER),
+    ),
+    (
+        "Slice checkpoint",
+        "R3.8 the summary lists the reviews that were not repeated after a change",
+        (_ADJUST_REVIEWS, _AFTER_DID_NOT_REPEAT),
+    ),
+    (
+        "Phase 4: Finish",
+        "R1.9 the new tasks for the gaps are written as writing-plans writes them, with its consolidation",
+        (_ADJUST_NEW_TASKS, _ADJUST_WRITING_PLANS, _ADJUST_CONSOLIDATION),
+    ),
+    (
+        "Phase 4: Finish",
+        "R4.8 the feature summary lists the adjustments made after the final slice's summary, from their notes",
+        (_ADJUST_SUMMARY_SECTION, _ADJUST_FINAL_SLICE, _ADJUST_NOTE),
+    ),
+    (
+        "Phase 4: Finish",
+        "R4.1 a change asked after the final report goes through Adjustments",
+        (_ADJUST_AFTER_THIS_REPORT, _ADJUST_LINK),
+    ),
+)
+# What reference/adjustments.md must say, each in one sentence.
+_ADJUST_REFERENCE_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R4.7 a criterion the request changes is edited in requirements.md before any dispatch": (
+        _ADJUST_A_CRITERION,
+        _ADJUST_REQUIREMENTS_MD,
+        _ADJUST_BEFORE_ANY_DISPATCH,
+    ),
+    "R4.3 the test-writer goes first when the request changes what the code does, and its tests must fail": (
+        _ADJUST_TEST_WRITER,
+        _ADJUST_WHAT_THE_CODE_DOES,
+        _ADJUST_MUST_FAIL,
+    ),
+    "R4.7 a test added, renamed or removed updates the task's lines in tasks.md": (
+        _ADJUST_ADDED_RENAMED_REMOVED,
+        _TASKS_MD,
+    ),
+    "R4.3 the orchestrator writes no code and no test itself": (_ADJUST_NO_CODE, _ADJUST_NO_TEST, _ADJUST_YOURSELF),
+    "R4.3 it edits directly only the feature's documents and prose that nothing loads, runs or tests": (
+        _ADJUST_ONLY,
+        _ADJUST_DOCUMENTS,
+        _ADJUST_PROSE,
+        _ADJUST_NOTHING_LOADS,
+    ),
+    "R4.4 the tests it changed or added run five times, and the verify command of each task it adjusts once": (
+        _ADJUST_FIVE_TIMES,
+        _ADJUST_CHANGED_OR_ADDED,
+        _ADJUST_ONCE,
+        _ADJUST_VERIFY,
+    ),
+    "R4.4 the reviews come from its diff, as Reviews after a change names them": (
+        _ADJUST_DIFF,
+        _ADJUST_REVIEWS,
+        _ADJUST_REVIEWS_LINK,
+    ),
+    "R4.4, R4.6 the gate comes before its own commit, which committing-changes makes with its note": (
+        _ADJUST_GATE,
+        _ADJUST_COMMIT,
+        _ADJUST_COMMITTING_CHANGES,
+        _ADJUST_NOTE,
+    ),
+    "R4.9 with Publish: live the commit is pushed": (_ADJUST_LIVE, _ADJUST_PUSH),
+    "R4.9 in a local build whose pull requests are already open, it asks before pushing": (
+        _ADJUST_PULL_REQUESTS_OPEN,
+        _ADJUST_ASK_BEFORE_PUSHING,
+    ),
+    "R4.7, R4.8 the user is told which reviews ran, which ones the change did not need, and an edited criterion"
+    " with its old and new wording": (
+        _ADJUST_TELLS,
+        _USER,
+        _ADJUST_REVIEWS,
+        _ADJUST_RAN,
+        _ADJUST_NOT_NEEDED,
+        _ADJUST_A_CRITERION,
+        _ADJUST_OLD,
+        _ADJUST_NEW,
+    ),
+    "R4.5 a diff that shows a plan change is not committed": (_ADJUST_PLAN_CHANGE, _ADJUST_NOT_COMMITTED),
+    "R4.5 git log with the notes, per changed file, prints the Task: line of every task whose commit changed it": (
+        _ADJUST_LOG_PER_FILE,
+        _ADJUST_TASK_LINE,
+    ),
+    "R4.5 it is set aside with git stash push and the plan change is proposed": (
+        _ADJUST_STASH_PUSH,
+        _ADJUST_PLAN_CHANGE,
+    ),
+    "R4.5 the user recovers it by its message, with a SHA": (
+        _ADJUST_STASH_LIST,
+        _ADJUST_STASH_FORMAT,
+        _ADJUST_STASH_APPLY,
+    ),
+    "R4.5 an adjustment that only grew past about 50 lines is kept and gets both reviews": (
+        _ADJUST_FIFTY_LINES,
+        _ADJUST_KEEP,
+        _ADJUST_BOTH_REVIEWS,
+    ),
+    "R4.5 when a review still fails after the fix round, it was not an adjustment": (
+        _ADJUST_STILL_FAILS,
+        _ADJUST_FIX_ROUND,
+        _ADJUST_NOT_AN_ADJUSTMENT,
+    ),
+    "R4.5 an adjustment never goes to Rethink": (_ADJUST_ADJUSTMENT, _ADJUST_NEVER, _ADJUST_RETHINK),
+    "R4.8 the next summary that is written lists the adjustment from its note": (_ADJUST_NOTE, _ADJUST_NEXT_SUMMARY),
+    "R4.8 no summary is edited in the adjustment's own commit": (
+        _ADJUST_DO_NOT_EDIT,
+        _ADJUST_SUMMARY,
+        _ADJUST_COMMIT,
+    ),
+    "R4.9 an adjustment made at a slice's pause belongs to the next slice": (_ADJUST_PAUSE, _ADJUST_NEXT_SLICE),
+    "R4.9 with Publish: live the next slice's branch is cut and pushed first": (
+        _ADJUST_LIVE,
+        _ADJUST_NEXT_SLICES_BRANCH,
+    ),
+    "R4.8 once the feature is done its entries go to summary.md in one docs commit": (
+        _ADJUST_SUMMARY_MD,
+        _ADJUST_DOCS_COMMIT,
+    ),
+}
+# (section of dispatch-prompts.md, the rule, the patterns one block of its fenced prompt must all match).
+_ADJUST_PROMPT_RULES: tuple[tuple[str, str, tuple[re.Pattern[str], ...]], ...] = (
+    (
+        "test-writer (adjustment)",
+        "R4.3 every test that asserts what the request changes is changed, and each must fail",
+        (_ADJUST_EVERY_TEST_THAT_ASSERTS, _ADJUST_EACH_MUST_FAIL),
+    ),
+    (
+        "implementer (adjustment)",
+        "R4.3 without a test change, a request that changes what the code does comes back Status: BLOCKED",
+        (_ADJUST_WHAT_THE_CODE_DOES, _ADJUST_STATUS_BLOCKED),
+    ),
+    (
+        "adjustment review",
+        "R4.4 the request and the criteria as they read after the change are what it must meet",
+        (_ADJUST_REQUEST, _ADJUST_A_CRITERION, _ADJUST_MUST_MEET),
+    ),
+)
+# What committing-changes' `### Inside develop-feature` must say about an adjustment's commit, each in one sentence.
+_ADJUST_COMMITTING_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R4.6 the skill is called once per task and once per adjustment": (_ADJUST_ONCE_PER_ADJUSTMENT,),
+    "R4.6 the commit is typed fix only for a defect, with the Escaped-gate: line in its note": (
+        _ADJUST_FIX_TYPE,
+        _ADJUST_ONLY,
+        _ADJUST_DEFECT,
+        _ADJUST_ESCAPED_GATE,
+        _ADJUST_NOTE,
+    ),
+    "R4.6 the commit is never amended, because its note would stay on the old one": (
+        _ADJUST_NEVER_AMEND,
+        _ADJUST_NOTE,
+    ),
+}
+
+
+def _sized_prompt_blocks(heading: str) -> list[str]:
+    """Return the blocks of the fenced prompts of a `## <heading>` section of dispatch-prompts.md, or [] without it."""
+    section = read_section(_SIZED_PROMPTS, heading)
+    return _split_blocks("\n".join(re.findall(r"```\w*\n(.*?)```", section, re.DOTALL)).splitlines())
+
+
+def _sized_rule_gaps(where: str, blocks: list[str], rules: dict[str, tuple[re.Pattern[str], ...]]) -> list[str]:
+    """Return `<where> lacks: <rule>` for each rule whose patterns share no sentence of the blocks."""
+    return [
+        f"{where} lacks: {rule}"
+        for rule, patterns in rules.items()
+        if not any(_in_one_sentence(block, *patterns) for block in blocks)
+    ]
+
+
+def _sized_prompt_gaps(rules: tuple[tuple[str, str, tuple[re.Pattern[str], ...]], ...]) -> list[str]:
+    """Return one message per rule whose patterns share no block of the fenced prompts of its section."""
+    return [
+        f"dispatch-prompts.md ## {heading} prompt lacks: {rule}"
+        for heading, rule, patterns in rules
+        if not any(all(pattern.search(block) for pattern in patterns) for block in _sized_prompt_blocks(heading))
+    ]
+
+
+def _after_table_rows() -> list[tuple[str, str]]:
+    """Return the two cells of each row of the table of `## Reviews after a change`, without its header row."""
+    rows = []
+    for block in _section_blocks(_SIZED_SKILL, _AFTER_SECTION):
+        cells = [cell.strip() for cell in block.strip("|").split("|")]
+        if block.startswith("|") and len(cells) == 2 and not set(cells[0]) <= set("-: "):
+            rows.append((cells[0], cells[1]))
+    return rows[1:]
+
+
+def _after_table_gaps() -> list[str]:
+    """Return one message per rule no row of the table states: what the change did, in its first cell, with the
+    reviews that run again, in its second cell, and none of the reviews that rule keeps out."""
+    rows = _after_table_rows()
+    return [
+        f"develop-feature ## {_AFTER_SECTION} table lacks: {rule}"
+        for rule, what, reviews, kept_out in _AFTER_TABLE_RULES
+        if not any(
+            all(pattern.search(first) for pattern in what)
+            and all(pattern.search(second) for pattern in reviews)
+            and not any(pattern.search(second) for pattern in kept_out)
+            for first, second in rows
+        )
+    ]
+
+
+def _after_fix_bug_gaps() -> list[str]:
+    """Return what fix-bug's step 6 lacks of R3.6: only the reviews its fix round concerns run again, through a link
+    to develop-feature's section, and a high-risk fix repeats them all."""
+    fix_bug = _subsection_blocks(_section_blocks(SKILLS_DIR / "fix-bug" / "SKILL.md", "Workflow"), "### 6. reviews")
+    gaps = []
+    if not any(
+        _in_one_sentence(block, _AFTER_ONLY, _AFTER_REVIEWS, _AFTER_AGAIN, _AFTER_FIX_BUG_LINK) for block in fix_bug
+    ):
+        gaps.append("fix-bug step 6 lacks (R3.6): only the reviews the fix round concerns run again, with a link")
+    if not any(_in_one_sentence(block, _AFTER_HIGH, re.compile(r"\ball\b|\bevery\b")) for block in fix_bug):
+        gaps.append("fix-bug step 6 lacks (R3.6): a high-risk fix repeats every review")
+    return gaps
+
+
+def _adjustment_prompt_gaps() -> list[str]:
+    """Return what dispatch-prompts.md lacks of the three adjustment prompts: its Contents entry, the section with a
+    fenced prompt that carries the user's request and, for the review, the orchestrator's verification output."""
+    contents = read_section(_SIZED_PROMPTS, "Contents").lower().splitlines()
+    gaps = []
+    for heading in _ADJUST_PROMPTS:
+        if not any(line.lstrip().startswith(("-", "*")) and heading in line for line in contents):
+            gaps.append(f"dispatch-prompts.md: the Contents list does not name the {heading} prompt")
+        prompt = _sized_prompt_blocks(heading)
+        if not prompt:
+            gaps.append(f"dispatch-prompts.md: no `## {heading}` section with a fenced prompt")
+        elif not any(_ADJUST_REQUEST_PLACEHOLDER.search(block) for block in prompt):
+            gaps.append(f"dispatch-prompts.md: the {heading} prompt does not carry the user's request (<request>)")
+    review = _sized_prompt_blocks(_ADJUST_PROMPTS[-1])
+    if review and not any(all(p.search(block) for p in _ADJUST_OUTPUT_FIELD) for block in review):
+        gaps.append("dispatch-prompts.md: the adjustment review prompt has no field for the orchestrator's output")
+    return gaps + _sized_prompt_gaps(_ADJUST_PROMPT_RULES)
+
+
+def _adjustment_commit_gaps() -> list[str]:
+    """Return what committing-changes' `### Inside develop-feature` lacks for an adjustment's commit (R4.6): the
+    command that stages, commits and writes its note with the `Adjusts:`, `Reviews:` and `Asked:` lines, and the
+    rules about its type and about amending it."""
+    committing = _subsection_blocks(
+        _section_blocks(SKILLS_DIR / "committing-changes" / "SKILL.md", "Workflow"), "### inside develop-feature"
+    )
+    gaps = []
+    if not any(
+        _ADJUST_ADD_AND_COMMIT.search(block)
+        and _ADJUST_NOTES_ADD.search(block)
+        and all(line.search(block) for line in _ADJUST_NOTE_LINES)
+        for block in committing
+    ):
+        gaps.append(
+            "committing-changes ### Inside develop-feature lacks (R4.6): the adjustment's commit and note in one"
+            " command, git add -A && git commit ... && git notes --ref=refs/notes/konundrm add, with its Adjusts:,"
+            " Reviews: and Asked: lines"
+        )
+    where = "committing-changes ### Inside develop-feature"
+    return gaps + _sized_rule_gaps(where, committing, _ADJUST_COMMITTING_RULES)
+
+
+class RightSizedFlowTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_a_task_that_lists_several_tests_is_built_in_one_cycle(self) -> None:
+        """R2.1, R2.2, R2.3, R3.9: 004 develop-feature builds a task that lists several tests in a single cycle.
+
+        Phase 3 says, each part in one sentence: one test-writer dispatch writes every test the task lists (the one
+        on its `Test:` line or each one of its `Tests:` list) and returns a report per test; each test is checked
+        against its report; every test fails for the reason its RED report gives; a test that does not hold goes
+        back alone to a new test-writer, naming the tests to leave as they are; when every test of the task already
+        passes, step 2 is skipped; the implementer gets the RED reports and makes the tests pass one at a time, in
+        the task's order, each one red before its code; and on a medium or high task the same dispatch also writes
+        the property test of each listed invariant. The `## test-writer` prompts ask for every test of the `Tests:`
+        list, one test per behavior, with a RED or a CHARACTERIZATION report for each test, the property tests of
+        the task's invariants and, for a test sent back, the tests to leave as they are and the one to write or fix.
+        The `## implementer` prompt makes every failing test pass one at a time, in the task's order, seeing each
+        still fail before its code, and the fix-round prompt names the task's tests.
+        """
+        phase_3 = _section_blocks(_SIZED_SKILL, "Phase 3: Task loop")
+
+        gaps = _sized_rule_gaps("develop-feature Phase 3", phase_3, _SIZED_PHASE_3_RULES)
+        gaps += [
+            f"dispatch-prompts.md ## {heading} prompt lacks: {rule}"
+            for heading, rule, patterns in _SIZED_PROMPT_RULES
+            if not any(_in_one_sentence(block, *patterns) for block in _sized_prompt_blocks(heading))
+        ]
+
+        self.assertEqual(gaps, [])
+
+    def test_only_the_reviews_a_change_concerns_run_again(self) -> None:
+        """R3.1, R3.2, R3.3, R3.5, R3.6, R3.7, R3.8, R3.9: 004 after a change, only the reviews it concerns run again.
+
+        The table of develop-feature's `## Reviews after a change` has a row for each case: a change that fixed a
+        review's finding goes back to that review; one that only added tests goes to the spec review alone; a change
+        to a test that was there or to what the code does goes to the spec review and the code review; a change to
+        how the code is built, or to what configures a gate, goes to the
+        code review alone; a change to text that nothing reads repeats no review; and anything on a high task
+        repeats every review, the security review included. Around it the section says, each part in one sentence:
+        the reviews are decided from the change's own diff, never from the writer's report; inside a task the tree
+        is marked with `git add -A && git write-tree` right before the change's first writer runs and its SHA kept,
+        so the change alone is `git diff --stat <sha>` plus the untracked files of `git status --porcelain`,
+        compared with that tree and never with the index, and without the SHA both reviews run; a file the product,
+        a tool or a test reads is code, and a message's old wording is searched for before it counts as text that
+        nothing reads; the row with no review holds only when every changed line is that kind of text; both reviews
+        run when the row is not clear, and so does a review the user asks for; the fix of a red check always gets
+        the code review again; the verify command reruns first when code or tests changed and the check stays green
+        before the commit; each review the rule leaves out is noted for the slice summary; and a task's first
+        reviews always run in step 3. Phase 3 marks the task before a fix round, before the first change of the
+        verification by risk and before the fix of a red check, and sends each of those changes through that section
+        (the verification by risk in one re-review, the fix of a red check always with the code review); no Phase 3
+        sentence still runs "the reviews of step 3 again". The re-review prompt carries the reports of every fix
+        round since that review last ran, what the last round changed and a change the user asked for; the
+        process-reviewer prompt carries the reviews not repeated. fix-bug's step 6 follows the same section and
+        repeats every review on a high-risk fix.
+        """
+        phase_3 = _section_blocks(_SIZED_SKILL, "Phase 3: Task loop")
+        section = _section_blocks(_SIZED_SKILL, _AFTER_SECTION)
+
+        gaps = [] if section else [f"develop-feature: SKILL.md has no '## {_AFTER_SECTION}' section"]
+        gaps += _after_table_gaps()
+        gaps += _sized_rule_gaps(f"develop-feature ## {_AFTER_SECTION}", section, _AFTER_SECTION_RULES)
+        gaps += _sized_rule_gaps("develop-feature Phase 3", phase_3, _AFTER_PHASE_3_RULES)
+        gaps += [
+            f"develop-feature Phase 3 still runs every review again after a change: {sentence.strip()}"
+            for block in phase_3
+            for sentence in _sentences(block)
+            if _AFTER_OLD_RULE.search(sentence)
+        ]
+        gaps += _sized_prompt_gaps(_AFTER_PROMPT_RULES)
+        gaps += _after_fix_bug_gaps()
+
+        self.assertEqual(gaps, [])
+
+    def test_a_change_the_user_asks_for_is_classified_first(self) -> None:
+        """R4.1, R4.2, R4.3, R4.6, R4.10, R4.11: 004 a change the user asks for is an adjustment or a plan change.
+
+        develop-feature's `## Adjustments` section says, each part in one sentence: a change asked during the build,
+        at a pause or once the feature is done is classified before anything is touched; it is a plan change when it
+        adds or removes an acceptance criterion, changes the design, a public interface or a dependency, touches a
+        file a high task lists or anything the High row of the Standards names, changes code in a file no task of
+        the feature lists, or is expected to take more than about 50 changed lines, and then becomes new tasks,
+        written as writing-plans writes them with its consolidation, that the user approves and the task loop builds;
+        a request that is not clearly one of the two is a plan change; for an adjustment the request is the approval
+        and reference/adjustments.md says how it is made; a request that reports a defect is typed `fix`, with the
+        `Escaped-gate:` line in its note; a change asked on the task in progress, before its commit, is classified
+        the same way and joins that task: its criterion is edited in requirements.md first, the request is recorded
+        under the task in tasks.md as a `- Change:` line, one more criterion for every later dispatch and review, it
+        goes to the task's writers with the adjustment prompts (the test-writer's test must fail first), the
+        reviews `## Reviews after a change` names run again with the re-review prompt, and it is not a failed
+        review; only the feature's main session makes adjustments, at the next clean point, a session that has
+        handed the feature over makes none, a partition session stops with a `BLOCKED:` line and a parallel wave
+        holds the adjustment. Phase 0 sends a change on a feature that is already Done to that section without
+        running Phase 4 again, reopens the feature for a plan change (its documents go back to Approved) and makes
+        a partition session stop with `BLOCKED:`; Phase 3 sends a change asked during the build there instead of
+        starting a task over; the Slice
+        checkpoint lists the reviews not repeated; and Phase 4 writes the new tasks of its gaps as writing-plans
+        does, lists in the feature summary the adjustments made after the final slice's summary and sends a change
+        asked after its report to that section.
+        """
+        section = _section_blocks(_SIZED_SKILL, _ADJUST_SECTION)
+
+        gaps = [] if section else [f"develop-feature: SKILL.md has no '## {_ADJUST_SECTION}' section"]
+        gaps += _sized_rule_gaps(f"develop-feature ## {_ADJUST_SECTION}", section, _ADJUST_SECTION_RULES)
+        gaps += [
+            f"develop-feature ## {heading} lacks: {rule}"
+            for heading, rule, patterns in _ADJUST_POINTER_RULES
+            if not any(_in_one_sentence(block, *patterns) for block in _section_blocks(_SIZED_SKILL, heading))
+        ]
+
+        self.assertEqual(gaps, [])
+
+    def test_an_adjustment_follows_its_procedure(self) -> None:
+        """R4.3, R4.4, R4.5, R4.7, R4.8, R4.9: 004 reference/adjustments.md is how an adjustment is made.
+
+        It says, each part in one sentence: a criterion the request changes is edited in requirements.md before any
+        dispatch; the test-writer goes first when the request changes what the code does, and its tests must fail; a
+        test added, renamed or removed updates the task's lines in tasks.md; the orchestrator writes no code and no
+        test itself and edits directly only the feature's documents and prose that nothing loads, runs or tests; the
+        tests the adjustment changed or added run five times and the verify command of each task it adjusts once;
+        the reviews come from its diff, as `## Reviews after a change` names them; the gate comes before its own
+        commit, which committing-changes makes with its note; with `Publish: live` the commit is pushed, and a local
+        build whose pull requests are open asks first; the user is told which reviews ran, which ones the change did
+        not need, and an edited criterion with its old and new wording; a diff that shows a plan change is not
+        committed but set aside with `git stash push`, recoverable by its message, and `git log` with the notes
+        prints, per changed file, the `Task:` line of every task whose commit changed it; one that only grew past
+        about 50
+        lines is kept and gets both reviews; a review that still fails after the fix round means it was not an
+        adjustment, which never goes to Rethink; the next summary that is written lists it from its note, so no
+        summary is edited in its own commit; one made at a slice's pause belongs to the next slice, whose branch is
+        cut and pushed first with `Publish: live`; and once the feature is done its entries go to summary.md in one
+        docs commit.
+        """
+        gaps = [] if _ADJUST_REFERENCE.is_file() else ["develop-feature: reference/adjustments.md does not exist"]
+        blocks = _blocks(_ADJUST_REFERENCE) if _ADJUST_REFERENCE.is_file() else []
+        gaps += _sized_rule_gaps("develop-feature reference/adjustments.md", blocks, _ADJUST_REFERENCE_RULES)
+
+        self.assertEqual(gaps, [])
+
+    def test_an_adjustment_has_its_prompts_its_commit_and_its_note(self) -> None:
+        """R4.3, R4.4, R4.6, R4.8, R4.10: 004 an adjustment has its own prompts, commit and note.
+
+        dispatch-prompts.md has the three adjustment prompts, each named in its Contents and carrying the user's
+        request: the test-writer's changes every test that asserts what the request changes, and each must fail; the
+        implementer's, without a test change, returns `Status: BLOCKED` when the request changes what the code does;
+        the review's says the request and the criteria as they read after the change are what it must meet, and has
+        a field for the orchestrator's output. committing-changes' develop-feature mode is called once per task and
+        once per adjustment, stages, commits and writes the adjustment's note in one command
+        (`git add -A && git commit ... && git notes
+        --ref=refs/notes/konundrm add` with its `Adjusts:`, `Reviews:` and `Asked:` lines), types the commit `fix`
+        only for a defect, with the `Escaped-gate:` line in its note, and never amends it. The Slice checkpoint
+        lists the adjustments with `git log --notes=refs/notes/konundrm --grep '^Adjusts:'`.
+        """
+        checkpoint = _section_blocks(_SIZED_SKILL, "Slice checkpoint")
+
+        listing = (_ADJUST_GIT_LOG, _ADJUST_NOTES_REF, _ADJUST_GREP)
+
+        gaps = _adjustment_prompt_gaps() + _adjustment_commit_gaps()
+        if not any(all(pattern.search(block) for pattern in listing) for block in checkpoint):
+            gaps.append(
+                "develop-feature Slice checkpoint lacks (R4.8): listing the slice's adjustments with"
+                " git log --notes=refs/notes/konundrm --grep '^Adjusts:'"
+            )
 
         self.assertEqual(gaps, [])
 

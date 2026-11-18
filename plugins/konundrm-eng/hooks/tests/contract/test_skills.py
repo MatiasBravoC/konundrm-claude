@@ -1271,7 +1271,7 @@ _TEXT_DESCRIPTION = re.compile(r"\bdescriptions?\b")
 # What the pull request text must never hold, outside backticks and link targets (R5.4).
 _TEXT_FLOW_DATA = re.compile(
     r"\b[rtsb]\d+(?:\.\d+)?\b|\b[rtsb]<[nk]>|\bslices?\b|\bpartitions?\b|\btask ids?\b|\breview rounds?\b"
-    r"|\b(?:task|covers|rounds|escaped-gate):"
+    r"|\b(?:task|covers|rounds|escaped-gate|adjusts|asked):"  # `reviews:` is ordinary prose in a description
 )
 _TEXT_ROLE_NAMES = re.compile("|".join(rf"\b{re.escape(agent.stem)}\b" for agent in sorted(AGENTS_DIR.glob("*.md"))))
 # The sections the four fixed ones replace, named anywhere in step 4's prose.
@@ -1478,17 +1478,27 @@ def _text_invariant_gaps() -> list[str]:
 
 
 def _text_release_gaps() -> list[str]:
-    """Return what plugin.json, the CHANGELOG and the README lack to release this feature as 0.8.0 (R9.2)."""
+    """Return what plugin.json, the CHANGELOG and the README lack for this feature, released as 0.8.0 (R9.2).
+
+    Later releases put newer entries above its entry, so plugin.json's version only has to be 0.8.0 or later and the
+    [0.8.0] entry is looked up by its version, never by its position.
+    """
     gaps = []
     version = json.loads(_TEXT_MANIFEST.read_text(encoding="utf-8"))["version"]
-    if version != _TEXT_RELEASE:
-        gaps.append(f"plugin.json: version is {version}, not {_TEXT_RELEASE}")
+    numbers = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    released = tuple(int(part) for part in _TEXT_RELEASE.split("."))
+    if numbers is None or tuple(int(part) for part in numbers.groups()) < released:
+        gaps.append(f"plugin.json: version is {version}, older than {_TEXT_RELEASE}")
     heading = next(
-        (line[3:] for line in _TEXT_CHANGELOG.read_text(encoding="utf-8").splitlines() if line.startswith("## [")),
-        "",
+        (
+            line[3:]
+            for line in _TEXT_CHANGELOG.read_text(encoding="utf-8").splitlines()
+            if line.startswith(f"## [{_TEXT_RELEASE}]")
+        ),
+        None,
     )
-    if not heading.startswith(f"[{_TEXT_RELEASE}]"):
-        gaps.append(f"CHANGELOG.md: the first entry is {heading!r}, not [{_TEXT_RELEASE}]")
+    if heading is None:
+        gaps.append(f"CHANGELOG.md: there is no [{_TEXT_RELEASE}] entry")
     else:
         entry = " ".join(read_section(_TEXT_CHANGELOG, heading).lower().replace("`", "").split())
         gaps += [
@@ -1524,9 +1534,10 @@ class PullRequestTextTest(unittest.TestCase):
         pull_request_template.md, are exactly What and why, Where to look first (risk in plain words; for high risk
         the files and lines and what they guard), How it was verified (check, each behavior with its test, end-to-end
         evidence) and Not in this pull request, with no flow data or role name. Invariant: step 5 still waits for an
-        explicit yes before pushing and Rules still never merge or approve. plugin.json is 0.8.0, the CHANGELOG's
-        first entry is [0.8.0] and names live publishing, refs/notes/konundrm and the pull request text, and the
-        README's `### Cómo avanza una feature` describes publishing "en vivo" and refs/notes/konundrm.
+        explicit yes before pushing and Rules still never merge or approve. plugin.json is 0.8.0 or later, the
+        CHANGELOG's [0.8.0] entry, looked up by its version, names live publishing, refs/notes/konundrm and the pull
+        request text, and the README's `### Cómo avanza una feature` describes publishing "en vivo" and
+        refs/notes/konundrm.
         """
         template_lines = _TEXT_TEMPLATE.read_text(encoding="utf-8").splitlines()
 
@@ -1538,6 +1549,400 @@ class PullRequestTextTest(unittest.TestCase):
         )
 
         self.assertEqual(gaps, [], "\n".join(gaps))
+
+
+# Consolidation (004 R1.1-R1.7): writing-plans lists one behavior per task, then merges related low-risk tasks into one
+# consolidated task that keeps one test per behavior. Keywords of each rule inside one sentence of a block of its
+# SKILL.md (lowercased, without backticks, single-spaced): outside its Self-review and Approval steps, inside its
+# Self-review step, or inside its Approval step. The template shows such a task, and still parses.
+_MERGE = re.compile(r"\bmerg\w*|\bconsolidat\w*")
+_MERGE_CONSOLIDATED_TASK = re.compile(r"\bconsolidated tasks?\b")
+_MERGE_FIRST = re.compile(r"\bfirst\b")
+_MERGE_BEHAVIOR = re.compile(r"\bbehaviou?rs?\b")
+_MERGE_OWN_LINE = re.compile(r"\b(?:its|their) own lines?\b")
+_MERGE_SINGLE_CYCLE = re.compile(r"\b(?:a single|one) cycle\b")
+_MERGE_NEXT_TO_EACH_OTHER = re.compile(r"\bnext to each other\b")
+_MERGE_DEPENDENCY_FORBIDS = re.compile(r"\bdependenc(?:y|ies)\b")
+_MERGE_LOW_RISK = re.compile(r"\blow[- ]risk\b")
+_MERGE_ALL = re.compile(r"\b(?:all|every|each)\b")
+_MERGE_MEDIUM = re.compile(r"\bmedium\b")
+_MERGE_HIGH = re.compile(r"\bhigh\b")
+_MERGE_NEVER = re.compile(r"\bnever\b")
+_MERGE_OWNERSHIP_ROW = re.compile(r"\brow\b(?: \S+){0,4} ownership table\b")
+_MERGE_SAME_RULE = re.compile(r"\bsame rule\b")
+_MERGE_VERIFY_COMMAND = re.compile(r"\bverify command\b")
+_MERGE_ONE_LOGICAL_CHANGE = re.compile(r"\bone logical change\b")
+_MERGE_TITLE = re.compile(r"\btitle\b")
+_MERGE_FIVE = re.compile(r"\b(?:at most|no more than|up to) (?:five|5)\b")
+_MERGE_LINES_300 = re.compile(r"(?<![\d,.])300(?![\d,])(?: \S+){0,2} lines\b")
+_MERGE_PULL_REQUEST_BUDGET = re.compile(r"\bpull request budget\b")
+_MERGE_PROPERTY = re.compile(r"\bproperty\b")
+_MERGE_DECISION_FIELD = re.compile(r"\bdecision:")
+_MERGE_DEPENDENCY = re.compile(r"\bdependency\b")
+_MERGE_CHORE = re.compile(r"\bchore\b")
+_MERGE_ONE_TITLE = re.compile(r"\bone title\b")
+_MERGE_AGAIN = re.compile(r"\bmerge again\b")
+_MERGE_SHOWN_AGAIN = re.compile(r"\bshow\w*(?: \S+){0,3} again\b")
+_MERGE_LOW_RISK_TASK = re.compile(r"\blow[- ]risk task\b")
+_MERGE_DOUBT = re.compile(r"\bdoubt\b|\bunsure\b")
+_MERGE_APART = re.compile(r"\bapart\b|\bseparate\b")
+_MERGE_ONE_ID = re.compile(r"\bone id\b")
+_MERGE_COVERS = re.compile(r"\bcovers\b")
+_MERGE_HEADER_LINE = re.compile(r"\bconsolidation:")
+_MERGE_USER = re.compile(r"\buser\b")
+_MERGE_LOW = re.compile(r"\blow\b")
+_MERGE_LOW_AND_MEDIUM = re.compile(r"\blow and medium\b")
+_MERGE_ONE_RULE = re.compile(r"\bone rule\b")
+_MERGE_THREE = re.compile(r"\b(?:at most|no more than|up to) (?:three|3)\b")
+_MERGE_NONE = re.compile(r"\bnone\b")
+_MERGE_ONE_TASK_PER_LINE = re.compile(r"\bone task per line\b")
+_MERGE_BEHAVIORS_IN_TASKS = re.compile(r"\bbehaviou?rs in <m> tasks\b")
+_MERGE_STAYED_APART = re.compile(r"\bstay(?:ed|s)? apart\b")
+_MERGE_PLAN_CHANGE = re.compile(r"\bplan change\b")
+_MERGE_SAME_WAY = re.compile(r"\bsame way\b")
+_MERGE_RENUMBERED = re.compile(r"\brenumber\w*")
+_MERGE_WHY = re.compile(r"\bwhy\b")
+_MERGE_CHANGE = re.compile(r"\bchange\b")
+_MERGE_TEMPLATE_HEADER = re.compile(r"(?m)^- \*\*Consolidation:\*\* low\b")
+_MERGE_TESTS_LIST = re.compile(r"\btests: list\b")
+_MERGE_TESTS_FIELD = re.compile(r"\btests:")
+_MERGE_ONE_TEST_PER_BEHAVIOR = re.compile(r"\bone test per behaviou?r\b")
+_MERGE_CRITERION = re.compile(r"\bcriteri(?:on|a)\b")
+_MERGE_CONDITIONS = re.compile(r"\bconditions?\b")
+_MERGE_OWN_TEST = re.compile(r"\b(?:its|their) own tests?\b")
+_MERGE_NUMBER_OF_BEHAVIORS = re.compile(r"\b(?:number of|how many) behaviou?rs\b")
+_MERGE_TOTALS = re.compile(r"\btotals?\b")
+_MERGE_TASKS = re.compile(r"\btasks\b")
+_MERGE_OLD_RULE = re.compile(r"\bone behaviou?r, one test, one commit\b")
+# What writing-plans/SKILL.md must say outside its Self-review and Approval steps, each in one sentence.
+_MERGE_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R1.1 every behavior is first listed on its own line": (_MERGE_FIRST, _MERGE_BEHAVIOR, _MERGE_OWN_LINE),
+    "R1.1 the lines that belong together merge into one consolidated task, built in a single cycle": (
+        _MERGE,
+        _MERGE_CONSOLIDATED_TASK,
+        _MERGE_SINGLE_CYCLE,
+    ),
+    "R1.1 lines merge even when they are not next to each other, unless a dependency forbids it": (
+        _MERGE_NEXT_TO_EACH_OTHER,
+        _MERGE_DEPENDENCY_FORBIDS,
+    ),
+    "R1.2, R1.3 every merged line is low risk, and a medium or high line is never merged": (
+        _MERGE_LOW_RISK,
+        _MERGE_ALL,
+        _MERGE_MEDIUM,
+        _MERGE_HIGH,
+        _MERGE_NEVER,
+        _MERGE,
+    ),
+    "R1.2 one owner: one row of the design's ownership table or one rule applied to several owners, with one verify"
+    " command": (_MERGE_OWNERSHIP_ROW, _MERGE_SAME_RULE, _MERGE_VERIFY_COMMAND),
+    "R1.2 they form one logical change that one title states": (_MERGE_ONE_LOGICAL_CHANGE, _MERGE_TITLE),
+    "R1.2 at most five behaviors and about 300 changed lines, never more than the pull request budget": (
+        _MERGE_FIVE,
+        _MERGE_BEHAVIOR,
+        _MERGE_LINES_300,
+        _MERGE_PULL_REQUEST_BUDGET,
+    ),
+    "R1.3 a property line, one that needs a Decision: field and one that adds a dependency are never merged": (
+        _MERGE_NEVER,
+        _MERGE,
+        _MERGE_PROPERTY,
+        _MERGE_DECISION_FIELD,
+        _MERGE_DEPENDENCY,
+    ),
+    "R1.5 chore lines merge with each other when one title states them, or into the low-risk task they prepare": (
+        _MERGE_CHORE,
+        _MERGE,
+        _MERGE_ONE_TITLE,
+        _MERGE_LOW_RISK_TASK,
+    ),
+    "R1.3 when a condition is in doubt the lines stay apart": (_MERGE_DOUBT, _MERGE_APART),
+    "R1.4 a consolidated task is one task: one ID, every criterion in Covers and a Tests: list with one test per"
+    " behavior and its criterion": (
+        _MERGE_CONSOLIDATED_TASK,
+        _MERGE_ONE_ID,
+        _MERGE_COVERS,
+        _MERGE_TESTS_LIST,
+        _MERGE_ONE_TEST_PER_BEHAVIOR,
+        _MERGE_CRITERION,
+    ),
+    "R1.8 the header's Consolidation: line holds the user's choice, low unless the user says otherwise": (
+        _MERGE_HEADER_LINE,
+        _MERGE_USER,
+        _MERGE_LOW,
+    ),
+    "R1.8 with low and medium, medium lines that are cases of one rule merge too, at most three per task": (
+        _MERGE_LOW_AND_MEDIUM,
+        _MERGE_MEDIUM,
+        _MERGE_ONE_RULE,
+        _MERGE_THREE,
+    ),
+    "R1.8 with none, one task per line": (_MERGE_NONE, _MERGE_ONE_TASK_PER_LINE),
+    "R1.7 the totals go on the header's Consolidation: line": (_MERGE_HEADER_LINE, _MERGE_BEHAVIORS_IN_TASKS),
+    "R1.9 tasks a plan change adds to a plan that is being built are consolidated the same way, and no task is"
+    " renumbered": (_MERGE_PLAN_CHANGE, _MERGE, _MERGE_SAME_WAY, _MERGE_RENUMBERED),
+}
+_MERGE_SELF_REVIEW_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R1.6 every consolidated task meets the conditions of the consolidation step": (
+        _MERGE_CONSOLIDATED_TASK,
+        _MERGE_CONDITIONS,
+    ),
+    "R1.6 every behavior of a consolidated task has its own test": (
+        _MERGE_BEHAVIOR,
+        _MERGE_CONSOLIDATED_TASK,
+        _MERGE_OWN_TEST,
+    ),
+}
+_MERGE_APPROVAL_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
+    "R1.7 the number of behaviors of each consolidated task": (_MERGE_NUMBER_OF_BEHAVIORS, _MERGE_CONSOLIDATED_TASK),
+    "R1.7 the plan's totals of behaviors and tasks": (_MERGE_TOTALS, _MERGE_BEHAVIOR, _MERGE_TASKS),
+    "R1.7 why the other tasks stayed apart": (_MERGE_WHY, _MERGE_STAYED_APART),
+    "R1.8 the user may change the Consolidation: line": (_MERGE_USER, _MERGE_CHANGE, _MERGE_HEADER_LINE),
+    "R1.8 when the user changes it, the plan is merged again and shown again": (_MERGE_AGAIN, _MERGE_SHOWN_AGAIN),
+}
+
+
+def _merge_rule_gaps(where: str, blocks: list[str], rules: dict[str, tuple[re.Pattern[str], ...]]) -> list[str]:
+    """Return one message per rule whose patterns share no sentence of the blocks."""
+    return [
+        f"{where} does not say: {rule}"
+        for rule, patterns in rules.items()
+        if not any(_in_one_sentence(block, *patterns) for block in blocks)
+    ]
+
+
+def _merge_skill_gaps(skill_text: str) -> list[str]:
+    """Return the consolidation rules (R1.1-R1.7) a writing-plans SKILL.md text lacks, one message per rule."""
+    lines = skill_text.splitlines()
+    review_lines, without_review = _split_self_review(lines)
+    approval_lines, body_lines = _split_approval(without_review)
+    body = _split_blocks(body_lines)
+    gaps = _merge_rule_gaps("writing-plans", body, _MERGE_RULES)
+    gaps += _merge_rule_gaps("writing-plans Self-review", _split_blocks(review_lines), _MERGE_SELF_REVIEW_RULES)
+    gaps += _merge_rule_gaps("writing-plans Approval", _split_blocks(approval_lines), _MERGE_APPROVAL_RULES)
+    gaps += [
+        f"writing-plans still makes every task one behavior, one test, one commit: {block!r}"
+        for block in _split_blocks(lines)
+        if _MERGE_OLD_RULE.search(block)
+    ]
+    return gaps
+
+
+def _template_tests_lists(template_text: str) -> dict[str, int]:
+    """Return, by task ID, how many tests each template task lists under a `- Tests:` line.
+
+    The tests are the `- ` items indented deeper than that line. HTML comments are dropped first, as `read_tasks`
+    drops them, so only a real task's list counts.
+    """
+    counts: dict[str, int] = {}
+    task_id = None
+    list_indent = None
+    for line in _HTML_COMMENT.sub("", template_text).splitlines():
+        indent = len(line) - len(line.lstrip())
+        if list_indent is not None and line.strip() and indent > list_indent and task_id is not None:
+            counts[task_id] += 1 if line.lstrip().startswith("- ") else 0
+            continue
+        list_indent = None
+        match = _TEMPLATE_TASK_LINE.match(line)
+        if match or line.startswith("#"):
+            task_id = match.group("id") if match else None
+        elif task_id is not None and indent and line.strip() == "- Tests:":
+            counts[task_id] = 0
+            list_indent = indent
+    return counts
+
+
+def _merge_template_gaps(template_text: str, parsed_tasks: dict[str, Any]) -> list[str]:
+    """Return what the tasks.md template lacks for R1.4 and R1.8: a consolidated task that still parses, its
+    comment, and the header's `- **Consolidation:** low` line.
+
+    Args:
+        template_text: The template's text.
+        parsed_tasks: The template's tasks as `read_tasks` returns them, by task ID.
+    """
+    consolidated = [task for task, tests in _template_tests_lists(template_text).items() if tests >= 2]
+    if not consolidated:
+        return ["no task lists two or more tests under a `- Tests:` line"]
+    gaps = [] if _MERGE_TEMPLATE_HEADER.search(template_text) else ["no `- **Consolidation:** low` header line"]
+    gaps += [
+        f"{task}, which lists several tests, does not parse as a `Risk: low` task with two or more Covers IDs, a"
+        " slice and a partition"
+        for task in consolidated
+        if task not in parsed_tasks
+        or parsed_tasks[task].risk != "low"
+        or len(parsed_tasks[task].covers) < 2
+        or None in (parsed_tasks[task].slice, parsed_tasks[task].partition)
+    ]
+    comments = " ".join(" ".join(_HTML_COMMENT.findall(template_text)).replace("`", "").lower().split())
+    if not all(p.search(comments) for p in (_MERGE_FIVE, _MERGE_LOW_RISK, _MERGE_BEHAVIOR, _MERGE_TESTS_FIELD)):
+        gaps.append(
+            "no comment says a task holds one behavior, or up to five related low-risk behaviors with their tests"
+            " under `Tests:`"
+        )
+    return gaps
+
+
+class WritingPlansConsolidationTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_writing_plans_consolidates_related_low_risk_tasks(self) -> None:
+        """R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9: 004 writing-plans merges related low-risk behaviors.
+
+        Outside its Self-review and Approval steps, writing-plans says, each part in one sentence: every behavior is
+        first listed on its own line; the lines that belong together merge into one consolidated task, built in a
+        single cycle, even when they are not next to each other and unless a dependency forbids it; every merged line
+        is low risk and a medium or high line is never merged; they have one owner (one row of the design's ownership
+        table, or the same rule applied to several owners) with one verify command, form one logical change under one
+        title, and stay within five behaviors and about 300 changed lines, never more than the pull request budget; a
+        property line, one that needs a `- Decision:` field and one that adds a dependency are never merged; chore
+        lines merge with each other when one title states them, or into the low-risk task they prepare; a doubt keeps
+        the
+        lines apart; a consolidated task is one task (one ID, every criterion in `Covers`) whose `Tests:` list holds
+        one test per behavior with its criterion; the header's `Consolidation:` line holds the user's choice (`low`
+        unless the user says otherwise; `low and medium` also merges medium lines that are cases of one rule, at most
+        three per task; `none` writes one task per line) and the totals; and the tasks a plan change adds to a plan
+        that is already being built are consolidated the same way, with no task renumbered. Its Self-review checks
+        that every consolidated task meets those conditions and that each behavior has its own test; its Approval
+        shows the number of behaviors of each consolidated task, the plan's totals, why the other tasks stayed apart,
+        and that the user may change the `Consolidation:` line, after which the plan is merged again and shown again.
+        No block still makes every task "one behavior, one test, one commit".
+        The tasks.md template has a `- **Consolidation:** low` header line, a task that lists two or more tests under
+        `- Tests:` and parses as a `Risk: low` task with two or more Covers IDs, a slice and a partition, and a
+        comment saying a task holds one behavior or up to five related low-risk behaviors.
+        """
+        template_text = _WRITING_PLANS_TEMPLATE.read_text(encoding="utf-8")
+        parsed_tasks = _read_template_tasks(_WRITING_PLANS_TEMPLATE)
+
+        gaps = _merge_skill_gaps(_WRITING_PLANS.read_text(encoding="utf-8"))
+        gaps += [f"templates/tasks.md: {gap}" for gap in _merge_template_gaps(template_text, parsed_tasks)]
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+
+# Feature 004 (right-sized flow) outside the orchestrating skills: the principle every role reads in the Standards and
+# the note where the impact report is read (004 R1.2, R1.3, R1.8, R2.2, R3.1, R3.2, R4.3, R5.4). Keywords of each rule
+# inside one sentence of its section, on blocks from _section_blocks (lowercased, without backticks, single-spaced).
+_SIZED_STANDARDS = SKILLS_DIR / "engineering-standards" / "SKILL.md"
+_SIZED_REVIEW = re.compile(r"\breviews?\b")
+_SIZED_AGAIN = re.compile(r"\bagain\b")
+_SIZED_ONLY = re.compile(r"\bonly\b")
+_SIZED_CONCERNS = re.compile(r"\bconcerns?\b")
+_SIZED_SECTION_NAME = re.compile(r"\breviews after a change\b")
+_SIZED_NAMES_A_REVIEW_AGAIN = re.compile(
+    r"\b(?:spec|code) review\b.*\b(?:again|repeat\w*)\b|\b(?:again|repeat\w*)\b.*\b(?:spec|code) review\b"
+)
+_SIZED_BEHAVIOR = re.compile(r"\bbehaviou?rs?\b")
+_SIZED_CHARACTERIZATION = re.compile(r"\bcharacterization\b")
+_SIZED_NO_BEHAVIOR = re.compile(r"\bno behaviou?r\b")
+_SIZED_NO_NEW_TEST = re.compile(r"\bno new tests?\b")
+_SIZED_HIGH = re.compile(r"\bhigh\b")
+_SIZED_EVERY_REVIEW = re.compile(r"\b(?:every|all|each)\b(?: \S+){0,2} reviews?\b")
+_SIZED_LOW_RISK = re.compile(r"\blow[- ]risk\b")
+_SIZED_ONE_TASK = re.compile(r"\b(?:one|the same|a single) task\b")
+_SIZED_MEDIUM = re.compile(r"\bmedium\b")
+_SIZED_LOW_AND_MEDIUM = re.compile(r"\blow and medium\b")
+_SIZED_ALWAYS = re.compile(r"\balways\b")
+_SIZED_ONE_BEHAVIOR = re.compile(r"\b(?:one|a single) behaviou?r\b")
+_SIZED_VERSION = re.compile(r"(?<![\d.])0\.9\.0(?![\d.])")
+_SIZED_ROUNDS = re.compile(r"\brounds?\b")
+_SIZED_COMPARE = re.compile(r"\bcompar\w*|\blower\b|\bfewer\b")
+_SIZED_ADJUSTMENT = re.compile(r"\badjustments?\b")
+_SIZED_FIXES_PER_FEATURE = re.compile(r"\bfixes per feature\b")
+# (section of engineering-standards/SKILL.md, the rule, the patterns one of its sentences must all match).
+_SIZED_STANDARDS_RULES: tuple[tuple[str, str, tuple[re.Pattern[str], ...]], ...] = (
+    (
+        "2. Definition of Done",
+        "R2.2 a behavior that already existed has its characterization test",
+        (_SIZED_BEHAVIOR, _SIZED_CHARACTERIZATION),
+    ),
+    (
+        "2. Definition of Done",
+        "R4.3 a change that adds or changes no behavior needs no new test",
+        (_SIZED_NO_BEHAVIOR, _SIZED_NO_NEW_TEST),
+    ),
+    (
+        "7. Review severity",
+        "R3.1 a change made after a review passed goes again only through the reviews it concerns, as"
+        " develop-feature's Reviews after a change says",
+        (_SIZED_AGAIN, _SIZED_ONLY, _SIZED_REVIEW, _SIZED_CONCERNS, _SIZED_SECTION_NAME),
+    ),
+    (
+        "7. Review severity",
+        "R3.2 high-risk work repeats every review after any change",
+        (_SIZED_HIGH, _SIZED_EVERY_REVIEW),
+    ),
+    (
+        "10. Verification by risk",
+        "R1.2 related low-risk behaviors may share one task",
+        (_SIZED_LOW_RISK, _SIZED_BEHAVIOR, _SIZED_ONE_TASK),
+    ),
+    (
+        "10. Verification by risk",
+        "R1.8 a medium task holds one behavior unless the plan says low and medium",
+        (_SIZED_MEDIUM, _SIZED_ONE_BEHAVIOR, _SIZED_LOW_AND_MEDIUM),
+    ),
+    (
+        "10. Verification by risk",
+        "R1.3 a high task always holds one behavior",
+        (_SIZED_HIGH, _SIZED_ALWAYS, _SIZED_ONE_BEHAVIOR),
+    ),
+)
+# What one block of measure-impact's limits must say about features built from 0.9.0 on.
+_SIZED_IMPACT_LIMIT = (
+    _SIZED_VERSION,
+    _SIZED_BEHAVIOR,
+    _SIZED_ROUNDS,
+    _SIZED_COMPARE,
+    _SIZED_ADJUSTMENT,
+    _SIZED_FIXES_PER_FEATURE,
+)
+
+
+class RightSizedFlowPrincipleTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_standards_state_what_is_merged_and_which_reviews_run_again(self) -> None:
+        """R1.2, R1.3, R1.8, R2.2, R3.1, R3.2, R4.3: 004 the Standards state the principle every role reads.
+
+        `## 2. Definition of Done` says a behavior that already existed has its characterization test and a change
+        that adds or changes no behavior needs no new test. `## 7. Review severity` says, in one sentence each, that
+        a change made after a review passed goes again only through the reviews it concerns, as develop-feature's
+        Reviews after a change says, and that high-risk work repeats every review; it does not restate which review
+        each kind of change goes to, so the table has one owner. `## 10. Verification by risk` says that related
+        low-risk behaviors may share one task, that a medium task holds one behavior unless the plan says
+        `low and medium`, and that a high task always holds one behavior.
+        """
+        gaps = [
+            f"engineering-standards ## {section} does not say: {rule}"
+            for section, rule, patterns in _SIZED_STANDARDS_RULES
+            if not any(_in_one_sentence(block, *patterns) for block in _section_blocks(_SIZED_STANDARDS, section))
+        ]
+        gaps += [
+            f"engineering-standards ## 7. Review severity restates the table of Reviews after a change: {sentence}"
+            for block in _section_blocks(_SIZED_STANDARDS, "7. Review severity")
+            for sentence in _sentences(block)
+            if _SIZED_NAMES_A_REVIEW_AGAIN.search(sentence)
+        ]
+
+        self.assertEqual(gaps, [], "\n".join(gaps))
+
+    def test_measure_impact_says_task_counts_changed_meaning(self) -> None:
+        """R5.4: 004 measure-impact says its per-task numbers are not comparable across the 0.9.0 change.
+
+        A block of `## Limits to state when relevant` names 0.9.0, says a task may hold several behaviors, says tasks
+        done or review rounds per task run lower than, or are not to be compared with, earlier features, and says an
+        adjustment is a commit of its own, so fixes per feature read differently.
+        """
+        limits = _section_blocks(_MEASURE_IMPACT, "Limits to state when relevant")
+
+        stated = any(all(pattern.search(block) for pattern in _SIZED_IMPACT_LIMIT) for block in limits)
+
+        self.assertTrue(
+            stated,
+            "measure-impact ## Limits to state when relevant: no block says that from 0.9.0 a task may hold several"
+            " behaviors and an adjustment is a commit of its own, so tasks done, review rounds per task and fixes per"
+            " feature are not comparable with earlier features",
+        )
 
 
 if __name__ == "__main__":

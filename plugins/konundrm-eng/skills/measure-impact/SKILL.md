@@ -55,4 +55,10 @@ escaping, is rework falling, and do the gates catch real problems or only add fr
   machine that ran the sessions. Claude Code also exports cost through OpenTelemetry
   (`claude_code.cost.usage`, tagged by plugin, skill and agent) when the organization enables
   telemetry.
+- From 0.9.0 a task may hold up to five related low-risk behaviors, and a change made after a
+  review passed repeats only the reviews it concerns, so tasks done, task commits and review
+  rounds per task run lower than in features planned before it. An adjustment is a commit of its
+  own, typed by what it changes, so "fixes per feature" (fixes divided by `feat` commits) reads
+  differently too. Compare features built with the same version, and read the saving as review
+  cycles per behavior, from the plan's `Consolidation:` line (`<n> behaviors in <m> tasks`).
 - Compare trends over time for the same repository, never people or teams.

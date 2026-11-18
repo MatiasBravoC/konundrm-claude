@@ -135,7 +135,9 @@ reproduced it. Keep the attribution lines configured for the session.
 When `specs/<NNN-slug>/summaries/S<k>.md` exists, build that slice's description from it: its
 "What changed and why" feeds What and why, "Risks and high-risk tasks" and "Reading order" feed
 Where to look first, "Requirements covered" feeds How it was verified, as behaviors in plain
-words. Add what the summary lacks (evidence links, the check result, the merge-order line, the
+words. Its "Adjustments" also feed What and why, in plain words: a change the user asked for after
+the previous slice ended lands in this pull request, so say what it changed there. Add what the
+summary lacks (evidence links, the check result, the merge-order line, the
 attribution) and drop what the text rules above leave out (IDs, review rounds, decisions about
 how the work was split). The summary's links are relative to `summaries/` (`../requirements.md`),
 and GitHub resolves links in a pull request body against the pull request page, so rewrite them

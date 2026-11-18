@@ -15,7 +15,7 @@ is the one teams run most; keep it tight.
 Bug: $ARGUMENTS
 
 Dispatch prompts: [reference/dispatch-prompts.md](reference/dispatch-prompts.md). The code,
-security, finding-verifier and rethinker prompts, and the implementer's fix round, are develop-feature's
+security, re-review, finding-verifier and rethinker prompts, and the implementer's fix round, are develop-feature's
 ([../develop-feature/reference/dispatch-prompts.md](../develop-feature/reference/dispatch-prompts.md)),
 with the bug's `B1` in place of the task.
 
@@ -110,7 +110,10 @@ develop-feature's flaky-test prompt.
 
 Send each Critical finding of a high-risk fix, and any doubtful one, to a `finding-verifier`
 first. Route confirmed findings as develop-feature does (a wrong test to the `test-writer`,
-everything else to the `implementer`'s fix round) and review again.
+everything else to the `implementer`'s fix round), then run again only the reviews that fix round
+concerns, with develop-feature's re-review prompt, as its
+[Reviews after a change](../develop-feature/SKILL.md#reviews-after-a-change) says. A high-risk
+fix repeats them all.
 
 At the fifth failed review, or a third failure of the same review, stop the fix rounds and
 rethink as develop-feature's [Rethink](../develop-feature/SKILL.md#rethink) says, with `B1` in

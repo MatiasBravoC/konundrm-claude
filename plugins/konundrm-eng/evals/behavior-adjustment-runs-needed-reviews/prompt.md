@@ -1,0 +1,7 @@
+---
+runs: 1
+max_turns: 250
+timeout_seconds: 3600
+allowed_tools: [Read, Write, Edit, Bash, Glob, Grep, Skill, Agent, Task, TodoWrite]
+---
+/konundrm-eng:develop-feature Una función `saludar(nombre: str) -> str` en Python, en `saludo.py`, que devuelva `Hola, <nombre>.` y, si el nombre viene vacío o solo con espacios, `Hola.`. Contexto del caso: esta carpeta está vacía; antes de empezar, inicializa un repositorio git con un pyproject.toml mínimo (pytest y hypothesis como dependencias de desarrollo) y un commit inicial. No hay comando check: continúa sin gates. Usa `specs/001-saludo/` como carpeta de la feature. Quiero un plan de un solo slice, sin particiones en paralelo, y que construyas toda la feature en esta misma sesión (`Sessions: single`). Apruebo de antemano la spec, el plan, cualquier decisión de diseño (toma la opción recomendada) y la pausa al terminar el slice, sin esperar mi respuesta en esos puntos. Como este caso tiene un solo mensaje, te dejo desde ya los dos cambios que te voy a pedir cuando la feature esté terminada y con su commit final hecho; atiéndelos en ese momento, uno después del otro, como si te los pidiera recién entonces. Primero: en `saludo.py`, deja el doc-comment de `saludar` diciendo solo `Devuelve el saludo para un nombre.`, sin cambiar el comportamiento ni los tests. Segundo: cuando el nombre viene vacío o solo con espacios, que devuelva `Hola, desconocido.` en vez de `Hola.`. No hagas push.
