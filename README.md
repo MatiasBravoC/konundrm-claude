@@ -111,21 +111,25 @@ rol, edita el frontmatter de su agente.
   comportamiento con su criterio, y pasa una sola vez por el ciclo de test, implementación,
   revisiones, check y commit: el `test-writer` escribe todos sus tests y el `implementer` los hace
   pasar de a uno, viendo fallar cada uno antes de escribir su código. El riesgo medio y el alto,
-  las pruebas de propiedad y las decisiones abiertas quedan en tareas propias. Al aprobar el plan
-  ves cuántos comportamientos reúne cada tarea y por qué las demás quedaron separadas, y puedes
-  cambiar el criterio en la línea `- **Consolidation:**` del encabezado de `tasks.md`: `low` (por
-  defecto), `low and medium` (junta además los casos de una misma regla de riesgo medio, hasta
-  tres por tarea) o `none`.
+  las líneas `property` y las decisiones abiertas quedan en tareas propias. Un invariante que
+  mantiene el código de una sola tarea de riesgo medio o alto se prueba junto con ella, sin tarea
+  aparte, y la documentación de una tarea de riesgo bajo (su parte del README o del changelog) va
+  dentro de esa tarea. Al aprobar el plan ves cuántos comportamientos reúne cada tarea, por qué
+  las demás quedaron separadas y qué tareas juntaría la otra opción, y puedes cambiar el criterio
+  en la línea `- **Consolidation:**` del encabezado de `tasks.md`: `low` (por defecto),
+  `low and medium` (junta además los casos de una misma regla de riesgo medio, hasta tres por
+  tarea) o `none`.
 - **Revisiones proporcionales al cambio.** Las primeras revisiones de una tarea corren siempre
   todas. Después de un cambio (una ronda de arreglo, la verificación por riesgo, el arreglo de un
   check en rojo) se repiten solo las revisiones a las que ese cambio concierne, decididas desde su
   diff: la que levantó el hallazgo que se arregló; solo la de spec si el cambio agregó tests y
   nada más; la de spec y la de código si tocó lo que prepara o afirma un test que ya existía, o
-  lo que el código hace; solo la de código si cambió cómo está construido (un renombre cuenta
-  aquí, aunque cambie ese nombre en los tests que lo usan) o tocó la configuración de un gate; y
-  ninguna si cambió solo texto que nada lee. En riesgo alto se repiten todas, y ante la duda
-  corren las dos. Cada revisión que no se repitió queda anotada, con su motivo, en la nota de Git
-  de su tarea y en el resumen de la entrega. `fix-bug` sigue la misma regla.
+  lo que el código hace (solo la de spec si lo único que cambió es la redacción de un mensaje, en
+  el código y en los tests que la afirman); solo la de código si cambió cómo está construido (un
+  renombre cuenta aquí, aunque cambie ese nombre en los tests que lo usan) o tocó la configuración
+  de un gate; y ninguna si cambió solo texto que nada lee. En riesgo alto se repiten todas, y ante
+  la duda corren las dos. Cada revisión que no se repitió queda anotada, con su motivo, en la nota
+  de Git de su tarea y en el resumen de la entrega. `fix-bug` sigue la misma regla.
 - **Ajustes en el momento.** Cuando pides un cambio chico sobre algo que la feature ya construyó
   (durante la construcción, en una pausa o con la feature terminada), el orquestador lo clasifica
   antes de tocar nada. Los ajustes se hacen en el momento, sin tarea nueva ni otra aprobación: si
@@ -133,11 +137,13 @@ rol, edita el frontmatter de su agente.
   verificación, solo las revisiones que su diff necesita, el check y un commit propio. Si el
   pedido cambia un detalle que un criterio dice (un texto, un valor, un límite), actualiza ese
   criterio y te lo dice. Es un cambio de plan, que sigue esperando tu aprobación, si agrega o
-  quita un criterio, cambia el diseño, toca riesgo alto o se espera que pase de unas 50 líneas;
-  ante la duda, también. Un pedido sobre la tarea en curso se hace dentro de esa tarea, sin
-  empezarla de nuevo. Cada ajuste queda en una nota de Git (qué tareas ajusta, qué revisiones
-  corrieron y qué pediste) y en el próximo resumen. Si la feature ya está terminada y fusionada,
-  el ajuste va en una rama nueva desde la rama principal, nunca directo en ella.
+  quita un criterio, cambia el diseño, toca riesgo alto, cambia código de un archivo que ninguna
+  tarea de la feature lista o se espera que pase de unas 50 líneas; ante la duda, también. Un
+  renombre es un ajuste mientras nada fuera de los archivos de la feature use el nombre anterior.
+  Un pedido sobre la tarea en curso se hace dentro de esa tarea, sin empezarla de nuevo. Cada
+  ajuste queda en una nota de Git (qué tareas ajusta, qué revisiones corrieron y qué pediste) y
+  en el próximo resumen. Si la feature ya está terminada y fusionada, el ajuste va en una rama
+  nueva desde la rama principal como está en el remoto, nunca directo en ella.
 - **Particiones en paralelo.** `writing-plans` cierra cada entrega con una tabla `### Partitions`
   que agrupa sus tareas en particiones (tareas que una sesión construye en orden) y olas
   (particiones sin dependencias entre sí ni archivos compartidos, salvo `tasks.md` y `evidence/`;
@@ -315,13 +321,15 @@ apaga el guard. `KONUNDRM_PR_BUDGET` cambia el presupuesto de líneas por pull r
   así que las tareas hechas, las rondas por tarea y los fixes por feature no se comparan con los
   de features planificadas antes.
 - **Qué se consolida, qué revisiones se repiten y qué cuenta como ajuste son instrucciones, no
-  hooks.** Las sostienen pruebas de contrato sobre el texto de las skills y dos evals; ningún hook
-  comprueba que el orquestador haya elegido bien. Lo que deja escrito (la nota de cada ajuste y
-  los resúmenes) permite revisarlo después. El riesgo alto queda fuera de las tres reglas.
+  hooks.** Las sostienen pruebas de contrato sobre el texto de las skills. Sus dos evals están
+  escritos pero todavía no se han corrido, y ningún hook comprueba que el orquestador haya elegido
+  bien. Lo que deja escrito (la nota de cada ajuste y los resúmenes) permite revisarlo después. El
+  riesgo alto queda fuera de las tres reglas.
 - **Una feature terminada se reconoce por sus documentos (`Status: Done`), no por el libro de
   tareas.** En un clon sin las notas de Git, o después de un squash, `task_ledger.py status`
   nombra como pendientes tareas que ya están construidas. Por eso un cambio de plan sobre una
-  feature ya fusionada se planifica como una feature nueva.
+  feature terminada la reabre solo si no está fusionada, ninguna feature posterior tiene commits
+  y sus notas siguen ahí; si no, se planifica como una feature nueva.
 - **`measure-impact` no junta los eventos de los gates de sesiones paralelas.** Cada worktree
   registra los suyos por separado.
 - **La mutación en CI de un pull request `risk:high` cubre todo lo que cambia**, no solo los
@@ -395,7 +403,8 @@ puede ver.
    de hacer
    push y te deja elegir entre un pull request apilado por entrega o uno solo (ver
    [Cómo avanza una feature](#cómo-avanza-una-feature)).
-3. Para retomar una feature, o seguirla en la sesión de su próxima entrega:
+3. Para retomar una feature, seguirla en la sesión de su próxima entrega o pedirle un ajuste
+   cuando ya está terminada (después de ese comando, di el cambio que quieres):
    `/konundrm-eng:develop-feature specs/003-google-login`.
 4. Para construir sin supervisión un plan con `- **Checkpoints:** pre-approved`, encadena desde una
    terminal las sesiones sin interfaz, una por entrega:

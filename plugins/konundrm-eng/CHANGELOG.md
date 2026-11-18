@@ -11,7 +11,8 @@ Fewer review cycles for the same work. A plan no longer pays one full cycle of t
 implementer and two reviews for every behavior: related low-risk behaviors are merged into
 consolidated tasks, built and reviewed once. After a change, only the reviews that change concerns
 run again. And a small change you ask for on work already built is made right away, as an
-adjustment, instead of becoming a new task that goes through the whole flow.
+adjustment, with no new task and no second approval. One that changes what the code does still
+gets its failing test first, the implementer and its reviews.
 
 ### Added
 
@@ -19,11 +20,13 @@ adjustment, instead of becoming a new task that goes through the whole flow.
   lines that have one owner in the design, make one logical change and fit in five behaviors and
   about 300 changed lines of code and tests. A consolidated task is one task of the plan (one ID,
   one commit, one note) with a `Tests:` list that keeps one test per behavior and its criterion.
-  Medium- and high-risk lines, property tests, open decisions and new dependencies stay in tasks
-  of their own. The plan's approval shows how many behaviors each task holds and why the others
-  stayed apart, and the new header line `- **Consolidation:**` holds the choice: `low` (the
-  default), `low and medium` (also merges the cases of one medium-risk rule, up to three per
-  task) or `none`.
+  Medium- and high-risk lines, `property` lines, open decisions and new dependencies stay in
+  tasks of their own. An invariant that the code of one medium- or high-risk line keeps is
+  tested with that line, not in a task of its own, and a documentation chore joins the low-risk
+  task it documents. The plan's approval shows how many behaviors each task holds, why the
+  others stayed apart and which tasks the other choice would merge, and the new header line
+  `- **Consolidation:**` holds the choice: `low` (the default), `low and medium` (also merges
+  the cases of one medium-risk rule, up to three per task) or `none`.
 - One cycle per consolidated task. One test-writer dispatch writes every test of the task and
   reports on each one; a test that does not hold goes back alone. One implementer makes them pass
   one at a time, seeing each one fail before its code, and the spec review checks every listed
@@ -32,22 +35,26 @@ adjustment, instead of becoming a new task that goes through the whole flow.
 - Reviews after a change. A new section of develop-feature decides, from the change's own diff,
   which reviews run again after a fix round, a change from verifying by risk or the fix of a red
   check: the review whose finding was fixed; the spec review alone when the change only added
-  tests; both reviews when it changed an existing test or what the code does; the code review
-  alone when it changed how the code is built or what configures a gate; none when it changed
-  only text that nothing reads. A rename counts as how the code is built, also when the tests
-  that use the name change with it. High-risk tasks repeat every review, a doubt runs both, and
-  each review that was not repeated is appended to the task's Git note and listed in the slice
-  summary. fix-bug follows the same rule.
+  tests; both reviews when it changed an existing test or what the code does (the spec review
+  alone when it only reworded a message, in the code and in the tests that assert it); the code
+  review alone when it changed how the code is built or what configures a gate; none when it
+  changed only text that nothing reads. A rename counts as how the code is built, also when the
+  tests that use the name change with it. High-risk tasks repeat every review, a doubt runs
+  both, and each review that was not repeated is appended to the task's Git note and listed in
+  the slice summary. fix-bug follows the same rule.
 - Adjustments. A change the user asks for on built work is classified first. A plan change (it
-  adds or removes a criterion, changes the design, touches high-risk work or is expected to take
-  more than about 50 changed lines) still becomes tasks the user approves. Anything else is an
-  adjustment, made at once: the criterion is updated first, a change in what the code does gets
-  its failing test first, then come the implementer, the verification, only the reviews its diff
-  needs, the check and a commit of its own. Its Git note records the tasks it adjusts, the
-  reviews that ran and what was asked, and the next summary lists it. A change asked on the task
-  in progress joins that task. A finished feature is recognised by its documents, and an
-  adjustment to one that is already merged goes on a new branch. `reference/adjustments.md` holds
-  the procedure.
+  adds or removes a criterion, changes the design, touches high-risk work, changes code in a file
+  no task of the feature lists or is expected to take more than about 50 changed lines) still
+  becomes tasks the user approves. Anything else is an adjustment, a rename included while
+  nothing outside the feature's files uses the old name, and it is made at once: the criterion
+  and the plan's lines that state the old detail are updated first, a change in what the code
+  does gets its failing test first, then come the implementer, the verification, only the
+  reviews its diff needs, the check and a commit of its own. Its Git note records the tasks it
+  adjusts, the reviews that ran and what was asked, and the next summary lists it. A change asked
+  on the task in progress joins that task. A finished feature is recognised by its documents.
+  An adjustment to one that is already merged goes on a new branch cut from the remote's default
+  branch, and a plan change reopens a finished feature only while it is not merged, no later
+  feature follows it and its notes are there. `reference/adjustments.md` holds the procedure.
 - Evals `behavior-plan-consolidates-related-tasks` and `behavior-adjustment-runs-needed-reviews`.
 
 ### Changed
@@ -69,9 +76,10 @@ adjustment, instead of becoming a new task that goes through the whole flow.
 
 ### Fixed
 
-- The plan reader takes a task's rounds only from its own `- Rounds:` line. A Rounds text quoted
-  in another field of the task (a `Test:` description, a change the user asked for) was read as
-  the task's rounds and miscounted the impact report.
+- The plan reader and `close-slice` take a task's rounds only from its own `- Rounds:` field. A
+  Rounds text quoted in another field of the task (a `Test:` description, a change the user
+  asked for), or wrapped onto a line of its own, was read as the task's rounds and miscounted
+  the impact report, and `close-slice` could write the rounds over that line.
 
 ## [0.8.0] - 2026-11-01
 
