@@ -1599,6 +1599,13 @@ _MERGE_ONE_TASK_PER_LINE = re.compile(r"\bone task per line\b")
 _MERGE_BEHAVIORS_IN_TASKS = re.compile(r"\bbehaviou?rs in <m> tasks\b")
 _MERGE_STAYED_APART = re.compile(r"\bstay(?:ed|s)? apart\b")
 _MERGE_PLAN_CHANGE = re.compile(r"\bplan change\b")
+_MERGE_WITHOUT_THAT_LINE = re.compile(r"\bwithout that line\b")
+_MERGE_READS_AS_LOW = re.compile(r"\breads as low\b")
+_MERGE_ONLY_WITH_MEDIUM = re.compile(r"\bonly with other medium lines\b")
+_MERGE_FILES_LINE = re.compile(r"\bfiles: line\b")
+_MERGE_INVARIANTS = re.compile(r"\binvariants\b")
+_MERGE_COVERING_PROPERTY_TASK = re.compile(r"\bproperty task that covers it\b")
+_MERGE_MEDIUM_LINES = re.compile(r"\bmedium lines\b")
 _MERGE_SAME_WAY = re.compile(r"\bsame way\b")
 _MERGE_RENUMBERED = re.compile(r"\brenumber\w*")
 _MERGE_WHY = re.compile(r"\bwhy\b")
@@ -1681,6 +1688,19 @@ _MERGE_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
     "R1.7 the totals go on the header's Consolidation: line": (_MERGE_HEADER_LINE, _MERGE_BEHAVIORS_IN_TASKS),
     "R1.9 tasks a plan change adds to a plan that is being built are consolidated the same way, and no task is"
     " renumbered": (_MERGE_PLAN_CHANGE, _MERGE, _MERGE_SAME_WAY, _MERGE_RENUMBERED),
+    "R1.9 a plan without the Consolidation: line reads as low for the tasks a plan change adds": (
+        _MERGE_WITHOUT_THAT_LINE,
+        _MERGE_READS_AS_LOW,
+    ),
+    "R1.8 a medium line merges only with other medium lines, when the header says low and medium": (
+        _MERGE_ONLY_WITH_MEDIUM,
+        _MERGE_LOW_AND_MEDIUM,
+    ),
+    "R1.5 a chore merged into a behavior task has its step on the Files: line": (_MERGE_CHORE, _MERGE_FILES_LINE),
+    "R3.9 a medium or high task's invariants name the property task that covers them": (
+        _MERGE_INVARIANTS,
+        _MERGE_COVERING_PROPERTY_TASK,
+    ),
 }
 _MERGE_SELF_REVIEW_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
     "R1.6 every consolidated task meets the conditions of the consolidation step": (
@@ -1691,6 +1711,11 @@ _MERGE_SELF_REVIEW_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
         _MERGE_BEHAVIOR,
         _MERGE_CONSOLIDATED_TASK,
         _MERGE_OWN_TEST,
+    ),
+    "R1.8 with low and medium in the header, a task of medium lines meets that paragraph's conditions": (
+        _MERGE_LOW_AND_MEDIUM,
+        _MERGE_MEDIUM_LINES,
+        _MERGE_CONDITIONS,
     ),
 }
 _MERGE_APPROVAL_RULES: dict[str, tuple[re.Pattern[str], ...]] = {

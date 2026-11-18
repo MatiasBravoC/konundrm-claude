@@ -140,9 +140,12 @@ result), make exactly **one** `fix` commit whose body gives the root cause and e
 `Fixes: <issue>` only (left out when there is no issue), and do not ask about pushing; fix-bug
 asks once it has reported. This mode owns the commit's note, the only place for its flow data:
 write it in the same command as the commit, so it is written once,
-`git commit -F <message file> --trailer "Co-Authored-By: …" && git notes --ref=refs/notes/konundrm add -m "Covers: B1" -m "Escaped-gate: <spec | property | review | e2e | none>" HEAD`,
+`git add -A && git commit -F <message file> --trailer "Co-Authored-By: …" && git notes --ref=refs/notes/konundrm add -m "Covers: B1" -m "Escaped-gate: <spec | property | review | e2e | none>" HEAD`,
 with the requirement ID in `Covers:` when the bug broke an approved one (Standards → Git and pull
-requests).
+requests). Stage in that same command: the mark a fix round takes
+(`git add -A && git write-tree`) leaves the index at the tree before the round, so a commit
+without `git add -A` would take that tree and leave the round's changes out. Keep the message
+file outside the working tree, so `git add -A` does not take it.
 
 ## Ground rules
 

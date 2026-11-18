@@ -3301,8 +3301,8 @@ _FLOW_NOTES_SKILLS = (
 )
 _FLOW_NOTES_SEARCHING_SKILLS = ("develop-feature", "opening-pull-requests", "reviewing-pull-requests")
 _FLOW_NOTES_REF = "--notes=refs/notes/konundrm"
-# The last three are the lines of an adjustment's note (004 R4.6).
-_FLOW_LINE = re.compile(r"\b(?:task|covers|rounds|escaped-gate|adjusts|reviews|asked):")
+# The last four are the lines 004 adds to notes: an adjustment's (R4.6) and a task's reviews not repeated (R3.8).
+_FLOW_LINE = re.compile(r"\b(?:task|covers|rounds|escaped-gate|adjusts|reviews|asked|not repeated):")
 _FLOW_SEARCH_LINE = re.compile(r"\b(?:task|covers|adjusts):")
 # Where a flow line would go if it went into the commit: its body, trailers or message, or a commit that carries it.
 _FLOW_IN_THE_MESSAGE = re.compile(
@@ -3315,7 +3315,7 @@ _FLOW_IN_A_NOTE = re.compile(r"\bnotes?\b")
 # A fenced commit message: a Conventional Commits subject line, and a flow line of its own.
 _FLOW_FENCE = re.compile(r"^```[^\n]*\n(.*?)^```", re.MULTILINE | re.DOTALL)
 _FLOW_FENCE_SUBJECT = re.compile(r"^[a-z]+(?:\([^)\n]*\))?!?: \S", re.MULTILINE)
-_FLOW_FENCE_LINE = re.compile(r"^(?:Task|Covers|Rounds|Escaped-gate|Adjusts|Reviews|Asked):", re.MULTILINE)
+_FLOW_FENCE_LINE = re.compile(r"^(?:Task|Covers|Rounds|Escaped-gate|Adjusts|Reviews|Asked|Not repeated):", re.MULTILINE)
 # A commit subject template in inline code, and what R6.1 keeps out of it: slices, partitions, rounds and flow IDs.
 _FLOW_SUBJECT_SPAN = re.compile(r"^\w+\([^)]*\)!?: ")
 _FLOW_SUBJECT_NAMES_THE_FLOW = re.compile(r"\b(?:slice|partition|rounds?)\b|\b[SPTRB]<[kn]>|\b[TRB]\d", re.IGNORECASE)
@@ -4134,11 +4134,6 @@ _AFTER_SECTION_RULES: dict[str, tuple[re.Pattern[str], ...]] = {
         _AFTER_CODE_REVIEWER,
         _AFTER_AGAIN,
     ),
-    "R3.8 each review the rule leaves out is noted, with what the change touched, for the slice summary": (
-        _AFTER_LEAVES_OUT,
-        _AFTER_NOTE,
-        _AFTER_SLICE_SUMMARY,
-    ),
     "R3.1 a file the product, a tool or a test reads is code, whatever its extension": (
         _AFTER_PRODUCT,
         _AFTER_TOOL,
@@ -4756,14 +4751,14 @@ class RightSizedFlowTest(unittest.TestCase):
         nothing reads; the row with no review holds only when every changed line is that kind of text; both reviews
         run when the row is not clear, and so does a review the user asks for; the fix of a red check always gets
         the code review again; the verify command reruns first when code or tests changed and the check stays green
-        before the commit; each review the rule leaves out is noted for the slice summary; and a task's first
-        reviews always run in step 3. Phase 3 marks the task before a fix round, before the first change of the
-        verification by risk and before the fix of a red check, and sends each of those changes through that section
-        (the verification by risk in one re-review, the fix of a red check always with the code review); no Phase 3
-        sentence still runs "the reviews of step 3 again". The re-review prompt carries the reports of every fix
-        round since that review last ran, what the last round changed and a change the user asked for; the
-        process-reviewer prompt carries the reviews not repeated. fix-bug's step 6 follows the same section and
-        repeats every review on a high-risk fix.
+        before the commit; and a task's first reviews always run in step 3 (the record of each review the rule
+        leaves out is pinned by RightSizedFlowEdgesTest). Phase 3 marks the task before a fix round, before the
+        first change of the verification by risk and before the fix of a red check, and sends each of those changes
+        through that section (the verification by risk in one re-review, the fix of a red check always with the
+        code review); no Phase 3 sentence still runs "the reviews of step 3 again". The re-review prompt carries the
+        reports of every fix round since that review last ran, what the last round changed and a change the user
+        asked for; the process-reviewer prompt carries the reviews not repeated. fix-bug's step 6 follows the same
+        section and repeats every review on a high-risk fix.
         """
         phase_3 = _section_blocks(_SIZED_SKILL, "Phase 3: Task loop")
         section = _section_blocks(_SIZED_SKILL, _AFTER_SECTION)
@@ -4872,6 +4867,445 @@ class RightSizedFlowTest(unittest.TestCase):
                 "develop-feature Slice checkpoint lacks (R4.8): listing the slice's adjustments with"
                 " git log --notes=refs/notes/konundrm --grep '^Adjusts:'"
             )
+
+        self.assertEqual(gaps, [])
+
+
+# The right-sized flow (004), the edges its final review found: what happens to the property tests step 1 writes, to
+# the record of a review that was not repeated, to a finished feature that is resumed, to a change asked on the task
+# in progress, to an adjustment on a merged feature, to fix-bug's fix round and to a split task's attempt. Each rule
+# is keywords that one sentence of its source must all match, on blocks from _split_blocks (lowercased, without
+# backticks, single-spaced).
+_EDGE_FIX_BUG = SKILLS_DIR / "fix-bug" / "SKILL.md"
+_EDGE_COMMITTING = SKILLS_DIR / "committing-changes" / "SKILL.md"
+_EDGE_OPENING = SKILLS_DIR / "opening-pull-requests" / "SKILL.md"
+# Where a rule must be said: the name a failure shows, and the blocks to search.
+_EDGE_SOURCES: dict[str, Callable[[], list[str]]] = {
+    "develop-feature Phase 0": lambda: _section_blocks(_SIZED_SKILL, "Phase 0: Prepare"),
+    "develop-feature Phase 3": lambda: _section_blocks(_SIZED_SKILL, "Phase 3: Task loop"),
+    "develop-feature Reviews after a change": lambda: _section_blocks(_SIZED_SKILL, _AFTER_SECTION),
+    "develop-feature Rethink": lambda: _section_blocks(_SIZED_SKILL, "Rethink"),
+    "develop-feature Parallel partitions": lambda: _section_blocks(_SIZED_SKILL, "Parallel partitions"),
+    "develop-feature Slice checkpoint": lambda: _section_blocks(_SIZED_SKILL, "Slice checkpoint"),
+    "develop-feature Adjustments": lambda: _section_blocks(_SIZED_SKILL, _ADJUST_SECTION),
+    "reference/adjustments.md": lambda: _blocks(_ADJUST_REFERENCE),
+    "fix-bug step 6": lambda: _subsection_blocks(_section_blocks(_EDGE_FIX_BUG, "Workflow"), "### 6. reviews"),
+    "fix-bug step 9": lambda: _subsection_blocks(_section_blocks(_EDGE_FIX_BUG, "Workflow"), "### 9. report"),
+    "committing-changes Inside fix-bug": lambda: _subsection_blocks(
+        _section_blocks(_EDGE_COMMITTING, "Workflow"), "### inside fix-bug"
+    ),
+    "opening-pull-requests": lambda: _blocks(_EDGE_OPENING),
+    "the test-writer prompt": lambda: _sized_prompt_blocks("test-writer"),
+    "the implementer prompt": lambda: _sized_prompt_blocks("implementer"),
+    "the test-writer (adjustment) prompt": lambda: _sized_prompt_blocks("test-writer (adjustment)"),
+}
+_EDGE_TODO_ITEM = re.compile(r"\btodo item\b")
+_EDGE_NOTES_APPEND = re.compile(r"\bgit notes --ref[= ]refs/notes/konundrm append\b")
+_EDGE_NOT_REPEATED_LINE = re.compile(r"\bnot repeated:")
+_EDGE_NOTES = re.compile(r"\bnotes\b")
+_EDGE_APPEND = re.compile(r"\bappend\b")
+_EDGE_NOTES_LOG = re.compile(r"\bgit log --notes=refs/notes/konundrm\b")
+_EDGE_GREP_NOT_REPEATED = re.compile(r"--grep '\^not repeated:'")
+_EDGE_DOES_NOT_COVER = re.compile(r"\bdoes not cover\b")
+_EDGE_EVERY_TIME = re.compile(r"\bevery time\b")
+_EDGE_FIVE_RUNS = re.compile(r"\bfive runs\b")
+_EDGE_COVERING_PROPERTY_TASK = re.compile(r"\bproperty task that covers it\b")
+_EDGE_FIVE_VERIFICATIONS = re.compile(r"\bfive verifications\b")
+_EDGE_NEW_IMPLEMENTER = re.compile(r"\bnew implementer\b")
+_EDGE_ALREADY_PASS = re.compile(r"\balready pass\b")
+_EDGE_TEST_FILE = re.compile(r"\btest file\b")
+_EDGE_EVIDENCE_FILE = re.compile(r"\bevidence file\b")
+_EDGE_RUNS_ONLY_IT = re.compile(r"\bruns only it\b")
+_EDGE_REPORT = re.compile(r"\breport\b")
+_EDGE_FINISHED = re.compile(r"\bfinished\b")
+_EDGE_WHATEVER = re.compile(r"\bwhatever\b")
+_EDGE_NOT_MERGED = re.compile(r"\bnot merged\b")
+_EDGE_MERGED = re.compile(r"\bmerged\b")
+_EDGE_NEW_FEATURE = re.compile(r"\bnew feature\b")
+_EDGE_HIGH_TASK = re.compile(r"\bhigh task\b")
+_EDGE_ITSELF_BUILDS = re.compile(r"\bitself builds\b")
+_EDGE_STOPS_THE_TASK = re.compile(r"\bstop the task\b")
+_EDGE_ONE_ROUND = re.compile(r"\bone round\b")
+_EDGE_STEP_2_NOT_RUN = re.compile(r"\bstep 2 has not run\b")
+_EDGE_TASK_BLOCK = re.compile(r"\btask block\b")
+_EDGE_ALREADY_SATISFIES = re.compile(r"\balready satisfies\b")
+_EDGE_VERIFY_LINE = re.compile(r"\bverify: line\b")
+_EDGE_HIGH_TASKS_FILE = re.compile(r"\bfile a high task lists or changed\b")
+_EDGE_STOP_BEFORE = re.compile(r"\bstop before\b")
+_EDGE_ASK_THE_USER = re.compile(r"\bask the user\b")
+_EDGE_LEFT_FOR_LATER = re.compile(r"\bleaves for later\b")
+_EDGE_STILL_BUILDING = re.compile(r"\bstill the one building\b")
+_EDGE_TELL_THE_USER = re.compile(r"\btell the user\b")
+_EDGE_NOW = re.compile(r"\bnow\b")
+_EDGE_DEFAULT_BRANCH = re.compile(r"\bdefault branch\b")
+_EDGE_SWITCH = re.compile(r"\bgit switch -c\b")
+_EDGE_NEVER_COMMIT = re.compile(r"\bnever commit\b")
+_EDGE_MERGED_BRANCH = re.compile(r"\bmerged branch\b")
+_EDGE_OLD_DETAIL = re.compile(r"\bold detail\b")
+_EDGE_GIT_GREP = re.compile(r"\bgit grep\b")
+_EDGE_USES_A_NAME = re.compile(r"\buses a name it changes\b")
+_EDGE_CHARACTERIZATION = re.compile(r"\bcharacterization\b")
+_EDGE_NONE_FAILS = re.compile(r"\bnone of its tests fails\b")
+_EDGE_STOP = re.compile(r"\bstop\b")
+_EDGE_FINDING_VERIFIER = re.compile(r"\bfinding-verifier\b")
+_EDGE_ONE_FIX_ROUND = re.compile(r"\bone fix[- ]round\b")
+_EDGE_CLASSIFICATION_LINK = re.compile(r"\(\.\./skill\.md#adjustments\)")
+_EDGE_FILE_NO_TASK = re.compile(r"\bfile no task\b")
+_EDGE_BODY_AND_NOTE = re.compile(r"--format='%b%n'")
+_EDGE_FOLLOW = re.compile(r"--follow\b")
+_EDGE_PLAIN_MESSAGE = re.compile(r"\bletters, digits and spaces only\b")
+_EDGE_BEFORE_THE_TURN_ENDS = re.compile(r"\bbefore you end the turn\b")
+_EDGE_NEVER_BEND = re.compile(r"\bnever bend\b")
+_EDGE_STAGE = re.compile(r"\bstage\b")
+_EDGE_MARK = re.compile(r"\bmark\b")
+_EDGE_PLAIN_ADD = re.compile(r"\bgit add -a\b")
+_EDGE_FIX_COMMIT = re.compile(r"\bgit add -a && git commit -f\b")
+_EDGE_SPLIT = re.compile(r"\bsplit\b")
+_EDGE_WHOLE_ATTEMPT_ASIDE = re.compile(r"\bwhole attempt aside\b")
+_EDGE_EVERY_PART = re.compile(r"\bevery part\b")
+_EDGE_STEP_1 = re.compile(r"\bstep 1\b")
+_EDGE_KEEPS_THE_PLAN_FILES = re.compile(re.escape(":(exclude)specs/<nnn-slug>/tasks.md"))
+_EDGE_STAGED_STASH = re.compile(r"\bgit add -a && git stash push\b")
+_EDGE_EVERY_REVIEW_OF_STEP_3 = re.compile(r"\bevery review of step 3\b")
+_EDGE_FILE_A_HIGH_TASK_LISTS = re.compile(r"\bfile a high task lists\b")
+_EDGE_CRITERION_FROM_COMMIT = re.compile(re.escape("git show <sha> -- specs/<nnn-slug>/requirements.md"))
+_EDGE_NEWEST_SUMMARY_COMMIT = re.compile(re.escape("git log -1 --format=%h -- specs/<nnn-slug>/summary.md"))
+_EdgeRules = tuple[tuple[str, str, tuple[re.Pattern[str], ...]], ...]
+# (source, the rule, the patterns one of its sentences must all match).
+_EDGE_RECORD_RULES: _EdgeRules = (
+    (
+        "develop-feature Reviews after a change",
+        "R3.8 each review the rule leaves out is noted in the task's todo item",
+        (_AFTER_LEAVES_OUT, _AFTER_NOTE, _EDGE_TODO_ITEM),
+    ),
+    (
+        "develop-feature Reviews after a change",
+        "R3.8 after the task's commit each one is appended to the task's note as a Not repeated: line",
+        (_EDGE_NOTES_APPEND, _EDGE_NOT_REPEATED_LINE),
+    ),
+    (
+        "develop-feature Reviews after a change",
+        "R3.8 the slice summary lists them from those notes",
+        (_AFTER_SLICE_SUMMARY, _EDGE_NOTES),
+    ),
+    (
+        "develop-feature Phase 3",
+        "R3.8 the commit step appends to the task's note each review it did not repeat",
+        (_EDGE_APPEND, _AFTER_NOTE, _AFTER_DID_NOT_REPEAT, _AFTER_LINK),
+    ),
+    (
+        "develop-feature Slice checkpoint",
+        "R3.8 the summary lists them with git log on the notes, by their Not repeated: line",
+        (_EDGE_NOTES_LOG, _EDGE_GREP_NOT_REPEATED),
+    ),
+    (
+        "develop-feature Slice checkpoint",
+        "R4.8 the criterion an adjustment updated is read from its commit",
+        (_EDGE_CRITERION_FROM_COMMIT,),
+    ),
+    (
+        "fix-bug step 9",
+        "R3.8 the report names each review not repeated after a fix round",
+        (_AFTER_DID_NOT_REPEAT, _AFTER_FIX_ROUND),
+    ),
+    (
+        "opening-pull-requests",
+        "R4.8 the summary link uses the newest commit that changed summary.md",
+        (_EDGE_NEWEST_SUMMARY_COMMIT,),
+    ),
+)
+_EDGE_BUILD_RULES: _EdgeRules = (
+    (
+        "develop-feature Phase 3",
+        "R3.9 the command of a test the verify command does not cover runs every time: the five runs, each rerun"
+        " and the output the reviews get",
+        (_EDGE_DOES_NOT_COVER, _EDGE_EVERY_TIME, _EDGE_FIVE_RUNS),
+    ),
+    (
+        "develop-feature Phase 3",
+        "R3.9 an invariant is not missing when a property task of the plan covers it",
+        (_SIZED_INVARIANT, _EDGE_COVERING_PROPERTY_TASK),
+    ),
+    (
+        "develop-feature Phase 3",
+        "R2.2 tests that already pass skip the implementer and still get their five verifications",
+        (_SIZED_SKIPS_STEP_2, _EDGE_FIVE_VERIFICATIONS),
+    ),
+    (
+        "develop-feature Phase 3",
+        "R2.3 a test that went back to the test-writer is built by a new implementer, told which tests already pass",
+        (_EDGE_NEW_IMPLEMENTER, _EDGE_ALREADY_PASS),
+    ),
+    (
+        "develop-feature Phase 3",
+        "R3.1 a red check in a test file goes to a new test-writer",
+        (_AFTER_CHECK_FAILS, _SIZED_NEW_TEST_WRITER, _EDGE_TEST_FILE),
+    ),
+    (
+        "develop-feature Phase 3",
+        "R3.9 the evidence file the orchestrator saves is not a change that brings reviews back",
+        (_EDGE_EVIDENCE_FILE, _AFTER_ONE_RE_REVIEW),
+    ),
+    (
+        "develop-feature Parallel partitions",
+        "R3.2 an integration fix that touches a file a high task lists gets every review of step 3",
+        (_EDGE_EVERY_REVIEW_OF_STEP_3, _EDGE_FILE_A_HIGH_TASK_LISTS),
+    ),
+    (
+        "the test-writer prompt",
+        "R3.9 a property test the verify command does not cover runs with a command of its own, given in its report",
+        (_SIZED_PROPERTY_TEST, _EDGE_RUNS_ONLY_IT, _EDGE_REPORT),
+    ),
+    (
+        "the implementer prompt",
+        "R2.3 another implementer of the same task is told which tests already pass",
+        (_EDGE_ALREADY_PASS, _SIZED_PLACEHOLDER),
+    ),
+    (
+        "develop-feature Rethink",
+        "R2.5 a split always sets the whole attempt aside",
+        (_EDGE_SPLIT, _AFTER_ALWAYS, _EDGE_WHOLE_ATTEMPT_ASIDE),
+    ),
+    ("develop-feature Rethink", "R2.5 every part is then built from step 1", (_EDGE_EVERY_PART, _EDGE_STEP_1)),
+    (
+        "develop-feature Rethink",
+        "R4.10 the set-aside keeps tasks.md and requirements.md out of the stash when a decision or a change was"
+        " recorded for the task",
+        (_EDGE_KEEPS_THE_PLAN_FILES, _ADJUST_REQUIREMENTS_MD),
+    ),
+    (
+        "develop-feature Rethink",
+        "R3.7 the attempt is staged before it is stashed, so a deleted file stays deleted",
+        (_EDGE_STAGED_STASH,),
+    ),
+    (
+        "fix-bug step 6",
+        "R3.7 the tree is marked before the fix round's first writer runs, and its SHA kept",
+        (_AFTER_GIT_ADD, _AFTER_SHA, _AFTER_BEFORE),
+    ),
+    (
+        "committing-changes Inside fix-bug",
+        "R3.7 the fix is staged in the same command as its commit, because a fix round's mark leaves an older"
+        " tree staged",
+        (_EDGE_STAGE, _EDGE_PLAIN_ADD, _EDGE_MARK),
+    ),
+)
+_EDGE_REQUEST_RULES: _EdgeRules = (
+    (
+        "develop-feature Phase 0",
+        "R4.11 a feature whose documents read Status: Done is finished whatever status would print",
+        (_ADJUST_STATUS_DONE, _EDGE_FINISHED, _EDGE_WHATEVER),
+    ),
+    (
+        "develop-feature Phase 0",
+        "R4.2 a plan change reopens a finished feature only while its pull requests are not merged",
+        (_ADJUST_REOPENS, _EDGE_NOT_MERGED),
+    ),
+    (
+        "develop-feature Phase 0",
+        "R4.2 once it is merged, the change is proposed as a new feature",
+        (_EDGE_MERGED, _EDGE_NEW_FEATURE),
+    ),
+    (
+        "develop-feature Adjustments",
+        "R4.10 on a high task a change asked on the task in progress is always a plan change",
+        (_ADJUST_TASK_IN_PROGRESS, _EDGE_HIGH_TASK, _ADJUST_PLAN_CHANGE),
+    ),
+    (
+        "develop-feature Adjustments",
+        "R4.10 a plan change to what the task itself builds stops the task",
+        (_EDGE_ITSELF_BUILDS, _EDGE_STOPS_THE_TASK),
+    ),
+    (
+        "develop-feature Adjustments",
+        "R4.10 changes asked together join the task in one round",
+        (_ADJUST_JOINS_THAT_TASK, _EDGE_ONE_ROUND),
+    ),
+    (
+        "develop-feature Adjustments",
+        "R4.10 before step 2 has run, steps 1 and 2 go on with the task block as it now reads",
+        (_EDGE_STEP_2_NOT_RUN, _EDGE_TASK_BLOCK),
+    ),
+    (
+        "develop-feature Adjustments",
+        "R4.10 a test the code already satisfies need not fail first",
+        (_ADJUST_MUST_FAIL, _EDGE_ALREADY_SATISFIES),
+    ),
+    (
+        "develop-feature Adjustments",
+        "R4.10 a test added, renamed or removed updates the task's Test: and Verify: lines",
+        (_ADJUST_ADDED_RENAMED_REMOVED, _EDGE_VERIFY_LINE),
+    ),
+    (
+        "develop-feature Adjustments",
+        "R4.10 a diff that reaches a file a high task lists or changed stops before the commit and asks the user",
+        (_EDGE_HIGH_TASKS_FILE, _EDGE_STOP_BEFORE, _EDGE_ASK_THE_USER),
+    ),
+    (
+        "develop-feature Adjustments",
+        "R4.11 a request left for later is made then, as long as this session still builds the feature",
+        (_EDGE_LEFT_FOR_LATER, _EDGE_STILL_BUILDING),
+    ),
+    (
+        "develop-feature Adjustments",
+        "R4.11 the user is told when an adjustment is held for a wave",
+        (_ADJUST_WAVE, _ADJUST_HOLD, _EDGE_TELL_THE_USER),
+    ),
+)
+_EDGE_PROCEDURE_RULES: _EdgeRules = (
+    (
+        "reference/adjustments.md",
+        "R4.9 at a live pause the next slice's branch is cut and pushed now, before the adjustment",
+        (_ADJUST_LIVE, _ADJUST_NEXT_SLICES_BRANCH, _EDGE_NOW),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.9 on a finished feature whose branch is merged, the adjustment gets a new branch from the default branch",
+        (_EDGE_DEFAULT_BRANCH, _EDGE_SWITCH),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.9 an adjustment is never committed on the default branch nor pushed to a merged branch",
+        (_EDGE_NEVER_COMMIT, _EDGE_DEFAULT_BRANCH, _EDGE_MERGED_BRANCH),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.7 the plan is searched for the old detail and each line that still states it is updated",
+        (_EDGE_OLD_DETAIL, _EDGE_GIT_GREP, _TASKS_MD),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.3 a rename the tests call sends the test-writer first",
+        (_EDGE_USES_A_NAME, _ADJUST_TEST_WRITER),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.3 a test the code already satisfies is kept as a CHARACTERIZATION instead of failing",
+        (_ADJUST_MUST_FAIL, _EDGE_CHARACTERIZATION, _EDGE_ALREADY_SATISFIES),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.3 when none of its tests fails, the code already does what was asked: stop and tell the user",
+        (_EDGE_NONE_FAILS, _EDGE_STOP, _EDGE_TELL_THE_USER),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.4 a doubtful Critical finding goes to a finding-verifier before the one fix round",
+        (_EDGE_FINDING_VERIFIER, _EDGE_ONE_FIX_ROUND),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.5 the diff is checked against every condition of the classification, a file no task lists included",
+        (_EDGE_CLASSIFICATION_LINK, _EDGE_FILE_NO_TASK),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.5 the lookup of the tasks that changed a file reads the note or the message and follows renames",
+        (_EDGE_BODY_AND_NOTE, _EDGE_FOLLOW),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.5 the set-aside message is written with letters, digits and spaces only",
+        (_EDGE_PLAIN_MESSAGE,),
+    ),
+    (
+        "reference/adjustments.md",
+        "R4.8 on a finished feature the entries go to summary.md before the turn ends",
+        (_EDGE_BEFORE_THE_TURN_ENDS, _ADJUST_SUMMARY_MD),
+    ),
+    (
+        "the test-writer (adjustment) prompt",
+        "R4.3 tests that use a name the request changes are changed too",
+        (_EDGE_USES_A_NAME,),
+    ),
+    (
+        "the test-writer (adjustment) prompt",
+        "R4.3 a test the code already satisfies gets a CHARACTERIZATION report and is never bent to fail",
+        (_EDGE_ALREADY_SATISFIES, _EDGE_NEVER_BEND, _SIZED_CHARACTERIZATION_REPORT),
+    ),
+)
+
+
+def _edge_gaps(rules: _EdgeRules) -> list[str]:
+    """Return `<source> lacks: <rule>` for each rule whose patterns share no sentence of its source."""
+    return [
+        f"{source} lacks: {rule}"
+        for source, rule, patterns in rules
+        if not any(_in_one_sentence(block, *patterns) for block in _EDGE_SOURCES[source]())
+    ]
+
+
+class RightSizedFlowEdgesTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_reviews_not_repeated_and_adjustments_leave_a_record_that_travels(self) -> None:
+        """R3.8, R4.8: 004 what was not reviewed again, and what an adjustment changed, is read from Git.
+
+        develop-feature's `## Reviews after a change` notes each review the rule leaves out in the task's todo item,
+        appends it to the task's note right after its commit (`git notes --ref=refs/notes/konundrm append` with a
+        `Not repeated:` line) and has the slice summary list them from those notes; step 7 of Phase 3 appends them;
+        the Slice checkpoint lists them with `git log --notes=refs/notes/konundrm --grep '^Not repeated:'` and reads
+        the criterion an adjustment updated from its commit; fix-bug's report names each review not repeated after a
+        fix round; and opening-pull-requests links the summary at the newest commit that changed `summary.md`.
+        """
+        gaps = _edge_gaps(_EDGE_RECORD_RULES)
+
+        self.assertEqual(gaps, [])
+
+    def test_the_one_cycle_build_covers_its_property_tests_and_its_second_dispatches(self) -> None:
+        """R2.2, R2.3, R2.5, R3.1, R3.2, R3.7, R3.9, R4.10: 004 the edges of building a task in one cycle.
+
+        Phase 3 runs the command of a test the verify command does not cover every time the task runs it (the five
+        runs, each rerun, the output the reviews get); does not count as missing an invariant a `property` task
+        covers; gives tests that already pass their five verifications; has a new implementer build a test that
+        went back to the test-writer, told which tests already pass; sends a red check in a test file to a new
+        test-writer; and does not treat the evidence file as a change. An integration fix on a file a `high` task
+        lists gets every review of step 3. The test-writer prompt runs such a property test with a command of its
+        own and the implementer prompt names the tests that already pass. A rethink's split always sets the whole
+        attempt aside and builds every part from step 1; its stash is staged first and keeps tasks.md and
+        requirements.md out when a decision or a change was recorded. fix-bug marks the tree before its fix round,
+        and committing-changes stages the fix in the same command as its commit.
+        """
+        gaps = _edge_gaps(_EDGE_BUILD_RULES)
+        committing = _EDGE_SOURCES["committing-changes Inside fix-bug"]()
+        if not any(_EDGE_FIX_COMMIT.search(block) for block in committing):
+            gaps.append("committing-changes ### Inside fix-bug lacks (R3.7): git add -A && git commit -F ...")
+
+        self.assertEqual(gaps, [])
+
+    def test_a_finished_feature_and_a_task_in_progress_take_a_change_safely(self) -> None:
+        """R4.2, R4.10, R4.11: 004 a change on a finished feature or on the task in progress is handled safely.
+
+        Phase 0 knows a finished feature by its documents (`Status: Done`), whatever `status` would print, reopens it
+        for a plan change only while its pull requests are not merged, and otherwise proposes a new feature.
+        `## Adjustments` says, each part in one sentence: on a `high` task a change on the task in progress is always
+        a plan change; a plan change to what the task itself builds stops the task; changes asked together join the
+        task in one round; before step 2 has run, steps 1 and 2 go on with the task block as it now reads; a test
+        the code already satisfies need not fail first; a test added, renamed or removed updates the task's lines;
+        a diff that reaches a file a `high` task lists or changed stops before the commit and asks the user; a
+        request left for later is made then while this session still builds the feature; and the user is told when
+        an adjustment is held for a wave.
+        """
+        gaps = _edge_gaps(_EDGE_REQUEST_RULES)
+
+        self.assertEqual(gaps, [])
+
+    def test_an_adjustment_has_a_branch_a_red_step_that_can_be_met_and_a_safe_set_aside(self) -> None:
+        """R4.3, R4.4, R4.5, R4.7, R4.8, R4.9: 004 the edges of making an adjustment.
+
+        reference/adjustments.md says, each part in one sentence: at a live pause the next slice's branch is cut and
+        pushed now; on a finished feature whose branch is merged the adjustment gets a new branch from the default
+        branch, and is never committed on the default branch nor pushed to a merged branch; the plan is searched
+        for the old detail; a rename the tests call sends the test-writer first; a test the code already satisfies
+        is kept as a CHARACTERIZATION; when none of its tests fails it stops and tells the user; a doubtful Critical
+        finding goes to a finding-verifier before the one fix round; the diff is checked against every condition of
+        the classification; the lookup of the tasks that changed a file reads the note or the message and follows
+        renames; the set-aside message uses letters, digits and spaces only; and on a finished feature the entries
+        go to summary.md before the turn ends. The test-writer (adjustment) prompt changes the tests that use a
+        name the request changes and returns a CHARACTERIZATION report, never a bent test, for one the code
+        already satisfies.
+        """
+        gaps = _edge_gaps(_EDGE_PROCEDURE_RULES)
 
         self.assertEqual(gaps, [])
 

@@ -513,6 +513,12 @@ _MANY_TEST_WRITER_SUBAGENT = re.compile(r"\btest-writer subagent\b")
 _MANY_BEFORE_STOPPING = re.compile(r"\bbefore you stop\b|\bbefore stopping\b|\bbefore the stop\b")
 _MANY_USER = re.compile(r"\buser\b")
 _MANY_ONE_TEST_THEN_STOP = re.compile(r"\bone test\b.{0,40}?\bstop\b")
+_MANY_PROPERTY_TEST = re.compile(r"\bproperty test\b")
+_MANY_DISPATCH_LISTS = re.compile(r"\bdispatch lists\b")
+_MANY_RUNS_ONLY_IT = re.compile(r"\bruns only it\b")
+_MANY_ADJUSTMENTS_AND_REVIEWS = re.compile(r"\badjustments and reviews not repeated\b")
+_MANY_BY_DESIGN = re.compile(r"\bby design\b")
+_MANY_LEFT_OUT = re.compile(r"\bleft out\b")
 _MANY_GREEN_TESTS_LINE = re.compile(r"^\s*tests:", re.MULTILINE)
 _MANY_GREEN_PER_TEST_LINE = re.compile(r"^- <path>::<name>: red before its code, green after\b", re.MULTILINE)
 # (file, `## ` section, the rule, the patterns one of its sentences must all match).
@@ -596,6 +602,30 @@ _MANY_TESTS_RULES: tuple[tuple[Path, str, str, tuple[re.Pattern[str], ...]], ...
         "R2.4 with the user the rule stays one test, then stop",
         (_MANY_USER, _MANY_ONE_TEST_THEN_STOP),
     ),
+    (
+        TDD_SKILL,
+        "Contract",
+        "R3.9 the test-writer subagent also writes each property test its dispatch lists",
+        (_MANY_TEST_WRITER_SUBAGENT, _MANY_PROPERTY_TEST, _MANY_DISPATCH_LISTS),
+    ),
+    (
+        TEST_WRITER,
+        "Process",
+        "R3.9 a property test the verify command does not cover runs with a command of its own, given in its report",
+        (_MANY_PROPERTY_TEST, _MANY_RUNS_ONLY_IT),
+    ),
+    (
+        PROCESS_REVIEWER,
+        "Process",
+        "R3.8 the flow record holds the adjustments and the reviews not repeated",
+        (_MANY_ADJUSTMENTS_AND_REVIEWS,),
+    ),
+    (
+        PROCESS_REVIEWER,
+        "Process",
+        "R3.8 not repeating a review is by design: evidence only when the review left out would have caught something",
+        (_MANY_BY_DESIGN, _MANY_LEFT_OUT),
+    ),
 )
 
 
@@ -603,7 +633,7 @@ class TaskWithSeveralTestsTest(unittest.TestCase):
     maxDiff = None  # a failure lists every gap, not the first one
 
     def test_writers_handle_a_task_that_lists_several_tests(self) -> None:
-        """R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.9, R4.3: 004 the roles build a task that lists several tests.
+        """R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.8, R3.9, R4.3: 004 the roles build a task that lists several tests.
 
         agents/test-writer.md's `## Process` writes every test the task lists under `Tests:`, one behavior per test,
         returns one report per test, writes the property tests the dispatch lists for the task's invariants and
@@ -617,7 +647,11 @@ class TaskWithSeveralTestsTest(unittest.TestCase):
         test. agents/rethinker.md's `## Process` names a consolidated task whose behaviors do not belong together, to
         split as a PLAN CHANGE. The test-driven-development skill's `## Contract` lets a task list several behaviors
         under `Tests:` only for the test-writer subagent, and its `## Workflow` says that, as that subagent, every
-        test of such a task is written before stopping, and that with the user the rule stays one test, then stop.
+        test of such a task is written before stopping, and that with the user the rule stays one test, then stop;
+        its `## Contract` also has that subagent write each property test its dispatch lists, which
+        agents/test-writer.md runs with a command of its own when the verify command does not cover it.
+        agents/process-reviewer.md's `## Process` names the adjustments and the reviews not repeated as a part of
+        the flow record, and says that not repeating a review is by design.
         """
         gaps = [
             f"{path.parent.name if path.name == 'SKILL.md' else path.name}: ## {section} does not say {rule}"

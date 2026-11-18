@@ -76,7 +76,8 @@ its size. So first merge the lines that belong together into one **consolidated 
 reviewed in a single cycle. They need not be next to each other in the list: bring related lines
 together when no dependency forbids it. Merge them when every one of these holds:
 
-- **Low risk, all of them.** A `medium` or `high` line is never merged, with anything.
+- **Low risk, all of them.** A `high` line is never merged, with anything, and a `medium` line
+  only with other `medium` lines, when the header says `low and medium` (below).
 - **One owner.** Their files belong to one row of the design's ownership table (one
   responsibility, in one file or several), or they apply one and the same rule to several owners
   (the same setting, wording or check repeated in each), and one verify command runs exactly
@@ -99,7 +100,9 @@ The header line `- **Consolidation:**` holds the user's choice: `low` unless the
 otherwise in the request or when approving the plan. With `low and medium`, also merge `medium`
 lines that are cases of one rule: the same function or class and the same test file, at most three
 behaviors per task, each of their invariants kept on the merged task. With `none`, write one task
-per line. A `high` line is never merged.
+per line. A `high` line is never merged. A `tasks.md` without that line (a plan written before
+0.9.0) reads as `low` for the tasks a plan change adds: add the line then, and count each task
+the plan already had as one behavior in its totals.
 
 Then write the tasks, numbered in their final order. Rules for each task:
 
@@ -109,7 +112,9 @@ Then write the tasks, numbered in their final order. Rules for each task:
 - **Covers:** the requirement IDs it advances.
 - **Dependencies** point to earlier tasks only: a task never depends on a later one.
 - **Risk:** every task carries `Risk: low | medium | high`, the risk of its lines.
-  Medium and high tasks list their `Invariants`; high-risk tasks also name the mutation command
+  Medium and high tasks list their `Invariants`, each one naming the `property` task that covers
+  it when there is one (`property in T7`): develop-feature writes the property test of the
+  others together with the task's own test. High-risk tasks also name the mutation command
   scoped to the changed code, what the security review must look at (`Security:`, from the
   threats table) and the end-to-end evidence to collect.
 - A `chore` task carries a verify command instead of a test.
@@ -121,7 +126,9 @@ Then write the tasks, numbered in their final order. Rules for each task:
 - **A consolidated task** is one task: one ID, the risk of its lines, the criteria of all its
   behaviors in `Covers`, and a `Tests:` list in place of the `Test:` line, with one test per
   behavior and the criterion it asserts. Each behavior keeps its own test, so the trace from the
-  spec to a test does not change.
+  spec to a test does not change. A `chore` line merged into a behavior task has no test: write
+  its step on the `Files:` line, after the file it changes (`<path>` (modify: <the step>)), so
+  the implementer and the reviewers read it as part of the task.
 
 After the last task, add the totals to the header's `Consolidation:` line, after the user's
 choice: `low · <n> behaviors in <m> tasks`. They count the lines of the first list.
@@ -177,8 +184,10 @@ develop-feature can build the partitions of one wave at the same time when the u
 
 - Every acceptance criterion maps to at least one task; no behavior task lacks a criterion.
 - Checked against the first list: every consolidated task meets the four conditions of step 5
-  and merges no `high` or `property` line, no `medium` line unless the header says
-  `low and medium`, none that needs a `- Decision:` field and none that adds a dependency.
+  (with `low and medium` in the header, a task of `medium` lines meets that paragraph's
+  conditions in place of the first) and merges no `high` or `property` line, no `medium` line
+  unless the header says `low and medium`, none that needs a `- Decision:` field and none that
+  adds a dependency.
 - Every behavior of a consolidated task has its own test in `Tests:`, with its criterion.
 - Every task has a risk level, and every money, auth, personal-data, data-deletion or
   external-contract task is high.

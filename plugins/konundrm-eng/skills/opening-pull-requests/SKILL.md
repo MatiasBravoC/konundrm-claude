@@ -145,8 +145,10 @@ to repository paths.
 
 With a feature folder, link `specs/<NNN-slug>/summary.md` from the description of every pull
 request, stacked or single, as a full URL: `https://github.com/<owner>/<repo>/blob/<commit>/specs/<NNN-slug>/summary.md`.
-`<commit>` is the SHA of the feature's final `docs(<scope>)` commit, which holds the summary, so
-the link keeps working after the slice branches are merged and deleted.
+`<commit>` is the SHA of the newest commit that changed `summary.md`
+(`git log -1 --format=%H -- specs/<NNN-slug>/summary.md`): the feature's final `docs(<scope>)`
+commit, or the later `docs` commit that added the adjustments made after it, so the link shows
+every adjustment and keeps working after the slice branches are merged and deleted.
 
 A fix-bug branch, a small change without slices and a feature built before the summary existed
 have no `summary.md`, so their descriptions carry no summary link.

@@ -41,18 +41,20 @@ Property tests to write too (leave this paragraph out on a `low` task, or when t
 
 Write the task's tests at the paths and names the task gives: the one on its `Test:` line, or
 every test of its `Tests:` list, one test per behavior (a property test when the task type is
-`property`, over the domain it states). Run them with the task's verify command. For each test,
-return a RED report if it fails because its behavior is missing, or a CHARACTERIZATION report if
+`property`, over the domain it states). Run them with the task's verify command, and a property
+test that command does not cover with a command that runs only it, which you give in its report.
+For each test, return a RED report if it fails because its behavior is missing, or a CHARACTERIZATION report if
 it already passes because the behavior exists. Do not create or edit any non-test file.
 ```
 
-When step 1 sends one test back (it errored for another reason, passed with a RED report or does
-not assert its criterion), add this paragraph above the last one, so the tests that are ready stay
-untouched:
+When a test goes back to a test-writer (in step 1 it errored for another reason, passed with a RED
+report or does not assert its criterion; in step 2 the implementer returned `BLOCKED` on it or
+found it green before its code; in a fix round a review found it missing or wrong), add this
+paragraph above the last one, so the tests that are ready stay untouched:
 
 ```
 Tests already written, to leave exactly as they are: <path>::<name>, one per test
-Write or fix only: <path>::<name> — <what was wrong: the output, or the criterion it misses>
+Write or fix only: <path>::<name> — <what was wrong: the output, the criterion it misses or the review's finding, verbatim>, one line per test
 ```
 
 ## implementer
@@ -75,6 +77,15 @@ refactor with every test green. Do not edit test files. Return your GREEN report
 
 For a `chore` task, replace the failing-test lines with: `No test for this task. Done when the
 verify command succeeds: <command>`.
+
+When step 2 dispatches another implementer for the same task (a test went back to the test-writer
+after a `BLOCKED` or because it was green before its code, or the user answered an open decision),
+list under `Failing tests:` only the tests still red and add this line below it, so the new
+implementer does not report the others as green before their code:
+
+```
+Tests of the task that already pass with the code in the tree: <path>::<name>, one per test
+```
 
 ## implementer (fix round)
 
@@ -103,7 +114,8 @@ Task:
 Acceptance criteria covered:
 <EARS lines>
 
-Implementer's GREEN report (claims to verify, not facts):
+Implementer's GREEN report (claims to verify, not facts; each one, in order, when more than one
+implementer built the task):
 <GREEN report>
 
 Orchestrator's verification output (verify command: 5 runs, or 1 for a `chore` task): <output>
@@ -164,7 +176,8 @@ Re-review after a fix round. Your previous findings on this task, verbatim (or "
 Reports of every fix round since this review last ran (each file changed and what changed in it):
 <files changed and their changes, from those rounds' GREEN and RED reports>
 
-What the last round changed (`git diff --stat <sha>`, against the tree marked before the round):
+What the last round changed (`git diff --stat <sha>`, against the tree marked before the round,
+and the new files `git status --porcelain` lists as `??`):
 <output>
 
 Change the user asked for during this task, verbatim (a criterion for this review, also on the
@@ -276,7 +289,7 @@ project's code, names or data. Do not change any file. Return your IMPROVEMENT N
 ## test-writer (adjustment)
 
 For an [adjustment](adjustments.md), or a change the user asks for on the task in progress, whose
-request changes what the code does for some input or something a test asserts.
+request changes what the code does for some input, or something a test asserts or names.
 
 ```
 Adjustment to work already built. Feature folder: specs/<NNN-slug>/
@@ -291,10 +304,13 @@ Acceptance criteria covered, as they read now (a criterion the request changes i
 Change the user asked for, verbatim:
 <request>
 
-Find every test that asserts what the request changes (search the test folders for the old text
-or value) and change each one to assert what the request asks for; add a test in the task's test
-file when none asserts it. Leave every other test as it is. Run the tests you changed or added:
-each must fail because the code still does what it did. Return a RED report for each one. Do not
+Find every test that asserts what the request changes, or uses a name it changes (search the test
+folders for the old text, value or name), and change each one to assert or use what the request
+asks for; add a test in the task's test file when none asserts it. Leave every other test as it
+is. Run the tests you changed or added: each must fail because the code still does what it did,
+and gets a RED report. The one exception is a test the code as it stands already satisfies (when
+a limit moves, one of its two boundary tests passes before and after): leave it as the request
+needs it, never bend it to make it fail, and return a CHARACTERIZATION report for it. Do not
 create or edit any non-test file.
 ```
 
@@ -323,8 +339,9 @@ for. Do not edit test files. Rerun the verify and check commands and return your
 ## adjustment review
 
 For the spec or code reviewer after an adjustment (the security reviewer too when the user asks
-for it). Start from that reviewer's prompt above and keep its lines up to the task's criteria;
-replace the rest with:
+for it). Start from that reviewer's prompt above and keep its lines up to the task's criteria
+(the code reviewer's prompt has none: keep its `Feature folder` and `Task` lines and add the
+criteria the request changed, as they read now); replace the rest with:
 
 ```
 The task was reviewed and committed before. The user then asked for this change, verbatim:

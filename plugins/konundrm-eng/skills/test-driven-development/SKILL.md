@@ -15,9 +15,9 @@ stop between red and green is what keeps the test honest.
 - **Receives:** one behavior to specify, either a task from `tasks.md` (with its test path, test
   name and requirement IDs) or a request from the user. Only for the test-writer subagent, a task
   may list several behaviors under `Tests:`.
-- **Produces:** exactly one new failing test (for the test-writer subagent on a task with a
-  `Tests:` list, one per listed behavior), evidence that each fails for the right reason, and a
-  handoff report per test (format below). Never production code.
+- **Produces:** exactly one new failing test (for the test-writer subagent, one per behavior of a
+  task's `Tests:` list, plus each property test its dispatch lists), evidence that each fails for
+  the right reason, and a handoff report per test (format below). Never production code.
 
 ## Workflow
 
@@ -73,9 +73,11 @@ every test of that list before you stop, still one behavior per test. The implem
 run yet, so each test is seen failing first, and the implementer then makes them pass one at a
 time, seeing each one red before its code. Run them with the task's verify command and return one
 RED report per test, in the task's order, or a CHARACTERIZATION report for a test that already
-passes. The property tests a dispatch adds for the task's invariants are part of that list.
-Working with the user, or on a task with a single `Test:` line, the rule does not change: one
-test, then stop.
+passes. When the dispatch lists property tests to write for the task's invariants, write them in
+that same dispatch, after the task's own tests, also on a task with a single `Test:` line, and
+give each its own report with the command that runs it. Working with the user, or on a task with
+a single `Test:` line whose dispatch lists no property test, the rule does not change: one test,
+then stop.
 
 ### 2. Stop and hand off
 

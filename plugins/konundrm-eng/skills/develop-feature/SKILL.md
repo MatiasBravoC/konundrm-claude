@@ -65,6 +65,18 @@ and its fix round is a fix round.
      refusal here is harmless.
    - Read the feature folder's files, skip stages whose documents are `Approved` and take the base commit from the
      `tasks.md` header.
+   - When the three documents already read `Status: Done`, the feature is finished whatever
+     `status` would print, and the rest of this step does not apply: no task is left to build,
+     Phase 4 does not run again, and a change the user asks for goes through
+     [Adjustments](#adjustments). `status` finds a built task by its commit's note, and notes do
+     not travel in a clone nor survive a squash merge or a rebase, so after any of them it names
+     as next a task that is built. A plan change there reopens the feature only while its pull
+     requests are not merged and no later feature has commits after it: with the user's yes, set
+     the three documents back to `Approved`, put its new tasks in a new slice after the last one,
+     so the finished slices keep their summaries and pull requests, build them through Phase 3
+     and run Phase 4 again. Once it is merged, propose the change as a new feature instead:
+     `status` counts every task commit after this plan's base, so a later feature's `T13` would
+     count as this feature's new `T13`.
    - When the plan is `Approved`, some slice has a wave of two or more partitions and `tasks.md`
      has no `- **Parallel:**` line yet (the session stopped between the approval and recording the
      answer), ask the parallel question now, before Phase 3, and record the answer as
@@ -110,11 +122,7 @@ and its fix round is a fix round.
      says.
    - Continue at the task `status` names as next (in a parallel wave, the main session still builds
      only the wave's first partition). When it prints `next: none` (every task is built and every
-     slice has its summary commit), go on to [Phase 4](#phase-4-finish), unless the three
-     documents already read `Status: Done`: then nothing is left to build, Phase 4 does not run
-     again, and a change the user asks for goes through [Adjustments](#adjustments). A plan change
-     there reopens the feature: with the user's yes, set the three documents back to `Approved`,
-     build its tasks through Phase 3 and run Phase 4 again.
+     slice has its summary commit), go on to [Phase 4](#phase-4-finish).
 2. Confirm the repository root and that the tree is clean. If unrelated changes are pending, ask
    the user to commit or stash them first; never mix them into feature commits.
 3. Get the check command from the plugin, the same one its hooks run: the session context names
@@ -245,7 +253,9 @@ failure of the same review, sends the task to [Rethink](#rethink) instead of ano
    a report per test. On a `medium` or `high` task the same dispatch also writes the property test
    of each invariant the task lists that no `property` task covers, so step 5 finds it written and
    no review repeats for it. Then run the task's verify command yourself, and the command its
-   report gives for a test that command does not cover, and check each test against its report:
+   report gives for a test that command does not cover, and check each test against its report
+   (from here on that command runs with the verify command every time this task runs it: the
+   five runs of step 2, each rerun after a change and the output the reviews get):
    - It fails for the reason its RED report gives: that test is ready.
    - It passes and its report is a CHARACTERIZATION (the behavior or invariant already holds,
      often because an earlier task built it): read the test. If it asserts what its criterion
@@ -256,14 +266,15 @@ failure of the same review, sends the task to [Rethink](#rethink) instead of ano
 
    When every test fails for the reason its RED report gives, or is a kept CHARACTERIZATION,
    continue to step 2 with the reports; when every test of the task already passes this way, skip
-   step 2 and continue at step 3. A `DECISION` or `BLOCKED` report is for the whole task: the
-   test-writer wrote no test.
+   step 2's `implementer`, run its five verifications and continue at step 3. A `DECISION` or
+   `BLOCKED` report is for the whole task: the test-writer wrote no test.
 2. **Green and refactor.** Dispatch `implementer` with the RED reports: it makes the tests pass
    one at a time, in the task's order, and reports each one red before its code. Read a test it
    reports green before its code as step 1 reads a CHARACTERIZATION: keep it if it asserts its
-   criterion, otherwise send it to a new `test-writer`. When it returns `BLOCKED` on one test,
-   send that test back as step 1 does and tell the next `implementer` which tests already pass.
-   Then run the verify command yourself **five times in a row**: every run must pass (Standards →
+   criterion, otherwise send it to a new `test-writer` as step 1 does. When it returns `BLOCKED`
+   on one test, send that test back the same way. In both cases, once that test is red for the
+   reason its report gives, dispatch a new `implementer` for it and tell it which tests already
+   pass. Then run the verify command yourself **five times in a row**: every run must pass (Standards →
    Tests). A run that fails while others pass means a flaky test: send the failing output to a
    new `test-writer` (flaky-test prompt), then run the five verifications again. For `chore`
    tasks, dispatch `implementer` directly and run the task's verify command once. The implementer
@@ -284,20 +295,21 @@ failure of the same review, sends the task to [Rethink](#rethink) instead of ano
      the round's own diff can be read afterwards, then send every finding left (the spec review's
      FAIL findings and the CONFIRMED or UNCERTAIN Critical findings of the code and security
      reviews) to one fix round, one writer at a time: a missing or wrong test, or a test that
-     does not test what it claims → `test-writer`; everything else → `implementer` (fix-round
-     prompt).
+     does not test what it claims → `test-writer` (test-writer prompt, naming the tests to leave
+     as they are); everything else → `implementer` (fix-round prompt).
    - After the fix round, rerun the verify command yourself (five times in a row as in step 2, once
      for a `chore` task) and run again, at once and with the re-review prompt, only the reviews
      the round concerns, as [Reviews after a change](#reviews-after-a-change) names them from the
      round's diff: often one, and every review of step 3 on a `high` task. Each review gets its
-     previous findings (or "none"), the fix round's reports (each file changed and what changed in
-     it) and the new verification output, and rereads those files instead of reviewing the whole
-     task.
+     previous findings (or "none"), the reports of every fix round since it last ran (each file
+     changed and what changed in it), what the round's diff shows and the new verification
+     output, and rereads those files instead of reviewing the whole task.
 5. **Verify by risk** (Standards → Verification by risk), using the task's `Invariants`,
    `Mutation` and `Evidence` fields from `tasks.md`:
-   - `medium` and `high`: every listed invariant has a property test. Step 1 wrote them; for one
-     still missing, dispatch `test-writer`. A property that fails has found a bug: send its
-     counterexample to the `implementer` (fix-round prompt).
+   - `medium` and `high`: every listed invariant has a property test, in this task or in the
+     `property` task that covers it. Step 1 wrote this task's; for one still missing, dispatch
+     `test-writer`. A property that fails has found a bug: send its counterexample to the
+     `implementer` (fix-round prompt).
    - `high`: run the task's mutation command. Each surviving mutant goes to a new `test-writer`
      (surviving-mutant prompt), unless it is equivalent: then the `implementer` marks its line
      with the tool's exclusion and the reason (Standards → Gate integrity). Rerun the command to
@@ -308,10 +320,10 @@ failure of the same review, sends the task to [Rethink](#rethink) instead of ano
      browser for UI) and save the commands and their output, or screenshots, in
      `specs/<NNN-slug>/evidence/T<n>.md`.
    - Mark the task (`git add -A && git write-tree`) before the first change this step makes.
-     When the step is done, any change it made (a test added, a fix or an exclusion mark) goes
-     again, in one re-review, through the reviews it concerns
-     ([Reviews after a change](#reviews-after-a-change)), as after step 4's fix round, so nothing
-     lands without the reviews it needs.
+     When the step is done, any change it made (a test added, a fix or an exclusion mark, not
+     the evidence file you save yourself) goes again, in one re-review, through the reviews it
+     concerns ([Reviews after a change](#reviews-after-a-change)), as after step 4's fix round,
+     so nothing lands without the reviews it needs.
 6. **Gate.** Run
    `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py status specs/<NNN-slug>/tasks.md` to
    learn whether the check is green for the current tree (a passing check recorded on exactly
@@ -320,7 +332,8 @@ failure of the same review, sends the task to [Rethink](#rethink) instead of ano
    shell call, with no pipe, redirection or other command around it: it must pass, and running
    it on the exact files you will commit lets the commit hook reuse its green result. If the
    check fails, mark the task (`git add -A && git write-tree`), send the failure to the
-   `implementer` (fix-round prompt), rerun the verify command and the reviews that fix needs
+   `implementer` (fix-round prompt), or to a new `test-writer` when what fails is in a test file,
+   which the implementer cannot edit, rerun the verify command and the reviews that fix needs
    ([Reviews after a change](#reviews-after-a-change)), the code review always among them, as
    after step 4's fix round, take the task through step 5 (verify by risk) again, then repeat
    this step.
@@ -338,8 +351,9 @@ failure of the same review, sends the task to [Rethink](#rethink) instead of ano
    `refs/notes/konundrm`. The commit is a plain `git commit`, so it goes through the commit
    gate like any other commit: the hook reuses the green result step 6 left for this tree and
    denies the commit on red. This commit checks no box and writes no Rounds line in `tasks.md`:
-   the task's rounds live in its note. With `Publish: live`, push it next, as
-   [Live publishing](#phase-3-task-loop) says.
+   the task's rounds live in its note. Then append to that note each review the task did not
+   repeat after a change, as [Reviews after a change](#reviews-after-a-change) says. With
+   `Publish: live`, push it next, as [Live publishing](#phase-3-task-loop) says.
 
 When the task was the slice's last task and the slice is built here without a parallel wave, run
 the [Slice checkpoint](#slice-checkpoint) before the next slice's first task; a parallel slice runs
@@ -352,10 +366,11 @@ options with their advantages, disadvantages and the recommendation, and wait fo
 choice. Start that message with a line `RED: T<n> waits for a decision`, since the task's test may
 already be red and the stop gate ends a turn on a red tree only with a `RED:` or `BLOCKED:` line.
 
-Record the choice in `tasks.md` by adding the task's `- Decision:` field (or rewriting it, when
-the task already has one) as `- Decision: <option> (user)`, and keep the options from the
-subagent's `Decision:` report below it, so summaries cite the decision as recorded; that record
-lands in the task's commit. Then send the task to a new subagent of the same role with the same
+Record the choice in `tasks.md` by adding a `- Decision:` field to the task as
+`- Decision: <option> (user)` (rewrite a field the task already has only when it asks the same
+question: a task that lists several tests may leave more than one choice open, and each keeps its
+own field), and keep the options from the subagent's `Decision:` report below it, so summaries
+cite the decision as recorded; that record lands in the task's commit. Then send the task to a new subagent of the same role with the same
 prompt, whose task block now carries the decision. A `Status: DECISION` is not an escalation nor a
 `BLOCKED`: the design is not wrong, it left the choice open.
 
@@ -393,16 +408,17 @@ tree, so there `git diff HEAD` and those `??` files are the change. Reviewers ke
 | --- | --- |
 | It fixed a finding of a review | that review, whatever else applies |
 | It added tests and changed nothing else: no line of a test that was there, no fixture, mock or snapshot, no production code | `spec-reviewer` |
-| It changed a test that was there (edited or removed a test, added or changed a fixture, a mock or a snapshot) or what the code does for some input: a result, an error, a side effect, or a value the code decides with (a limit, a default, a pattern, a flag), whether or not a test asserts it yet | `spec-reviewer` and `code-reviewer` |
-| It changed how the code is built without changing what it does (its structure, a name, a move, an extraction, an import), added a silencer or a skip, or touched what configures a gate: the check, the test runner, a linter, the type checker, coverage, mutation testing, the Git hooks or CI | `code-reviewer` |
+| It changed a test that was there (edited what it sets up or asserts, removed it, added or changed a fixture, a mock or a snapshot) or what the code does for some input: a result, an error, a side effect, or a value the code decides with (a limit, a default, a pattern, a flag), whether or not a test asserts it yet | `spec-reviewer` and `code-reviewer` |
+| It changed how the code is built without changing what it does (its structure, a name, a move, an extraction, an import), with at most that name or path replaced in the tests that use it, added a silencer or a skip, or touched what configures a gate: the check, the test runner, a linter, the type checker, coverage, mutation testing, the Git hooks or CI | `code-reviewer` |
 | It changed only text that nothing reads: comments that are not tool directives, prose that nothing loads, runs or tests (a README, a changelog, the wording of a doc-comment), formatting made by the project's formatter, or the wording of a message shown to a person that no test asserts, no criterion states and no code matches | none |
 | Anything, on a `high` task | every review of step 3, `security-reviewer` included |
 
 A file the product, a tool or a test reads is code whatever its extension: a prompt, a skill, an
-agent or a template in Markdown, a requirements file, a fixture. Before calling a message's
-wording text that nothing reads, search for its old text (`git grep -n -F '<old text>'`): a hit
-in code or tests makes it code. A change can match several rows: run every review they name, at
-the same time. The row with no review holds only when every changed line is plainly that kind of
+agent or a template in Markdown, a `requirements.txt`, a fixture. Before calling a message's
+wording text that nothing reads, search for its old text (`git grep -n -F '<old text>'`, with
+`MSYS_NO_PATHCONV=1` before `git` when the text holds a `/`, which Git Bash on Windows would
+rewrite as a path): a hit in code or tests makes it code. A change can match several rows: run
+every review they name, at the same time. The row with no review holds only when every changed line is plainly that kind of
 text; when you cannot tell which row a change falls in, run both reviews, and when the user asks
 for a review the table would skip, run it. The fix of a red check (step 6) always gets the code
 review again, whatever it changed: that fix is where a gate gets bent. Whatever the rows say,
@@ -410,8 +426,12 @@ rerun the verify command first when code or tests changed, and the gate still ne
 green before the commit (step 6).
 
 Each time this rule leaves out a review that step 3 ran, note it in the task's todo item with
-what the change touched (`T12 · not repeated: code review, the round only added a test`): the
-slice summary lists these notes and the process-reviewer's flow record carries them.
+what the change touched (`T12 · not repeated: code review, the round only added a test`). A todo
+item ends with its session, so right after the task's commit and its `record` (step 7) append
+each one to the task's note, which a partition's integration copies and a resumed session reads:
+`git notes --ref=refs/notes/konundrm append -m "Not repeated: <review> (<what the change touched>)" HEAD`.
+The slice summary lists them from those notes and the process-reviewer's flow record carries
+them.
 
 ## Rethink
 
@@ -428,15 +448,27 @@ review, or when the same review fails a third time, stop the fix rounds and:
      `requirements.md` and wait for the user (an escalation). Once the user approves it, handle the
      attempt as below and write the approved edit only after the attempt is stashed or kept, so the
      stash cannot take it. A split of a consolidated task keeps the task's ID for its first part
-     and gives each other part the next unused ID after the plan's last task, listed right after
-     it and in the same partition. Never renumber a task: a built task's note names its ID.
+     and gives each other part the next unused ID, one more than the plan's highest. List the new
+     parts right after the first part, in its slice, add their IDs to its partition's row of the
+     `### Partitions` table and to the `Depends on:` line of each later task that needs them, and
+     update the header's totals. Never renumber a task: a built task's note names its ID. A split
+     always sets the whole attempt aside, its tests included, whatever `Current attempt:` says:
+     one attempt cannot be committed as two tasks, and each part's check would run the other
+     parts' tests. Then build every part from step 1, the first part first, each with the
+     report's `Instructions:` and on `opus` at `high`. A new part counts its own failed reviews
+     and may have its own rethink.
    - `Current attempt: SET ASIDE`: stash the attempt, never discard it. The tree was clean when the
      task began, so the stash holds only this attempt:
-     `git stash push --include-untracked -m "<NNN-slug> T<n> attempt set aside by rethink"`. When
-     the `test-writer` line keeps the current test, end that command with
-     `-- . ':(exclude)<test file>'` so the test stays. Check with `git status` that nothing else is
-     left, then build the task again from step 1 of the task loop, or from step 2 when the test
-     stays (rerun its verify command and pass that output as the RED report).
+     `git add -A && git stash push --include-untracked -m "<NNN-slug> T<n> attempt set aside by rethink"`
+     (staging first, so a file a later round deleted stays deleted in the stash). When the
+     `test-writer` line keeps the current test, end that command with
+     `-- . ':(exclude)<test file>'` so the test stays. When you recorded a decision or a change
+     the user asked for during this task (its `- Decision:` or `- Change:` line in `tasks.md`, a
+     criterion edited in `requirements.md`), keep those two files out of the stash the same way,
+     with `':(exclude)specs/<NNN-slug>/tasks.md' ':(exclude)specs/<NNN-slug>/requirements.md'`
+     after `-- .`, so the task built again still carries them. Check with `git status` that
+     nothing else is left, then build the task again from step 1 of the task loop, or from step 2
+     when the test stays (rerun its verify command and pass that output as the RED report).
    - `Current attempt: KEEP`: when the `test-writer` line changes the test, send it to a new
      `test-writer` (test-writer prompt, naming the tests to leave as they are) first; then send
      the `implementer` line to the `implementer` (fix-round prompt) and review again from step 3,
@@ -524,7 +556,8 @@ slice's `### Partitions` table this way:
      stay local.
 6. If the check is red after a partition, route the failure as in Phase 3 step 4 (a test problem
    to the `test-writer`, everything else to the `implementer`'s fix round, with that partition's
-   last task), have `code-reviewer` review the fix, run the check again, and commit the fix with
+   last task), have `code-reviewer` review the fix (every review of step 3 when it touches a file
+   a `high` task lists), run the check again, and commit the fix with
    `committing-changes`, typed `feat` or `refactor`, never `fix` (measure-impact counts `fix` commits on task files as escaped defects).
    Then integrate the next partition.
 7. After the last partition, dispatch `code-reviewer` once over `git diff <wave-base>..HEAD` for
@@ -556,8 +589,12 @@ wave is integrated:
    documents apart with `git diff --shortstat <from>...HEAD -- specs/<NNN-slug>`. For
    `## Adjustments`, list the [adjustments](#adjustments) made since that commit with
    `git log --notes=refs/notes/konundrm --format='%h %s%n%N' --grep '^Adjusts:' <from>..HEAD`,
-   each one from its note, and add the changes the user asked for on a task in progress. Under
-   the rounds table, list the reviews you did not repeat after a change, from your todo items.
+   each one from its note, with the criterion it updated read from its commit
+   (`git show <sha> -- specs/<NNN-slug>/requirements.md`; `—` when that prints nothing), and add
+   the changes the user asked for on a task in progress (the `- Change:` lines of the slice's
+   tasks). Under the rounds table, list the reviews not repeated after a change, from the tasks'
+   notes:
+   `git log --notes=refs/notes/konundrm --format='%h %s%n%N' --grep '^Not repeated:' <from>..HEAD`.
 2. Run `sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" task_ledger.py close-slice specs/<NNN-slug>/tasks.md S<k>`,
    which checks the box of each of the slice's tasks that has its commit and writes the rounds from
    that commit's note; it should print `not committed: none`, and a task it names is not built yet, so
@@ -656,27 +693,49 @@ reported reason, but type its commit `fix` and add the `Escaped-gate:` line to i
 `fix-bug` does, so the impact report counts it.
 
 A change the user asks for on the task in progress, before its commit, is classified the same
-way; a plan change waits for the user while the task goes on. Anything else joins that task. Wait
-for the subagents that are running. Edit the criterion in `requirements.md` first when the
-request changes a detail it states, then record the request under the task in `tasks.md` as
-`- Change: <the request, verbatim> (user)`, as an open decision is recorded, so every later
-dispatch and review reads it in the task block as one more criterion. Then send it to the task's
-writers with the adjustment prompts, the `test-writer` first when a test asserts what changes or
-the request changes what the code does: its test must fail before the `implementer` runs. Rerun
-the verify command, and step 3 reviews the task with the request or, once step 3 has run, the
-reviews that [Reviews after a change](#reviews-after-a-change) names run again with the re-review
-prompt. It is not a failed review, and the slice summary lists it under its Adjustments as part
-of that task.
+way, and on a `high` task it is always a plan change, because it touches a file a `high` task
+lists. A plan change waits for the user while the task goes on, unless it changes what that task
+itself builds: then stop the task and wait, as when the plan turns out to be wrong
+([Escalation](#escalation-stop-and-ask-the-user-when)). Anything else joins that task, and
+changes asked together join it in one round:
+
+1. Wait for the subagents that are running.
+2. Edit the criterion in `requirements.md` first when the request changes a detail it states,
+   then record the request under the task in `tasks.md` as
+   `- Change: <the request, verbatim> (user)`, as an open decision is recorded, so every later
+   dispatch and review reads it in the task block as one more criterion.
+3. While the task's code is not written yet (step 2 has not run), nothing else is needed: steps
+   1 and 2 go on with the task block as it now reads, and a test already written that the
+   request changes goes back to a new `test-writer` first. Otherwise mark the tree and send the
+   request to the task's writers with the adjustment prompts, the `test-writer` first when a
+   test asserts or names what changes or the request changes what the code does: its test must
+   fail before the `implementer` runs, unless the code already satisfies it
+   ([reference/adjustments.md](reference/adjustments.md), step 3). When it added, renamed or
+   removed a test, update the task's `Test:` or `Tests:` line and its `Verify:` line then.
+4. Rerun the verify command. Step 3 then reviews the task with the request or, once step 3 has
+   run, the reviews that [Reviews after a change](#reviews-after-a-change) names run again with
+   the re-review prompt.
+5. When the change's own diff touches a file a `high` task lists or changed
+   ([reference/adjustments.md](reference/adjustments.md) has the command), stop before the
+   task's commit and ask the user (an escalation): it reached high-risk work, which this path
+   does not review as such.
+
+It is not a failed review, and the slice summary lists it under its Adjustments as part of that
+task.
 
 Only the feature's main session makes adjustments, in the session that received the request and
-before it hands the feature over (Slice checkpoint, step 8): make it at the next clean point
-between tasks even when the user asked for it for later, because a new session resumes from the
-plan and the repository, not from this conversation. A session that has already handed the
-feature over makes none either: it tells the user to ask in the session that is building it. A
-partition session makes none: it stops with a `BLOCKED:` line that quotes the request for the
-main session. While a parallel wave is being built or integrated, hold the adjustment until the
-wave's worktrees are removed. Changes asked together are one adjustment when they make one
-logical change within the limit; otherwise make them one after another.
+before it hands the feature over (Slice checkpoint, step 8), at the next clean point between
+tasks. A request the user leaves for later is made when the user said, as long as this session
+is still the one building the feature then; when it would hand the feature over first, make it
+at the next clean point instead, because a new session resumes from the plan and the
+repository, not from this conversation. A session that has already handed the feature over
+makes none either: it tells the user to ask in the session that is building it. A partition
+session makes none: it stops with a `BLOCKED:` line that quotes the request for the main
+session. While a parallel wave is being built or integrated, hold the adjustment until the
+wave's worktrees are removed, and tell the user it is held: a session that resumes the wave
+does not know it, so they ask again if this one ends first. Changes asked together are one
+adjustment when they make one logical change within the limit; otherwise make them one after
+another.
 
 ## Phase 4: Finish
 

@@ -109,9 +109,11 @@ develop-feature's flaky-test prompt.
 3. `security-reviewer` when the risk is high.
 
 Send each Critical finding of a high-risk fix, and any doubtful one, to a `finding-verifier`
-first. Route confirmed findings as develop-feature does (a wrong test to the `test-writer`,
-everything else to the `implementer`'s fix round), then run again only the reviews that fix round
-concerns, with develop-feature's re-review prompt, as its
+first. Before the fix round's first writer runs, mark the tree with
+`git add -A && git write-tree` and keep the SHA it prints, so the round's own diff can be read
+afterwards with `git diff --stat <sha>`. Route confirmed findings as develop-feature does (a wrong
+test to the `test-writer`, everything else to the `implementer`'s fix round), then run again only
+the reviews that fix round concerns, with develop-feature's re-review prompt, as its
 [Reviews after a change](../develop-feature/SKILL.md#reviews-after-a-change) says. A high-risk
 fix repeats them all.
 
@@ -154,8 +156,9 @@ do not run it again here.
 
 ### 9. Report
 
-Report the reproduction, the root cause, the escaped gate, the commit, the regression test and
-the evidence. Then propose one prevention tied to the escaped gate: a question writing-specs
+Report the reproduction, the root cause, the escaped gate, the commit, the regression test, the
+evidence and each review you did not repeat after a fix round, with what that round touched. Then
+propose one prevention tied to the escaped gate: a question writing-specs
 should ask, a property pattern for the standards, a line for a reviewer's checklist. Change
 nothing without a yes. **Ask before pushing**; on a yes, run `opening-pull-requests`.
 

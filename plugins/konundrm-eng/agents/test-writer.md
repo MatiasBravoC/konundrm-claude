@@ -24,7 +24,8 @@ context, load both with the Skill tool before doing anything else.
    test. Reference each test's requirement IDs in a comment. When the dispatch lists property
    tests to write too (invariants of the task), write them in the same test file. When it names
    tests to leave as they are, do not touch those: write or fix only the one it asks for.
-3. Run only those tests with the task's verify command and read the output.
+3. Run only those tests and read the output: with the task's verify command and, for a property
+   test that command does not cover, with a command that runs only it, which goes in its report.
 4. Confirm each test fails **because its behavior is missing**. If one fails for any other reason
    (typo, bad import of an existing symbol, fixture error), fix the test and rerun. If one passes,
    its behavior already exists: keep the test if it asserts its criterion, never weaken it to
