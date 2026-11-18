@@ -82,6 +82,9 @@ verificación); un cambio lógico (un título sin "and" que una cosas que se rev
 dentro del límite (a lo más cinco comportamientos y unas 300 líneas cambiadas de código y tests,
 sin pasar del tope del pull request). Las líneas no necesitan estar seguidas. Nunca: `property`,
 una línea con una decisión abierta o una que agrega una dependencia. Ante la duda, separadas.
+Un invariante va en la línea de riesgo medio o alto cuyo código lo mantiene, y solo tiene una
+línea `property` propia cuando hacen falta varias líneas, o una de riesgo bajo, para que se
+cumpla. Una línea `chore` de documentación entra en la tarea de riesgo bajo que documenta.
 
 Informe del `test-writer` para una tarea con varios tests: un bloque `RED:` o `CHARACTERIZATION:`
 por test, en el orden de la tarea, con el formato de siempre. Informe del `implementer`: una línea
@@ -98,6 +101,9 @@ it added tests and changed nothing else                     → spec review
 it changed what a test that was there sets up or asserts,
   or what the code does for some input (a value the code
   decides with included)                                    → spec review and code review
+  ...but only the wording of a message shown to a person,
+  in the code and in the tests that assert it, its old
+  text left nowhere in code                                 → spec review
 it changed how the code is built without changing what it
   does (a rename included, also in the tests that use the
   name), added a silencer or a skip, or touched what
@@ -114,10 +120,14 @@ Pedido del usuario sobre algo ya construido (`## Adjustments`): se clasifica ant
 Es un cambio de plan si agrega o quita un criterio o un comportamiento sin criterio, cambia el
 diseño, toca un archivo que lista una tarea de riesgo alto o algo que los estándares llaman
 riesgo alto, cambia código de un archivo que ninguna tarea lista, o se espera que pase de unas 50
-líneas; ante la duda, también. Lo demás es un ajuste: criterio primero → `test-writer` (rojo) si
-cambia lo que el código hace → `implementer` → verificación → revisiones según su diff → check →
-commit propio con nota → entrada en el próximo resumen. Un pedido sobre la tarea en curso se hace
-dentro de esa tarea y queda anotado en ella como `- Change: <pedido> (user)`.
+líneas; ante la duda, también. Un renombre es un ajuste mientras nada fuera de los archivos de la
+feature use el nombre anterior. Sobre una feature terminada, un cambio de plan la reabre solo si
+no está fusionada, ninguna feature posterior tiene commits y `status` sigue listando todas sus
+tareas; si no, se propone como una feature nueva. Lo demás es un ajuste: criterio primero →
+`test-writer` (rojo) si cambia lo que el código hace → `implementer` → verificación → revisiones
+según su diff → check → commit propio con nota → entrada en el próximo resumen. Un pedido sobre
+la tarea en curso se hace dentro de esa tarea y queda anotado en ella como
+`- Change: <pedido> (user)`.
 
 Comandos que las skills piden (los corre Claude):
 
@@ -133,13 +143,21 @@ Comandos que las skills piden (los corre Claude):
   0.8.0, en su mensaje):
   `git log --notes=refs/notes/konundrm --format='%b%N' --follow <base>..HEAD -- <file>`.
 - Revisiones que una tarea no repitió, junto a su commit:
-  `git notes --ref=refs/notes/konundrm append -m "Not repeated: <review> (<what the change touched>)" HEAD`,
+  `git notes --ref=refs/notes/konundrm append -m "Not repeated: <review> after <the fix round | verifying by risk | the fix of a red check | a change the user asked for> (<what the change touched>)" HEAD`,
   y en el resumen del slice
   `git log --notes=refs/notes/konundrm --format='%h %s%n%N' --grep '^Not repeated:' <from>..HEAD`.
 - Commit de un `fix-bug`, que ahora prepara el índice en el mismo comando porque la marca deja en
   él un árbol anterior: `git add -A && git commit -F <message file> … && git notes … add …`.
-- Apartar un ajuste que resultó ser un cambio de plan:
-  `git stash push --include-untracked -m "<NNN-slug> adjustment set aside: <request>"`.
+- Apartar un ajuste que resultó ser un cambio de plan (prepara el índice primero, como el
+  replanteo, para que un archivo que la ronda borró siga borrado al recuperarlo):
+  `git add -A && git stash push --include-untracked -m "<NNN-slug> adjustment set aside: <request>"`.
+- Rama de un ajuste sobre una feature ya fusionada, desde la rama principal como está en el
+  remoto: `git fetch origin <default-branch>` y
+  `git switch -c feat/<NNN-slug>-<short-slug> --no-track origin/<default-branch>`; en vivo, su
+  primer push es `git push -u origin feat/<NNN-slug>-<short-slug>`.
+- Buscar el detalle o el nombre anterior en el plan y en los tests:
+  `git grep -n -F -e '<old text, value or name>' -- <paths>`, con `MSYS_NO_PATHCONV=1` delante
+  cuando el texto tiene una `/`.
 
 Prompts nuevos en `reference/dispatch-prompts.md`: `test-writer (adjustment)`,
 `implementer (adjustment)` y `adjustment review`. Los prompts del `test-writer`, del `implementer`
@@ -165,9 +183,10 @@ nota.
 
 Solo cambia texto de skills, agentes y plantillas, y las pruebas de contrato. Ningún hook cambia
 y no hay dependencias nuevas entre módulos: `fix-bug` ya enlaza `develop-feature`. La única
-excepción es una corrección de `hooks/scripts/tasks_document.py`: lee las rondas de una tarea solo
-de su línea `Rounds:`, porque el pedido del usuario anotado en la tarea (`- Change:`) es texto
-libre y podía citar una.
+excepción es una corrección de `hooks/scripts/tasks_document.py` y `task_ledger.py`: leen las
+rondas de una tarea solo de su campo `- Rounds:` (`rounds_field`), porque el pedido del usuario
+anotado en la tarea (`- Change:`) es texto libre y podía citar una, o partirse en una línea que
+empieza con ese texto.
 `engineering-standards` enlaza la sección de `develop-feature` sin repetir su tabla.
 
 ## Alternatives considered

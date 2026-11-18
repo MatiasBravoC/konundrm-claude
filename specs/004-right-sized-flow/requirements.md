@@ -77,13 +77,15 @@ riesgo bajo, para que una feature chica no pase por decenas de ciclos de revisi�
   el criterio que afirma y un comando de verificación que corre todos esos tests.
 - `R1.5` THE SYSTEM SHALL juntar entre sí las líneas sin test (`chore`) que un mismo título
   describe (los pasos de una misma preparación o ediciones chicas de un mismo tipo), o dentro de
-  la tarea de riesgo bajo que preparan cuando cambian uno de sus archivos.
+  la tarea de riesgo bajo que preparan, cuando cambian uno de sus archivos, o que documentan (su
+  parte del README o del changelog).
 - `R1.6` WHEN revisa el plan antes de mostrarlo, THE SYSTEM SHALL comprobar contra la lista inicial
   que cada comportamiento de una tarea consolidada conserva su test y que ninguna tarea
   consolidada rompe `R1.2` ni `R1.3`.
 - `R1.7` WHEN muestra el plan para aprobarlo, THE SYSTEM SHALL decir cuántos comportamientos reúne
-  cada tarea consolidada, el total de comportamientos y de tareas, y por qué quedaron separadas
-  las que no se juntaron, y dejar ese total en el encabezado del plan.
+  cada tarea consolidada, el total de comportamientos y de tareas, por qué quedaron separadas
+  las que no se juntaron y qué tareas juntaría la otra opción de consolidación, y dejar ese total
+  en el encabezado del plan.
 - `R1.8` WHERE el usuario lo pide para ese plan (en su pedido o al aprobarlo), THE SYSTEM SHALL
   consolidar también comportamientos de riesgo medio que son casos de una misma regla (la misma
   función o clase y el mismo archivo de tests), a lo más tres por tarea y conservando sus
@@ -132,7 +134,9 @@ las que ese arreglo afecta, para no pagar revisiones que no pueden encontrar nad
   THE SYSTEM SHALL repetir solo: cada revisión que levantó un hallazgo que ese cambio corrige;
   solo la de spec cuando el cambio agregó tests y nada más; las revisiones de spec y de código
   cuando el cambio tocó lo que prepara o afirma un test que ya existía, o lo que el código hace
-  para alguna entrada; solo la de código cuando cambió cómo está construido el código sin cambiar
+  para alguna entrada (solo la de spec si lo único que cambió es la redacción de un mensaje para
+  una persona, en el código y en los tests que la afirman, y su texto anterior ya no queda en el
+  código); solo la de código cuando cambió cómo está construido el código sin cambiar
   lo que hace, aunque en los tests que lo usan cambie ese mismo nombre o ruta, o tocó algo que
   dobla un gate (un silenciador, un test saltado, la configuración del check, de los tests,
   del linter, de los tipos, de la cobertura, de la mutación, de los hooks o de la CI); siempre la
@@ -144,7 +148,8 @@ las que ese arreglo afecta, para no pagar revisiones que no pueden encontrar nad
 - `R3.4` THE SYSTEM SHALL commitear una tarea solo cuando cada una de sus revisiones pasó y,
   después de pasar, ningún cambio tocó lo que esa revisión mira.
 - `R3.5` WHEN el código o los tests cambian después de la verificación, THE SYSTEM SHALL volver a
-  correr el comando de verificación antes de repetir revisiones, y el check completo sigue siendo
+  correr el comando de verificación antes de repetir revisiones, junto con el comando de un test
+  que ese cambio agregó y que el de la tarea no cubre, y el check completo sigue siendo
   obligatorio antes del commit.
 - `R3.6` WHEN `fix-bug` repite revisiones después de una ronda de arreglo, THE SYSTEM SHALL seguir
   la misma regla, marcando el árbol antes de la ronda, y su commit incluye lo que la ronda cambió.
@@ -152,14 +157,16 @@ las que ese arreglo afecta, para no pagar revisiones que no pueden encontrar nad
   informe de quien lo hizo: dentro de una tarea, marca el árbol antes del cambio y guarda su
   identificador, para que el diff contra esa marca muestre solo ese cambio aunque alguien mueva el
   índice de Git; IF pierde la marca, THEN THE SYSTEM SHALL correr las dos revisiones.
-- `R3.8` THE SYSTEM SHALL anotar cada revisión que no se repitió después de un cambio y por qué,
+- `R3.8` THE SYSTEM SHALL anotar cada revisión que no se repitió, después de qué cambio y por qué,
   guardarla junto al commit de su tarea, donde la encuentran una sesión retomada y la integración
   de una partición, y llevarla al resumen del slice y al registro que lee el `process-reviewer`.
 - `R3.9` WHEN construye una tarea de riesgo medio o alto que lista invariantes, THE SYSTEM SHALL
   escribir sus tests de propiedad junto con el test de la tarea, antes de las primeras revisiones,
   salvo los que cubre una tarea `property` del plan, y correrlos en cada verificación de la tarea;
   y WHEN la verificación por riesgo cambia algo, THE SYSTEM SHALL repetir las revisiones una sola
-  vez, cuando ese paso termina.
+  vez, cuando ese paso termina. WHEN planifica, THE SYSTEM SHALL anotar cada invariante en la
+  línea de riesgo medio o alto cuyo código lo mantiene, y darle una línea `property` propia solo
+  cuando hacen falta varias líneas, o una de riesgo bajo, para que se cumpla.
 
 ### US4. Un ajuste chico se hace en el momento
 
@@ -173,28 +180,33 @@ completo.
 - `R4.2` THE SYSTEM SHALL tratar como cambio de plan (tareas nuevas o una edición del plan, que el
   usuario aprueba y que después se construyen en el ciclo de tareas) todo pedido que agrega o
   quita un criterio de aceptación o un comportamiento que ningún criterio cubre; cambia el diseño
-  (el dueño de una responsabilidad, una interfaz pública o una dependencia); toca un archivo que
+  (el dueño de una responsabilidad, una interfaz pública o una dependencia; un renombre solo no
+  lo cambia mientras nada fuera de los archivos que listan las tareas de la feature use el nombre
+  anterior, aunque `design.md` dé ese nombre); toca un archivo que
   lista una tarea de riesgo alto, o algo que los estándares llaman riesgo alto; cambia código de
   un archivo que ninguna tarea de la feature lista; o se espera que pase de unas 50 líneas
   cambiadas de código y tests. IF no está claro cuál de los dos es, THEN es un cambio de plan; y
   WHEN el cambio de plan llega sobre una feature ya terminada, THE SYSTEM SHALL reabrirla con el
-  sí del usuario solo mientras sus pull requests no estén fusionados, y proponerlo como una
-  feature nueva si ya lo están.
+  sí del usuario solo mientras sus pull requests no estén fusionados, ninguna feature posterior
+  tenga commits y el libro de tareas siga listando todas sus tareas como construidas, y
+  proponerlo como una feature nueva en cualquier otro caso.
 - `R4.3` WHEN el pedido es un ajuste, THE SYSTEM SHALL hacerlo en el momento con los mismos roles
   (el `test-writer` cambia los tests, también los que solo usan un nombre que cambia, y el
   `implementer` el resto; si cambia lo que el código hace, primero su test en rojo, salvo el test
   que el código ya cumple, que se conserva sin forzarlo a fallar), sin tareas nuevas ni otra
   aprobación; el orquestador solo edita él mismo los documentos de la feature y la prosa que nada
-  carga, ejecuta ni prueba.
+  carga, ejecuta ni prueba. IF ningún test del ajuste falla porque el código ya hace lo pedido,
+  THEN THE SYSTEM SHALL decirlo y no dejar esos cambios en el árbol: los commitea como el ajuste
+  si el usuario quiere conservarlos, o los aparta.
 - `R4.4` WHEN el ajuste está hecho, THE SYSTEM SHALL correr cinco veces los tests que cambió o
   agregó y una vez el comando de verificación de las tareas cuyo comportamiento ajusta, decidir
   desde su diff las revisiones que `R3.1` indica, y pasar el check antes del commit.
-- `R4.5` IF el diff del ajuste muestra un cambio de plan (`R4.2`), mirando también qué tareas
-  cambiaron cada archivo aunque el plan no lo liste, THEN THE SYSTEM SHALL apartarlo sin
-  commitearlo, de modo que se pueda recuperar, y proponer el cambio de plan; IF solo creció más de
-  lo esperado, THEN THE SYSTEM
-  SHALL conservarlo, correrle las dos revisiones y decirlo; y IF una revisión sigue fallando
-  después de una ronda de arreglo, THEN deja de ser un ajuste y pasa a ser un cambio de plan.
+- `R4.5` IF el diff del ajuste muestra un cambio de plan (`R4.2`), mirando también qué tareas de
+  esta feature cambiaron cada archivo aunque el plan no lo liste, THEN THE SYSTEM SHALL apartarlo
+  sin commitearlo, de modo que se pueda recuperar, y proponer el cambio de plan; IF solo creció
+  más de lo esperado, THEN THE SYSTEM SHALL conservarlo, correrle las dos revisiones y decirlo; y
+  IF una revisión sigue fallando después de una ronda de arreglo, THEN deja de ser un ajuste y
+  pasa a ser un cambio de plan.
 - `R4.6` THE SYSTEM SHALL dejar cada ajuste en un commit propio, con el tipo de lo que cambia, y
   guardar fuera del mensaje qué tareas ajusta, qué revisiones corrieron y por qué no las demás, y
   lo que pidió el usuario; IF el pedido informa que lo construido no cumple un criterio aprobado,
@@ -203,19 +215,24 @@ completo.
 - `R4.7` WHEN un ajuste cambia un detalle que un criterio de aceptación dice (un texto, un valor,
   un límite), THE SYSTEM SHALL actualizar ese criterio antes de despachar a quien lo construye,
   dejarlo en el mismo commit y decirle al usuario qué criterio cambió, con el texto anterior y el
-  nuevo, y actualizar las líneas del plan que repiten el detalle anterior; y WHEN agrega, renombra
-  o quita un test, THE SYSTEM SHALL actualizar las líneas de esa tarea en el plan.
+  nuevo, y actualizar las líneas del plan que repiten el detalle anterior, o el nombre anterior
+  cuando el ajuste es un renombre; y WHEN agrega, renombra o quita un test, THE SYSTEM SHALL
+  actualizar las líneas de esa tarea en el plan.
 - `R4.8` THE SYSTEM SHALL anotar cada ajuste en el próximo resumen que se escribe (el del slice o
   el de la feature), a partir de lo guardado con su commit, con lo pedido, las revisiones que
   corrieron, las que no hicieron falta y el criterio que cambió; WHERE la feature ya terminó, THE
   SYSTEM SHALL agregarlo al resumen de la feature en ese mismo turno.
 - `R4.9` WHERE la feature se publica en vivo, THE SYSTEM SHALL subir el commit de cada ajuste como
   los demás commits del flujo, y el ajuste pedido en la pausa de un slice va a la rama del slice
-  siguiente; WHERE se construye en local y sus pull requests ya están abiertos, THE SYSTEM SHALL
-  preguntar antes de subirlo; y WHERE la feature ya terminó y su rama está fusionada, THE SYSTEM
-  SHALL hacer el ajuste en una rama nueva desde la rama principal, nunca en la rama principal.
+  siguiente, o se queda en la del último cuando no queda otro; WHERE se construye en local y sus
+  pull requests ya están abiertos, THE SYSTEM SHALL preguntar antes de subirlo; WHERE la feature
+  ya terminó y su rama está fusionada, THE SYSTEM SHALL hacer el ajuste en una rama nueva desde
+  la rama principal como está en el remoto, nunca en la rama principal, y esa rama es un pull
+  request propio; y WHERE terminó y no está fusionada, THE SYSTEM SHALL hacerlo en la rama de la
+  feature.
 - `R4.10` WHEN el usuario pide un cambio sobre la tarea en curso, antes de su commit, THE SYSTEM
-  SHALL clasificarlo como en `R4.2`, hacerlo dentro de esa tarea (primero el criterio que cambie,
+  SHALL clasificarlo como en `R4.2`, hacerlo dentro de esa tarea (primero el criterio que cambie
+  y las líneas del plan que repiten el detalle o el nombre anterior,
   después el pedido anotado en la tarea del plan para que lo lean quienes la construyen y la
   revisan, y su test en rojo antes del código cuando cambia lo que el código hace) y repetir solo
   las revisiones que `R3.1` indica, sin contarlo como una revisión fallida; WHERE la tarea es de
