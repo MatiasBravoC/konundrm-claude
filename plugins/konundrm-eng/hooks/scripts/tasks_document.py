@@ -129,11 +129,13 @@ class TasksDocument:
 
 
 def _rounds(block: str) -> tuple[int, int, int] | None:
-    match = ROUNDS.search(block)
-    if match is None:
-        return None
-    spec, code, escalations = (int(value) for value in match.groups())
-    return spec, code, escalations
+    """The rounds on the task's own ``- Rounds:`` line; a Rounds text another field quotes does not count."""
+    for line in block.splitlines():
+        match = ROUNDS.match(line.strip().removeprefix("- "))
+        if match is not None:
+            spec, code, escalations = (int(value) for value in match.groups())
+            return spec, code, escalations
+    return None
 
 
 def _covers(rest: str) -> tuple[str, ...]:

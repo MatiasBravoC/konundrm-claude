@@ -148,6 +148,17 @@ class ReadTasksTest(unittest.TestCase):
         _, tasks = self.read(TASKS)
         self.assertNotIn("T9", [task.id for task in tasks])
 
+    def test_a_rounds_text_quoted_in_another_field_is_not_the_tasks_rounds(self) -> None:
+        # 004 R4.10: a `- Change:` line holds the user's words verbatim, and a `Test:` line may
+        # describe the ledger, so either can quote a Rounds line. Only the task's own line counts.
+        quoted = "  - Change: show the tally as Rounds: spec 9 · code 9 · escalations 9 (user)\n"
+        _, without_its_line = self.read("- [ ] **T1** Something · Risk: low\n" + quoted)
+        _, with_its_line = self.read(
+            "- [x] **T1** Something · Risk: low\n" + quoted + "  - Rounds: spec 2 · code 1 · escalations 0\n"
+        )
+        self.assertEqual([task.rounds for task in without_its_line], [None])
+        self.assertEqual([task.rounds for task in with_its_line], [(2, 1, 0)])
+
     def test_tasks_without_slices_or_risk_still_parse(self) -> None:
         status, tasks = self.read("- **Status:** Draft\n\n- [ ] **T1** Something\n")
         self.assertEqual(status, "Draft")
