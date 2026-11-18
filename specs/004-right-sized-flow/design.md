@@ -1,7 +1,7 @@
 # Design: Tareas del tamaño justo y revisiones proporcionales al cambio
 
 - **Spec:** [requirements.md](requirements.md)
-- **Status:** Approved <!-- Draft → Approved → Done -->
+- **Status:** Done <!-- Draft → Approved → Done -->
 
 ## Overview
 
@@ -11,8 +11,8 @@ Tres cambios, los tres de texto.
    tarea las líneas de riesgo bajo que tienen un mismo dueño, forman un solo cambio lógico y caben
    en el límite. La tarea consolidada es una tarea normal del plan (un ID, un commit, una nota)
    con una lista `Tests:` de un test por comportamiento, así que `task_ledger.py`,
-   `session_doctor.py`, `run_slices.py` y `metrics_report.py` no cambian. El usuario mueve el
-   criterio con la línea `Consolidation:` del encabezado del plan.
+   `session_doctor.py`, `run_slices.py` y `metrics_report.py` la leen como está. El usuario mueve
+   el criterio con la línea `Consolidation:` del encabezado del plan.
 2. `develop-feature` construye esa tarea en un solo ciclo: un `test-writer` escribe todos sus
    tests, un `implementer` los hace pasar de a uno, viendo fallar cada uno antes de su código, y
    las revisiones corren una vez. Las pruebas de propiedad de los invariantes se escriben en ese
@@ -141,7 +141,9 @@ Comandos que las skills piden (los corre Claude):
 - Qué tareas cambiaron un archivo, aunque el plan no lo liste o una tarea posterior lo haya
   renombrado (la línea `Task:` está en la nota del commit o, en una feature empezada antes de la
   0.8.0, en su mensaje):
-  `git log --notes=refs/notes/konundrm --format='%b%N' --follow <base>..HEAD -- <file>`.
+  `git log --notes=refs/notes/konundrm --format='%b%N' --follow <base>..HEAD -- <file>`; en una
+  feature terminada el rango no termina en `HEAD` sino en su commit final
+  (`git log -1 --format=%h -S'**Status:** Done' -- specs/<NNN-slug>/tasks.md`).
 - Revisiones que una tarea no repitió, junto a su commit:
   `git notes --ref=refs/notes/konundrm append -m "Not repeated: <review> after <the fix round | verifying by risk | the fix of a red check | a change the user asked for> (<what the change touched>)" HEAD`,
   y en el resumen del slice
@@ -255,5 +257,6 @@ feature planificada con la 0.9.0).
   comprueba en el check; correrlo queda para Linux o macOS.
 - Las notas de Git no viajan en un clon ni sobreviven a un squash — por eso una feature terminada
   se reconoce por sus documentos, la búsqueda de las tareas que cambiaron un archivo cae a las
-  líneas `Files:` del plan, y un cambio de plan sobre una feature fusionada se planifica como una
-  feature nueva.
+  líneas `Files:` del plan, y un cambio de plan sobre una feature terminada la reabre solo si no
+  está fusionada, ninguna feature posterior tiene commits y sus notas siguen ahí; si no, se
+  planifica como una feature nueva.

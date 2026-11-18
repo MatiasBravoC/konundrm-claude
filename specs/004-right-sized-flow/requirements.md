@@ -1,7 +1,7 @@
 # Tareas del tamaño justo y revisiones proporcionales al cambio
 
 - **Spec:** 004-right-sized-flow
-- **Status:** Approved <!-- Draft → Approved → Done · 2026-11-17: el usuario delegó los criterios ("ese criterio defínelo tú") y cedió el control del proyecto para construirla sin pausas ("te cedo control absoluto en este proyecto") -->
+- **Status:** Done <!-- Draft → Approved → Done · 2026-11-17: el usuario delegó los criterios ("ese criterio defínelo tú") y cedió el control del proyecto para construirla sin pausas ("te cedo control absoluto en este proyecto") -->
 - **Date:** 2026-11-17
 
 ## Problem
@@ -69,7 +69,7 @@ riesgo bajo, para que una feature chica no pase por decenas de ciclos de revisi�
   que resulta no pasa de cinco comportamientos ni de unas 300 líneas cambiadas de código y tests,
   ni del tope del pull request.
 - `R1.3` THE SYSTEM SHALL dejar como tarea propia todo comportamiento de riesgo medio o alto, toda
-  prueba de propiedad (`property`), todo comportamiento con una decisión abierta y todo el que
+  línea `property` (`R3.9`), todo comportamiento con una decisión abierta y todo el que
   agrega una dependencia; IF duda de alguna condición de `R1.2`, THEN THE SYSTEM SHALL dejarlos
   separados.
 - `R1.4` THE SYSTEM SHALL escribir cada tarea consolidada como una sola tarea del plan: un ID, un
@@ -267,9 +267,10 @@ para que no se pierda en la próxima versión.
 ## Constraints
 
 - Solo cambia texto: skills, agentes, plantillas, evals, documentación y pruebas de contrato.
-  Ningún hook cambia, y el único cambio de script es una corrección del lector del plan
-  (`tasks_document.py` lee las rondas de una tarea solo de su línea `Rounds:`, para que el pedido
-  anotado en la tarea no se confunda con ellas). Un plan consolidado usa el formato que ya leen
+  Ningún hook cambia, y el único cambio de script es una corrección del lector del plan y de
+  `close-slice` (`tasks_document.py` y `task_ledger.py` leen las rondas de una tarea solo de su
+  campo `- Rounds:`, para que el pedido anotado en la tarea no se confunda con ellas). Un plan
+  consolidado usa el formato que ya leen
   `task_ledger.py`, `session_doctor.py`, `run_slices.py` y `metrics_report.py`: una tarea
   consolidada es una tarea, con un ID, un commit y una nota.
 - Los planes y los historiales de antes de esta versión siguen funcionando igual.

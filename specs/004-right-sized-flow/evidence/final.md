@@ -5,11 +5,11 @@ Run on 2026-11-18 on Windows 11 (Git Bash, Git 2.53, Python 3.14), on the branch
 
 ## 1. The check and the plugin validation
 
-`npm run check`, run alone on the tree of the last commit that changes code or tests:
+`npm run check`, run alone right before commit `71f21a5`, the last one that changes the plugin:
 
 ```text
 --- Format: uvx --from ruff==0.17.0 ruff format --check .
-81 files already formatted
+82 files already formatted
 --- Lint: uvx --from ruff==0.17.0 ruff check .
 All checks passed!
 --- Types (Python 3.10): uvx --from mypy==2.4.0 mypy
@@ -17,46 +17,79 @@ Success: no issues found in 32 source files
 --- Types (Python 3.13): uvx --from mypy==2.4.0 mypy --python-version 3.13
 Success: no issues found in 32 source files
 --- Hook tests: ... -m unittest discover -s ...\hooks\tests -t ...\hooks
-Ran 512 tests in 282.608s
+Ran 518 tests in 300.596s
 OK (skipped=1)
 All checks passed.
 ```
 
-Before this feature the same command ran 494 tests. `claude plugin validate ./plugins/konundrm-eng`
-prints `✔ Validation passed`; its two directory notes (no icon, no license file) predate this
-feature.
+Before this feature the same command ran 494 tests. It passed again, with the same 518 tests, on
+the tree of each later commit of this branch: the commit gate takes no other result.
+`claude plugin validate ./plugins/konundrm-eng` prints `✔ Validation passed`; its two directory
+notes (no icon, no license file) predate this feature.
 
-## 2. The contract tests fail without the feature
+## 2. The contract tests fail without the feature, and without each of its rules
 
-The new contract tests were copied over an export of the 0.8.0 tree (`git archive 4dc55e3`) and
-run there: 19 of 85 fail, every one of them a test this feature added or amended.
+The contract tests were copied over an export of the 0.8.0 tree (`git archive 4dc55e3`) and run
+there: 24 of 90 fail, every one of them a test this feature added or amended.
 
 ```text
 FAIL: TaskWithSeveralTestsTest.test_writers_handle_a_task_that_lists_several_tests
 FAIL: DevelopFeatureFlowTest.test_changes_asked_at_a_checkpoint_are_adjustments_or_new_tasks
 FAIL: ReviewFlowTest.test_task_commits_only_after_the_reviews_its_final_code_needs
-FAIL: RightSizedFlowTest.test_a_task_that_lists_several_tests_is_built_in_one_cycle
-FAIL: RightSizedFlowTest.test_only_the_reviews_a_change_concerns_run_again
-FAIL: RightSizedFlowTest.test_a_change_the_user_asks_for_is_classified_first
-FAIL: RightSizedFlowTest.test_an_adjustment_follows_its_procedure
-FAIL: RightSizedFlowTest.test_an_adjustment_has_its_prompts_its_commit_and_its_note
-FAIL: RightSizedFlowEdgesTest.test_reviews_not_repeated_and_adjustments_leave_a_record_that_travels
-FAIL: RightSizedFlowEdgesTest.test_the_one_cycle_build_covers_its_property_tests_and_its_second_dispatches
 FAIL: RightSizedFlowEdgesTest.test_a_finished_feature_and_a_task_in_progress_take_a_change_safely
 FAIL: RightSizedFlowEdgesTest.test_an_adjustment_has_a_branch_a_red_step_that_can_be_met_and_a_safe_set_aside
+FAIL: RightSizedFlowEdgesTest.test_reviews_not_repeated_and_adjustments_leave_a_record_that_travels
+FAIL: RightSizedFlowEdgesTest.test_the_one_cycle_build_covers_its_property_tests_and_its_second_dispatches
+FAIL: RightSizedFlowTest.test_a_change_the_user_asks_for_is_classified_first
+FAIL: RightSizedFlowTest.test_a_task_that_lists_several_tests_is_built_in_one_cycle
+FAIL: RightSizedFlowTest.test_an_adjustment_follows_its_procedure
+FAIL: RightSizedFlowTest.test_an_adjustment_has_its_prompts_its_commit_and_its_note
+FAIL: RightSizedFlowTest.test_only_the_reviews_a_change_concerns_run_again
 FAIL: BehaviorEvalsTest.test_each_right_sized_flow_mechanism_has_a_behavior_eval
 FAIL: ReadmeTest.test_readme_describes_consolidated_tasks_and_adjustments
 FAIL: VersionAndChangelogTest.test_0_9_0_changelog_names_each_mechanism
+FAIL: RightSizedFlowPinsTest.test_a_requested_change_keeps_the_edges_of_its_path
+FAIL: RightSizedFlowPinsTest.test_a_task_with_several_tests_keeps_the_edges_of_its_one_cycle
+FAIL: RightSizedFlowPinsTest.test_planning_keeps_the_edges_of_what_it_merges
+FAIL: RightSizedFlowPinsTest.test_reviews_after_a_change_keep_what_surrounds_their_table
+FAIL: RightSizedFlowPinsTest.test_the_adjustment_review_gets_the_orchestrators_verification_runs
 FAIL: RightSizedFlowPrincipleTest.test_measure_impact_says_task_counts_changed_meaning
 FAIL: RightSizedFlowPrincipleTest.test_standards_state_what_is_merged_and_which_reviews_run_again
 FAIL: WritingPlansConsolidationTest.test_writing_plans_consolidates_related_low_risk_tasks
 FAIL: AdjustmentsSummaryTemplateTest.test_summaries_list_the_adjustments_and_their_reviews
-Ran 85 tests
+Ran 90 tests
+FAILED (failures=24)
 ```
 
-The feature is pinned by 203 rules across those tests. A script listed, for each rule, the
-sentences of the current text that satisfy it: every rule is met by the sentence it was written
-for, none by an unrelated one.
+The feature is pinned by 315 rules across those tests (155 in `test_flows.py`, 37 in
+`test_skills.py`, 18 in `test_agents.py` and 105 in `test_right_sized_pins.py`).
+
+Each rule was also checked the other way round. One rule at a time was removed or inverted in the
+text of the skills, agents, prompts and templates, on copies of the tree, and the contract tests
+were run after each edit:
+
+| Set of mutations | Applies to the final text | Fails a test | Passes every test |
+| --- | --- | --- | --- |
+| One per rule of the feature, by the reviewer of the tests' strength | 178 of 191 | 174 | 4 |
+| One per part of an acceptance criterion, by the reviewer of the tests' coverage | 212 of 231 | 207 | 5 |
+| One per sentence the second review changed or added | 54 of 61 | 54 | 0 |
+| One per sentence the regression review changed or added | 18 of 18 | 18 | 0 |
+| Total | 462 | 453 | 9 |
+
+The 39 mutations that no longer apply edit a sentence a later review reworded. Each has its
+equivalent in a later set, except one whose sentence was removed. When the second review began,
+134 of the first two sets passed every test (76 and 58). The nine that still pass were left on
+purpose, because the sentence explains or repeats a rule that is pinned where it is stated:
+
+- the verify rerun and the test already written, in the list for a change on the task in
+  progress (the section and step 2 of the task loop state both);
+- "often one, sometimes none" in the procedure's reviews step, and the prose that says the
+  adjustment's note is written in the same command (the command itself is pinned);
+- the todo item's wording for a review that was not repeated, and the reason why the note is
+  where a partition's integration finds it (the append command is pinned);
+- "when the step is done" in verifying by risk (the single re-review is pinned);
+- the opening sentence of `## Adjustments`;
+- the second statement of the next slice's branch in "Where it is recorded" (step 1 states it).
 
 ## 3. The commands the new text prescribes
 
@@ -79,7 +112,38 @@ reviewers of section 6.
 - fix-bug's commit after a marked fix round: without `git add -A` the commit held the tree from
   before the round (reproduced by two reviewers); with it, the commit holds the reviewed fix.
 - The set-aside stash and its recovery by message and SHA work with a message of letters, digits
-  and spaces; a message with `[` is not found, which the text now rules out.
+  and spaces; a message with `[` is not found, which the text now rules out. Without `git add -A`
+  before it, a file that a marked fix round deleted came back on recovery; with it, the file
+  stays deleted.
+- The branch for an adjustment to a merged feature. With the feature merged on the remote and the
+  local default branch never pulled, a branch cut from the local default branch held no feature
+  folder. `git fetch origin <default-branch>` and
+  `git switch -c feat/<NNN-slug>-<short-slug> --no-track origin/<default-branch>` give a branch
+  with the feature and no upstream, and `git push -u origin …` creates it on the remote. Without
+  `--no-track` the new branch tracks the default branch and a plain `git push` is refused.
+- The searches. In Git Bash, `git grep -n -F` finds nothing for a text that starts with `/`
+  unless `MSYS_NO_PATHCONV=1` is set, and reads a text that starts with a dash as an option
+  unless it follows `-e`.
+- The ledger after a rebase or in a clone: `status` prints `committed: none` and names the first
+  task as next for a plan whose documents say `Done`, which is why a finished feature is
+  recognised by its documents and reopens only while `status` still lists every task.
+- The pull request of that new branch. With the local default branch still behind,
+  `git log --oneline <base>..HEAD` listed the whole merged feature (9 commits, 624 lines) for a
+  branch that holds two commits and 6 lines, with a merge commit, a squash and a rebase merge
+  alike. Against `origin/<base>` the list and the measure are the branch's own. With a local
+  default branch that is ahead of the remote the count the text asks for is 0 and nothing
+  changes.
+- The lookup of the tasks that changed a file, on a finished feature. Up to `HEAD` it printed a
+  later feature's `Task:` lines with nothing to tell them apart, on a throwaway repository and on
+  this one (for feature 001, `hooks/run.sh` printed two tasks of feature 002). Ended at the
+  feature's final commit, which
+  `git log -1 --format=%h -S'**Status:** Done' -- specs/<NNN-slug>/tasks.md` prints, it gives
+  only that feature's lines, also through a merge commit and for two features built at once.
+- A change on the task in progress that the code already makes. The adjustment's set-aside, run
+  there, stashed the whole uncommitted task and left `status` naming it as next, which is why
+  the procedure now leaves those tests in the task.
+- Rethink's set-aside after a rename on the task in progress: with the two excludes the stash
+  took the edited line of `design.md`; with the third one the three documents stay.
 
 ## 4. The plan reader fix
 
@@ -94,6 +158,14 @@ spec, code and escalation rounds, before and after:
 | 001-guided-slice-delivery | 79 | 117 · 103 · 1 | 117 · 103 · 1 |
 | 002-efficient-feature-flow | 44 | 54 · 56 · 1 | 54 · 56 · 1 |
 | 003-live-github-publishing | 12 | 17 · 18 · 0 | 18 · 18 · 0 |
+
+The second review found the same misread for a Rounds text that a field wraps onto a line of its
+own, and that `close-slice` used the same expression to choose the line it rewrites. Two tests
+failed first: the reader returned `[(9, 9, 9)]` where the task's own field says `(2, 1, 0)` (on
+the reviewer's copy), and `close-slice` wrote the commit's rounds over the wrapped line of a
+`- Change:` request (here). Both now go through one function, `rounds_field`, which takes only
+a line that is the `- Rounds:` field itself. The 135 tasks of the three plans read the same
+rounds as before this second change.
 
 ## 5. The evals: not run
 
@@ -112,17 +184,27 @@ tests check is the text of the instructions, not what a model does with them.
 ## 6. The reviews
 
 Every review ran as independent agents that could only read the repository and experiment on
-copies; a second agent then tried to refute each finding.
+copies; a second agent then tried to refute each blocker or major finding. Their reports were
+working files outside the repository and are not kept: the counts below are the author's record
+of them.
 
 | Round | On | Agents | Findings | Outcome |
 | --- | --- | --- | --- | --- |
 | Design | the first draft of the rules | 6 reviewers, 6 skeptics | 69 (3 blockers, 36 major, 30 minor) | of the 39 blockers and majors, 30 confirmed and 9 partly; all taken into the second design |
-| Final, round 1 | the finished change | 5 of 7 reviewers; no skeptic | 66 (11 major, 55 minor) | the usage limit cut the other 2 reviewers and the 7 skeptics; the author checked each finding and applied them |
-| Final, round 2 | the corrected change, at `6458767` | 4 reviewers, 4 skeptics | pending | running when this file was written: the two lenses the limit cut (the contract tests, what the user asked for) and two reviewers that verify the fixes of round 1 |
+| Final, round 1 | the finished change | 5 of 7 reviewers; no skeptic | 66 (11 major, 55 minor) | the usage limit cut the other 2 reviewers and the 7 skeptics; the author checked each finding and applied them in `87ee951`, `e38e5ed`, `e28d1d1` and `6458767` |
+| Final, round 2 | the corrected change, at `1afa828` | 7 reviewers, 5 skeptics | 58 (13 major, 45 minor) | every finding of round 1 was found applied; of the 13 majors, 9 confirmed and 4 partly, none refuted; applied in `64ece65`, `1b36602`, `a2e6017` and `6049730` |
+| Regression | the fixes of round 2, at `6049730` | 3 reviewers, 5 skeptics | 15 (5 major, 10 minor), which were 10 distinct residues | the 5 majors were 3 problems, all confirmed; the 10 residues were applied in `71f21a5` |
+
+Round 2 ran twice before it finished: a usage limit and then a network outage cut it, so it was
+split into seven smaller reviews. The regression review was cut once, when the computer went to
+sleep, and ran again from the start.
 
 ## 7. What is not verified
 
 - What a model does with the new instructions: neither eval ran (section 5), and no feature has
-  been built with 0.9.0 yet. The saving is an estimate from replaying plans 001 and 002.
-- The second round of the final review (section 6) had not finished when this file was written.
+  been built with 0.9.0 yet. The saving is an estimate. Replaying plans 001 and 002 leaves 62 of
+  79 and 36 of 44 tasks; a reviewer's mechanical replay with the real commit sizes leaves 57 and
+  38, about one task in five fewer. On two small features a reviewer wrote for the purpose, the
+  plan went from 14 tasks and 55 dispatches to 5 and 19, and from 13 and 52 to 8 and 32.
+- Nine sentences that a single edit can still remove with every test green (section 2).
 - GitHub CI on Linux and macOS: nothing was pushed.
