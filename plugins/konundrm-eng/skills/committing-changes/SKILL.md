@@ -95,10 +95,10 @@ pull request, hand over to the `opening-pull-requests` skill.
 
 ### Inside develop-feature
 
-The orchestrator calls this skill once per task, with the task already one logical change and
-the check green for these exact files. In that mode: skip step 1 (the commit hook reuses that
-green result), make exactly **one** commit, and do not ask about pushing; the orchestrator asks
-once, when the whole feature is done.
+The orchestrator calls this skill once per task and once per adjustment, with the change
+already one logical change and the check green for these exact files. In that mode: skip step 1
+(the commit hook reuses that green result), make exactly **one** commit, and do not ask about
+pushing; the orchestrator asks once, when the whole feature is done.
 
 Build a task's message with `task_ledger.py message`, commit it with a plain `git commit -F` and
 attach its note with `task_ledger.py record`, in one call:
@@ -118,6 +118,20 @@ The other commits develop-feature makes in this mode (a slice summary, a partiti
 integration fix) are not a task's own commit, and `message` refuses a task that already has one:
 write their message by hand, with a plain subject that says what changed, and attach no note.
 
+An adjustment (a small change the user asked for on work already committed; develop-feature →
+Adjustments) is not a task's own commit either, so its message is written by hand too, but it gets
+a note, written in the same command as the commit, so it is written once:
+`git add -A && git commit -m "<type>(<scope>): <summary>" --trailer "Co-Authored-By: …" && git notes --ref=refs/notes/konundrm add -m "Adjusts: T<n>" -m "Reviews: <spec, code | spec | code | none> (<why the others were not needed>)" -m "Asked: <the request, in one line>" HEAD`.
+In the note, `Adjusts:` names the task or tasks the request is about (`—` when it is about none),
+`Reviews:` the reviews that ran for it and why not the others, and `Asked:` what the user asked.
+Quote each `-m` text as the subject is quoted, rewording a request that holds a backtick, `$`,
+`"` or `\`. Never amend that commit: Git would leave its note on the old one. Type the commit by
+what it changes (`feat`, `refactor`, `docs`, `style`, `test`). Type it `fix` only when the request
+reported a defect (built work that does not do what an approved criterion says), and then add
+`-m "Escaped-gate: <spec | property | review | e2e | none>"` to its note, as fix-bug does: the
+impact report counts a `fix` on a task's files as an escaped defect, so a preference is never
+typed `fix`.
+
 ### Inside fix-bug
 
 The `fix-bug` skill calls this skill once, with the fix already one logical change and the check
@@ -126,9 +140,12 @@ result), make exactly **one** `fix` commit whose body gives the root cause and e
 `Fixes: <issue>` only (left out when there is no issue), and do not ask about pushing; fix-bug
 asks once it has reported. This mode owns the commit's note, the only place for its flow data:
 write it in the same command as the commit, so it is written once,
-`git commit -F <message file> --trailer "Co-Authored-By: …" && git notes --ref=refs/notes/konundrm add -m "Covers: B1" -m "Escaped-gate: <spec | property | review | e2e | none>" HEAD`,
+`git add -A && git commit -F <message file> --trailer "Co-Authored-By: …" && git notes --ref=refs/notes/konundrm add -m "Covers: B1" -m "Escaped-gate: <spec | property | review | e2e | none>" HEAD`,
 with the requirement ID in `Covers:` when the bug broke an approved one (Standards → Git and pull
-requests).
+requests). Stage in that same command: the mark a fix round takes
+(`git add -A && git write-tree`) leaves the index at the tree before the round, so a commit
+without `git add -A` would take that tree and leave the round's changes out. Keep the message
+file outside the working tree, so `git add -A` does not take it.
 
 ## Ground rules
 

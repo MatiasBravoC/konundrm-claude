@@ -5,6 +5,10 @@
 - **Check command:** `<npm run check | poe check | make check>`
 - **Base commit:** `<SHA the feature branch started from>`
 - **Pull request budget:** <500> changed lines of code and tests per slice
+- **Consolidation:** low <!-- low | low and medium | none: which related behaviors writing-plans
+merges into one task (up to 5 behaviors and about 300 changed lines; "low and medium" also merges
+the cases of one medium rule, up to 3). The user may change it when approving the plan. Once the
+tasks are written it also holds the totals: low · <n> behaviors in <m> tasks -->
 - **Parallel:** no <!-- yes | no: whether the partitions of one wave may be built at the same time -->
 - **Checkpoints:** ask <!-- ask | pre-approved: pre-approved when the user approved the pauses
 between slices in advance (in the request or when approving the plan) -->
@@ -15,7 +19,9 @@ feature in one session (in the request, when approving the plan or at a pause) -
 - **Publish:** local <!-- local | live: live only when the user said yes, or asked for it, to
 publishing the feature on GitHub while it is built (develop-feature asks at plan approval) -->
 
-<!-- One task = one red-green-refactor cycle = one commit. develop-feature checks the box and adds
+<!-- One task = one red-green-refactor cycle = one commit. A task holds one behavior, or up to five
+related low-risk behaviors that writing-plans merged (a consolidated task), each with its own test
+under "Tests:". develop-feature checks the box and adds
 a "Rounds" line (review rounds and escalations, read by the impact report) at the slice's pause
 (`task_ledger.py close-slice`, in the slice's summary commit), from the task's "Task: T<n>" commit.
 Types: behavior (needs a failing test first), property (a property test for an invariant) or
@@ -41,23 +47,31 @@ and a wave holds at most three partitions. "Depends on" lists the partitions it 
     - Option B: <approach> · pros: <…> · cons: <…>
     - Recommendation: <option, and why>
 
-- [ ] **T2** <Invariant, stated as a rule for every valid input> · `property` · Risk: medium · Covers: R1.2
+- [ ] **T2** <What the related behaviors deliver together, in one statement> · `behavior` · Risk: low · Covers: R1.2, R1.3
+  - Tests:
+    - `tests/<path>/test_<module>.py::test_<behavior>`: <behavior> (R1.2)
+    - `tests/<path>/test_<module>.py::test_<other_behavior>`: <other behavior> (R1.3)
+  - Files: `src/<path>/<module>.py` (modify)
+  - Verify: `<command that runs only these tests>`
+  - Depends on: T1
+
+- [ ] **T3** <Invariant, stated as a rule for every valid input> · `property` · Risk: medium · Covers: R1.4
   - Test: `tests/<path>/test_<module>.py::test_<invariant>_for_any_<input>`
   - Generator domain: <the valid inputs the spec allows>
   - Invariants: <the rule this property checks>
   - Files: `src/<path>/<module>.py` (modify)
   - Verify: `<command>`
-  - Depends on: T1
+  - Depends on: T2
 
 ### Partitions
 
 | Wave | Partition | Tasks | Depends on |
 | --- | --- | --- | --- |
-| 1 | P1 | T1–T2 | — |
+| 1 | P1 | T1–T3 | — |
 
 ## Slice S2: <what this pull request delivers, in one line>
 
-- [ ] **T3** <Behavior touching money, auth, personal data, data deletion or an external contract> · `behavior` · Risk: high · Covers: R2.1
+- [ ] **T4** <Behavior touching money, auth, personal data, data deletion or an external contract> · `behavior` · Risk: high · Covers: R2.1
   - Test: `tests/<path>/test_<module>.py::test_<behavior>`
   - Files: `src/<path>/<module>.py` (modify)
   - Verify: `<command>`
@@ -65,9 +79,9 @@ and a wave holds at most three partitions. "Depends on" lists the partitions it 
   - Mutation: `<mutation tool scoped to the changed code>`
   - Security: <what the security review must look at: the trust boundary and the threat from design.md>
   - Evidence: `<end-to-end check of the real application; saved under evidence/>`
-  - Depends on: T2
+  - Depends on: T3
 
-- [ ] **T4** <Configuration or scaffolding step> · `chore` · Risk: low · Covers: —
+- [ ] **T5** <Configuration or scaffolding step> · `chore` · Risk: low · Covers: —
   - Files: `<path>`
   - Verify: `<command whose success proves the step>`
   - Depends on: —
@@ -78,8 +92,8 @@ and a wave holds at most three partitions. "Depends on" lists the partitions it 
 
 | Wave | Partition | Tasks | Depends on |
 | --- | --- | --- | --- |
-| 1 | P2 | T3 | — |
-| 1 | P3 | T4 | — |
+| 1 | P2 | T4 | — |
+| 1 | P3 | T5 | — |
 
 <!-- Example of a finished task, as develop-feature leaves it:
 - [x] **T1** … · `behavior` · Risk: low · Covers: R1.1
@@ -87,5 +101,6 @@ and a wave holds at most three partitions. "Depends on" lists the partitions it 
     - Option A: <approach> · pros: <…> · cons: <…>
     - Option B: <approach> · pros: <…> · cons: <…>
     - Recommendation: <option, and why>
+  - Change: <a change the user asked for while the task was being built, verbatim> (user)
   - Rounds: spec 1 · code 1 · escalations 0
 -->

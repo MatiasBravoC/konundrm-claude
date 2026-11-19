@@ -51,6 +51,15 @@ requirements.md, design.md, tasks.md, summaries/, evidence/ and the feature's co
 
 - T<n> <reviewer>: <the code-review suggestion and why it was left out>
 
+## Adjustments
+
+<!-- One entry per adjustment (develop-feature → Adjustments) the user asked for after the last
+slice's summary or once the feature was done, read from its commit (its note and what it changed
+in requirements.md); the adjustments of each slice are in its summary. When code changed after the
+final verification, say whether its steps were repeated. Write "none" when there were none. -->
+
+- <what the user asked>: <commit subject> · tasks: T<n> · reviews: <spec, code | spec | code | none> (<why the other reviews were not needed>) · criterion: <R<x.y> updated | —>
+
 ## How to test the feature
 
 <!-- The final verification of requirements.md, as commands or steps a person can repeat. -->

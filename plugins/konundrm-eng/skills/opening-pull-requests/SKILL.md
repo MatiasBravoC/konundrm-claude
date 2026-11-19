@@ -33,7 +33,9 @@ clear enough that the reviewer knows what to check first (Standards → Git and 
 `git rev-parse --show-toplevel`, the current branch, and `git status` (must be clean: commit
 first with `committing-changes`). The base is the default branch
 (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`, or `origin/HEAD`). Never open a
-pull request from the default branch. List what would go out: `git log --oneline <base>..HEAD`.
+pull request from the default branch. List what would go out: `git log --oneline <base>..HEAD`,
+or against `origin/<base>`, here and in step 2, when the local default branch is behind it
+(`git rev-list --count <base>..origin/<base>` is not 0), as for adjustments to a merged feature.
 Check `gh auth status`; without `gh`, give the user the push command and the description to paste.
 
 ### 2. Green and size
@@ -79,7 +81,8 @@ first mutation check.
    nothing). A branch that was never pushed, as in a local delivery before step 5, has no merged
    pull request, so it stays the base of S<k>.
 
-Without slices (a fix, a small change) the branch is one pull request.
+Without slices (a fix, a small change, or a branch that holds only adjustments to a feature
+already merged) the branch is one pull request against the default branch.
 
 ### 4. Title and description
 
@@ -135,7 +138,9 @@ reproduced it. Keep the attribution lines configured for the session.
 When `specs/<NNN-slug>/summaries/S<k>.md` exists, build that slice's description from it: its
 "What changed and why" feeds What and why, "Risks and high-risk tasks" and "Reading order" feed
 Where to look first, "Requirements covered" feeds How it was verified, as behaviors in plain
-words. Add what the summary lacks (evidence links, the check result, the merge-order line, the
+words. Its "Adjustments" also feed What and why, in plain words: a change the user asked for after
+the previous slice ended lands in this pull request, so say what it changed there. Add what the
+summary lacks (evidence links, the check result, the merge-order line, the
 attribution) and drop what the text rules above leave out (IDs, review rounds, decisions about
 how the work was split). The summary's links are relative to `summaries/` (`../requirements.md`),
 and GitHub resolves links in a pull request body against the pull request page, so rewrite them
@@ -143,8 +148,10 @@ to repository paths.
 
 With a feature folder, link `specs/<NNN-slug>/summary.md` from the description of every pull
 request, stacked or single, as a full URL: `https://github.com/<owner>/<repo>/blob/<commit>/specs/<NNN-slug>/summary.md`.
-`<commit>` is the SHA of the feature's final `docs(<scope>)` commit, which holds the summary, so
-the link keeps working after the slice branches are merged and deleted.
+`<commit>` is the SHA of the newest commit that changed `summary.md`
+(`git log -1 --format=%H -- specs/<NNN-slug>/summary.md`): the feature's final `docs(<scope>)`
+commit, or the later `docs` commit that added the adjustments made after it, so the link shows
+every adjustment and keeps working after the slice branches are merged and deleted.
 
 A fix-bug branch, a small change without slices and a feature built before the summary existed
 have no `summary.md`, so their descriptions carry no summary link.

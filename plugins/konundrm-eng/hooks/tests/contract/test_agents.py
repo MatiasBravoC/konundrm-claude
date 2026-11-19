@@ -478,5 +478,198 @@ class AgentRunScopeTest(unittest.TestCase):
         self.assertEqual(gaps, [])
 
 
+# A task that lists several tests, and an adjustment (004 R2.1-R2.6, R3.9, R4.3): what the writers, the spec
+# reviewer, the rethinker and the test-driven-development skill say about them. Keywords of each rule inside one
+# sentence of the named `## ` section.
+TDD_SKILL = SKILLS_DIR / "test-driven-development" / "SKILL.md"
+SPEC_REVIEWER = AGENTS_DIR / "spec-reviewer.md"
+_MANY_TESTS_FIELD = re.compile(r"\btests:")
+_MANY_EVERY = re.compile(r"\b(?:every|each|all)\b")
+_MANY_ONE_BEHAVIOR_PER_TEST = re.compile(r"\bone behaviou?r per test\b|\bone test per behaviou?r\b")
+_MANY_REPORT_PER_TEST = re.compile(r"\breports?\b(?: \S+){0,3} per test\b")
+_MANY_ONE_TEST_PER_DISPATCH = re.compile(r"\bone test per dispatch\b")
+_MANY_PROPERTY_TESTS = re.compile(r"\bproperty tests\b")
+_MANY_INVARIANTS = re.compile(r"\binvariants\b")
+_MANY_LEAVE_AS_THEY_ARE = re.compile(r"\bleave as they are\b")
+_MANY_ONLY = re.compile(r"\bonly\b")
+_MANY_BLOCKED = re.compile(r"\bblocked\b")
+_MANY_DECISION = re.compile(r"\bdecision\b")
+_MANY_WHOLE_TASK = re.compile(r"\bwhole task\b")
+_MANY_RED_REPORTS = re.compile(r"\bred reports\b")
+_MANY_FAILING_TESTS = re.compile(r"\bfailing tests\b")
+_MANY_ONE_AT_A_TIME = re.compile(r"\bone at a time\b")
+_MANY_STILL_FAIL = re.compile(r"\bstill fail\b")
+_MANY_FIX_ROUND = re.compile(r"\bfix[- ]round\b")
+_MANY_ADJUSTMENT = re.compile(r"\badjustment\b")
+_MANY_GREEN_BY_DESIGN = re.compile(r"\bgreen by design\b")
+_MANY_ADJUSTMENTS_REQUEST = re.compile(r"\badjustment's request\b")
+_MANY_DEMAND = re.compile(r"\bdemands?\b")
+_MANY_EVERY_LINE = re.compile(r"\bevery line\b")
+_MANY_OWN_TEST = re.compile(r"\bown test\b")
+_MANY_CONSOLIDATED_TASK = re.compile(r"\bconsolidated task\b")
+_MANY_SPLIT = re.compile(r"\bsplit\b")
+_MANY_PLAN_CHANGE = re.compile(r"\bplan change\b")
+_MANY_TEST_WRITER_SUBAGENT = re.compile(r"\btest-writer subagent\b")
+_MANY_BEFORE_STOPPING = re.compile(r"\bbefore you stop\b|\bbefore stopping\b|\bbefore the stop\b")
+_MANY_USER = re.compile(r"\buser\b")
+_MANY_ONE_TEST_THEN_STOP = re.compile(r"\bone test\b.{0,40}?\bstop\b")
+_MANY_PROPERTY_TEST = re.compile(r"\bproperty test\b")
+_MANY_DISPATCH_LISTS = re.compile(r"\bdispatch lists\b")
+_MANY_RUNS_ONLY_IT = re.compile(r"\bruns only it\b")
+_MANY_ADJUSTMENTS_AND_REVIEWS = re.compile(r"\badjustments and reviews not repeated\b")
+_MANY_BY_DESIGN = re.compile(r"\bby design\b")
+_MANY_LEFT_OUT = re.compile(r"\bleft out\b")
+_MANY_GREEN_TESTS_LINE = re.compile(r"^\s*tests:", re.MULTILINE)
+_MANY_GREEN_PER_TEST_LINE = re.compile(r"^- <path>::<name>: red before its code, green after\b", re.MULTILINE)
+# (file, `## ` section, the rule, the patterns one of its sentences must all match).
+_MANY_TESTS_RULES: tuple[tuple[Path, str, str, tuple[re.Pattern[str], ...]], ...] = (
+    (
+        TEST_WRITER,
+        "Process",
+        "R2.1 it writes every test the task lists under Tests:, one behavior per test",
+        (_MANY_TESTS_FIELD, _MANY_EVERY, _MANY_ONE_BEHAVIOR_PER_TEST),
+    ),
+    (TEST_WRITER, "Process", "R2.1 it returns one report per test", (_MANY_REPORT_PER_TEST,)),
+    (
+        TEST_WRITER,
+        "Process",
+        "R3.9 it writes the property tests the dispatch lists for the task's invariants",
+        (_MANY_PROPERTY_TESTS, _MANY_INVARIANTS),
+    ),
+    (
+        TEST_WRITER,
+        "Process",
+        "R2.2 it leaves the tests the dispatch names as they are and writes or fixes only the one asked for",
+        (_MANY_LEAVE_AS_THEY_ARE, _MANY_ONLY),
+    ),
+    (
+        TEST_WRITER,
+        "Rules",
+        "R2.1 a BLOCKED or a DECISION is for the whole task",
+        (_MANY_BLOCKED, _MANY_DECISION, _MANY_WHOLE_TASK),
+    ),
+    (
+        IMPLEMENTER,
+        "Process",
+        "R2.3 it reads the RED reports and the failing tests of the task",
+        (_MANY_RED_REPORTS, _MANY_FAILING_TESTS),
+    ),
+    (
+        IMPLEMENTER,
+        "Process",
+        "R2.3 it makes several failing tests pass one at a time, seeing each still fail before its code",
+        (_MANY_FAILING_TESTS, _MANY_ONE_AT_A_TIME, _MANY_STILL_FAIL),
+    ),
+    (
+        IMPLEMENTER,
+        "Process",
+        "R4.3 in a fix round or an adjustment the task's tests are green by design",
+        (_MANY_FIX_ROUND, _MANY_ADJUSTMENT, _MANY_GREEN_BY_DESIGN),
+    ),
+    (
+        IMPLEMENTER,
+        "Rules",
+        "R4.3 nothing beyond what the task's tests, or an adjustment's request, demand",
+        (_MANY_ADJUSTMENTS_REQUEST, _MANY_DEMAND),
+    ),
+    (
+        SPEC_REVIEWER,
+        "Process",
+        "R2.6 it checks every line of a Tests: list against that line's own test",
+        (_MANY_TESTS_FIELD, _MANY_EVERY_LINE, _MANY_OWN_TEST),
+    ),
+    (
+        RETHINKER,
+        "Process",
+        "R2.5 a consolidated task whose behaviors do not belong together is split, as a PLAN CHANGE",
+        (_MANY_CONSOLIDATED_TASK, _MANY_SPLIT, _MANY_PLAN_CHANGE),
+    ),
+    (
+        TDD_SKILL,
+        "Contract",
+        "R2.4 only for the test-writer subagent a task may list several behaviors under Tests:",
+        (_MANY_ONLY, _MANY_TEST_WRITER_SUBAGENT, _MANY_TESTS_FIELD),
+    ),
+    (
+        TDD_SKILL,
+        "Workflow",
+        "R2.4 as the test-writer subagent, every test of a task that lists several is written before stopping",
+        (_MANY_TEST_WRITER_SUBAGENT, _MANY_EVERY, _MANY_BEFORE_STOPPING),
+    ),
+    (
+        TDD_SKILL,
+        "Workflow",
+        "R2.4 with the user the rule stays one test, then stop",
+        (_MANY_USER, _MANY_ONE_TEST_THEN_STOP),
+    ),
+    (
+        TDD_SKILL,
+        "Contract",
+        "R3.9 the test-writer subagent also writes each property test its dispatch lists",
+        (_MANY_TEST_WRITER_SUBAGENT, _MANY_PROPERTY_TEST, _MANY_DISPATCH_LISTS),
+    ),
+    (
+        TEST_WRITER,
+        "Process",
+        "R3.9 a property test the verify command does not cover runs with a command of its own, given in its report",
+        (_MANY_PROPERTY_TEST, _MANY_RUNS_ONLY_IT),
+    ),
+    (
+        PROCESS_REVIEWER,
+        "Process",
+        "R3.8 the flow record holds the adjustments and the reviews not repeated",
+        (_MANY_ADJUSTMENTS_AND_REVIEWS,),
+    ),
+    (
+        PROCESS_REVIEWER,
+        "Process",
+        "R3.8 not repeating a review is by design: evidence only when the review left out would have caught something",
+        (_MANY_BY_DESIGN, _MANY_LEFT_OUT),
+    ),
+)
+
+
+class TaskWithSeveralTestsTest(unittest.TestCase):
+    maxDiff = None  # a failure lists every gap, not the first one
+
+    def test_writers_handle_a_task_that_lists_several_tests(self) -> None:
+        """R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.8, R3.9, R4.3: 004 the roles build a task that lists several tests.
+
+        agents/test-writer.md's `## Process` writes every test the task lists under `Tests:`, one behavior per test,
+        returns one report per test, writes the property tests the dispatch lists for the task's invariants and
+        leaves as they are the tests the dispatch names; its `## Rules` make a BLOCKED or a DECISION a report for
+        the whole task; and no sentence of the file still limits it to one test per dispatch.
+        agents/implementer.md's `## Process` reads the RED reports and the failing tests, makes several failing tests
+        pass one at a time, seeing each still fail before its code, and treats the task's tests as green by design in
+        a fix round or an adjustment; its `## Rules` allow nothing beyond what the task's tests, or an adjustment's
+        request, demand; and its GREEN report has a `Tests:` line and a line per test that says it was red before
+        its code. agents/spec-reviewer.md's `## Process` checks every line of a `Tests:` list against that line's own
+        test. agents/rethinker.md's `## Process` names a consolidated task whose behaviors do not belong together, to
+        split as a PLAN CHANGE. The test-driven-development skill's `## Contract` lets a task list several behaviors
+        under `Tests:` only for the test-writer subagent, and its `## Workflow` says that, as that subagent, every
+        test of such a task is written before stopping, and that with the user the rule stays one test, then stop;
+        its `## Contract` also has that subagent write each property test its dispatch lists, which
+        agents/test-writer.md runs with a command of its own when the verify command does not cover it.
+        agents/process-reviewer.md's `## Process` names the adjustments and the reviews not repeated as a part of
+        the flow record, and says that not repeating a review is by design.
+        """
+        gaps = [
+            f"{path.parent.name if path.name == 'SKILL.md' else path.name}: ## {section} does not say {rule}"
+            for path, section, rule, patterns in _MANY_TESTS_RULES
+            if not any(_in_one_sentence(block, *patterns) for block in _section_blocks(path, section))
+        ]
+        test_writer = TEST_WRITER.read_text(encoding="utf-8")
+        if _MANY_ONE_TEST_PER_DISPATCH.search(_plain_words(test_writer)):
+            gaps.append("test-writer.md: still limits the test-writer to one test per dispatch")
+        fenced = _fenced_blocks(IMPLEMENTER.read_text(encoding="utf-8"))
+        green_reports = [block for block in fenced if block.strip().startswith("GREEN:")]
+        if not any(_MANY_GREEN_TESTS_LINE.search(report.lower()) for report in green_reports):
+            gaps.append("implementer.md: the GREEN report has no `Tests:` line for the task's tests")
+        if not any(_MANY_GREEN_PER_TEST_LINE.search(report) for report in green_reports):
+            gaps.append("implementer.md: the GREEN report has no line per test saying it was red before its code")
+
+        self.assertEqual(gaps, [])
+
+
 if __name__ == "__main__":
     unittest.main()

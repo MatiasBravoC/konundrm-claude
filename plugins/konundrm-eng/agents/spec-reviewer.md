@@ -25,6 +25,9 @@ before starting.
    - Find the code that implements it. Cite `file:line`.
    - Find the test that asserts it, and check the assertion would fail if the behavior broke. A
      test that only runs the code, or asserts something weaker than the criterion, does not count.
+   - When the task lists several tests under `Tests:`, do this for every line of that list, not
+     once per criterion: the behavior that line names has its code, and its own test would fail if
+     that one behavior were removed while the others stayed.
 4. Look for **extra** behavior the task did not ask for (scope creep, unrequested options).
 5. Confirm the claim of green from the verification output the orchestrator gave you (see Rules).
 

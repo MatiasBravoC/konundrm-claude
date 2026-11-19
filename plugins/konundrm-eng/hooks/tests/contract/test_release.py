@@ -23,6 +23,12 @@ _NEW_MECHANISM_EVALS = (
     "behavior-feature-summary",
     "behavior-improvement-notes",
 )
+# One behavior eval per mechanism of feature 004 the user meets (004 R5.2): the plan with consolidated tasks and the
+# adjustment that runs only the reviews its change needs.
+_NEW_MECHANISM_EVALS_004 = (
+    "behavior-plan-consolidates-related-tasks",
+    "behavior-adjustment-runs-needed-reviews",
+)
 
 # The grader types `claude plugin eval` documents (https://code.claude.com/docs/en/plugin-evals.md).
 _GRADER_TYPES = frozenset({"llm", "tool_used", "file_exists", "regex", "tool_order", "baseline"})
@@ -86,6 +92,19 @@ class BehaviorEvalsTest(unittest.TestCase):
 
         self.assertEqual(gaps, [])
 
+    def test_each_right_sized_flow_mechanism_has_a_behavior_eval(self) -> None:
+        """R5.2: 004 each mechanism of the right-sized flow the user meets has a behavior eval the runner can run.
+
+        `behavior-plan-consolidates-related-tasks` (the plan merges related low-risk behaviors into one task and
+        leaves the medium-risk one alone) and `behavior-adjustment-runs-needed-reviews` (a small change asked on work
+        already built is made as an adjustment, with only the reviews it needs) each have a `prompt.md` with a
+        frontmatter and a prompt after it, and at least one `graders/*.md` whose frontmatter sets a documented
+        `type:`. The evals run a model, so the check only verifies their structure.
+        """
+        gaps = [gap for name in _NEW_MECHANISM_EVALS_004 for gap in _eval_case_gaps(EVALS_DIR / name)]
+
+        self.assertEqual(gaps, [])
+
 
 _CHANGELOG_PATH = PLUGIN_ROOT / "CHANGELOG.md"
 _CHANGELOG_MANIFEST_PATH = PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
@@ -142,6 +161,27 @@ _CHANGELOG_002_MECHANISMS = (
     ("the fast path of run.sh", re.compile(r"\bfast[ -]path\b.{0,60}\brun\.sh\b|\brun\.sh\b.{0,60}\bfast[ -]path\b")),
     ("run_slices.py", re.compile(r"\brun_slices\.py\b")),
     ("session_costs.py", re.compile(r"\bsession_costs\.py\b")),
+)
+
+# Feature 004 (right-sized flow) ships as 0.9.0 (004 R5.3). Keyword patterns, as for 002: each ties its keyword to the
+# mechanism, so a passing mention of a task or a review in the entry does not match by accident.
+_CHANGELOG_004_VERSION = (0, 9, 0)
+_CHANGELOG_004_MECHANISMS = (
+    ("consolidated tasks", re.compile(r"\bconsolidated tasks?\b")),
+    ("one test per behavior in a consolidated task", re.compile(r"\bone test per behaviou?r\b")),
+    (
+        "that only low-risk tasks are merged",
+        re.compile(r"\blow[- ]risk\b.{0,200}?\bmerg\w*|\bmerg\w*.{0,200}?\blow[- ]risk\b"),
+    ),
+    (
+        "that only the reviews a change concerns run again",
+        re.compile(r"\bonly the reviews\b(?: \S+){0,8} (?:concerns?|needs?)\b"),
+    ),
+    ("adjustments", re.compile(r"\badjustments?\b")),
+    (
+        "that plans written with earlier versions are built as before",
+        re.compile(r"\bearlier versions?\b.{0,120}?\bas before\b"),
+    ),
 )
 
 
@@ -222,6 +262,25 @@ class VersionAndChangelogTest(unittest.TestCase):
 
         self.assertEqual(gaps, [])
 
+    def test_0_9_0_changelog_names_each_mechanism(self) -> None:
+        """R5.3: 004 ships as 0.9.0 or later, and the [0.9.0] CHANGELOG entry names each new mechanism.
+
+        plugin.json's version, compared as numbers, is 0.9.0 or later (test_version_and_changelog_agree already ties
+        it to the first released entry). The [0.9.0] entry is looked up by its version, and must name consolidated
+        tasks with one test per behavior, that only low-risk tasks are merged, that only the reviews a change concerns
+        run again, adjustments, and that plans written with earlier versions are built as before.
+        """
+        manifest_version = _manifest_version()
+        entries = _changelog_released_entries()
+
+        gaps = []
+        if manifest_version is None or manifest_version < _CHANGELOG_004_VERSION:
+            shown = "not <x.y.z>" if manifest_version is None else ".".join(str(part) for part in manifest_version)
+            gaps.append(f"plugin.json version {shown} is older than 0.9.0")
+        gaps += _changelog_mechanism_gaps(entries, _CHANGELOG_004_VERSION, _CHANGELOG_004_MECHANISMS)
+
+        self.assertEqual(gaps, [])
+
 
 # The repository README (two levels above the plugin), in Spanish, where a slice is an "entrega".
 _README_PATH = PLUGIN_ROOT.parents[1] / "README.md"
@@ -253,6 +312,33 @@ _README_002_ITEMS = (
         ),
     ),
 )
+# What 0.9.0 adds to the README (004 R5.3), each in the section a reader goes to for it. A consolidated task is a
+# "tarea consolidada" and an adjustment an "ajuste"; the review rule ties "revisiones" to what the change concerns.
+_README_004_ITEMS = (
+    (
+        "### Cómo avanza una feature",
+        "consolidated tasks (tareas consolidadas) of low risk",
+        re.compile(
+            r"\btareas? consolidadas?\b.{0,400}?\briesgo bajo\b"
+            r"|\briesgo bajo\b.{0,400}?\btareas? consolidadas?\b"
+        ),
+    ),
+    (
+        "### Cómo avanza una feature",
+        "one test per behavior in a consolidated task",
+        re.compile(r"\bun test por comportamiento\b"),
+    ),
+    (
+        "### Cómo avanza una feature",
+        "that after a change only the reviews it concerns run again",
+        re.compile(r"\bsolo\b(?: \S+){0,4} revisiones\b.{0,160}?\b(?:conciern\w*|necesit\w*)"),
+    ),
+    (
+        "### Cómo avanza una feature",
+        "adjustments (ajustes) made right away for a small change the user asks for",
+        re.compile(r"\bajustes?\b.{0,300}?\ben el momento\b|\ben el momento\b.{0,300}?\bajustes?\b"),
+    ),
+)
 
 
 def _read_markdown_section(path: Path, heading_line: str) -> str | None:
@@ -272,6 +358,26 @@ def _read_markdown_section(path: Path, heading_line: str) -> str | None:
     return "\n".join(lines[start:end])
 
 
+def _readme_item_gaps(items: tuple[tuple[str, str, re.Pattern[str]], ...]) -> list[str]:
+    """Return one gap per item the README section it belongs to does not describe, or one per missing section.
+
+    Each item is `(heading line, label, pattern)`. The section is matched lowercased, without backticks and with
+    whitespace collapsed, since the README wraps its lines.
+    """
+    gaps: list[str] = []
+    for heading_line, label, pattern in items:
+        body = _read_markdown_section(_README_PATH, heading_line)
+        if body is None:
+            gap = f"README.md: there is no '{heading_line}' section"
+            if gap not in gaps:
+                gaps.append(gap)
+            continue
+        text = re.sub(r"\s+", " ", body.lower().replace("`", ""))
+        if not pattern.search(text):
+            gaps.append(f"README.md '{heading_line}': does not describe {label}")
+    return gaps
+
+
 class ReadmeTest(unittest.TestCase):
     maxDiff = None
 
@@ -283,17 +389,20 @@ class ReadmeTest(unittest.TestCase):
         measures a run from its transcripts ("transcripción") with `session_costs.py` or `measure-impact`. Each section
         is matched lowercased, without backticks and with whitespace collapsed, since the README wraps its lines.
         """
-        gaps = []
-        for heading_line, label, pattern in _README_002_ITEMS:
-            body = _read_markdown_section(_README_PATH, heading_line)
-            if body is None:
-                gap = f"README.md: there is no '{heading_line}' section"
-                if gap not in gaps:
-                    gaps.append(gap)
-                continue
-            text = re.sub(r"\s+", " ", body.lower().replace("`", ""))
-            if not pattern.search(text):
-                gaps.append(f"README.md '{heading_line}': does not describe {label}")
+        gaps = _readme_item_gaps(_README_002_ITEMS)
+
+        self.assertEqual(gaps, [])
+
+    def test_readme_describes_consolidated_tasks_and_adjustments(self) -> None:
+        """R5.3: 004 the README describes consolidated tasks, the reviews that run again and adjustments.
+
+        `### Cómo avanza una feature` says the plan merges related tasks of low risk ("riesgo bajo") into a
+        consolidated task ("tarea consolidada") that keeps one test per behavior ("un test por comportamiento"), that
+        after a change only the reviews it concerns run again, and that a small change the user asks for is made
+        right away ("en el momento") as an adjustment ("ajuste"). The section is matched lowercased, without
+        backticks and with whitespace collapsed.
+        """
+        gaps = _readme_item_gaps(_README_004_ITEMS)
 
         self.assertEqual(gaps, [])
 

@@ -42,6 +42,17 @@ of dropping it. -->
 | T<n> | <n> | <n> | <n> |
 
 - **Rethinks:** T<n>: <what the rethink found and the new approach>; report in `specs/<NNN-slug>/evidence/T<n>-rethink.md`<, set-aside attempt in stash "<message>">
+- **Reviews not repeated after a change:** T<n>: <review> after <the fix round | verifying by risk | the fix of a red check | a change the user asked for> (<what the change touched>)
+
+## Adjustments
+
+<!-- One entry per small change the user asked for on work the feature had already built, made as
+an adjustment (develop-feature → Adjustments) since the previous slice's summary and read from its
+commit: its note (Adjusts, Reviews, Asked) and what it changed in requirements.md. A change asked
+for on a task in progress is listed here too, as part of that task, from its "- Change:" line.
+Write "none" when there were none. -->
+
+- <what the user asked>: <commit subject | part of T<n>> · tasks: T<n> · reviews: <spec, code | spec | code | none> (<why the other reviews were not needed>) · criterion: <R<x.y> updated | —>
 
 ## Reading order
 

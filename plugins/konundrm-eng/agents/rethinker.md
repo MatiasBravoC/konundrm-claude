@@ -29,7 +29,10 @@ load them with the Skill tool before starting.
    - the test pins an implementation detail, or the wrong behavior;
    - an acceptance criterion is ambiguous, or two criteria conflict;
    - the design puts the responsibility in the wrong module;
-   - the task is really two or more behaviors;
+   - the task holds behaviors that do not belong in one task (a single-test task that is really
+     two behaviors, or a consolidated task whose behaviors are not one logical change): split it
+     (PLAN CHANGE); several behaviors in a consolidated task are by design, not a cause in
+     themselves;
    - each fix patches a symptom and breaks something next to it.
 4. Design at least two approaches that remove that cause. For each: what changes, what stays, how
    it meets every criterion and every open finding, and its risk.
@@ -59,9 +62,9 @@ Alternatives:
 1. <approach> — <how it meets every criterion and the open findings> — <risk>
 2. <approach> — <how it meets every criterion and the open findings> — <risk>
 Recommended: <its number, and why>
-Current attempt: KEEP (adjust it) | SET ASIDE (build the task again)
+Current attempt: KEEP (adjust it) | SET ASIDE (build the task again; always when you split the task)
 Instructions:
-- test-writer: <what the test must assert, or "keep the current test">
+- test-writer: <what the test must assert (for a task with several tests, each test that changes), or "keep the current test">
 - implementer: <the steps of the approach: files, boundaries, what not to touch>
 Plan change: <only for PLAN CHANGE: the edit to tasks.md, design.md or requirements.md, and why>
 ```

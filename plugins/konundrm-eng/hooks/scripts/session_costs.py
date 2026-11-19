@@ -497,12 +497,12 @@ def _long_path_folder(folder: Path) -> Path:
     The prefixed path is absolute, with backslashes and no "." or ".." parts, as the prefix needs.
     A folder that already carries the prefix is returned as it is.
     """
-    if sys.platform != "win32" or str(folder).startswith(EXTENDED_PATH_PREFIX):
-        return folder
-    absolute = os.path.abspath(folder)
-    if absolute.startswith("\\\\"):  # \\server\share
-        return Path(EXTENDED_UNC_PREFIX + absolute[2:])
-    return Path(EXTENDED_PATH_PREFIX + absolute)
+    if sys.platform == "win32" and not str(folder).startswith(EXTENDED_PATH_PREFIX):
+        absolute = os.path.abspath(folder)
+        if absolute.startswith("\\\\"):  # \\server\share
+            return Path(EXTENDED_UNC_PREFIX + absolute[2:])
+        return Path(EXTENDED_PATH_PREFIX + absolute)
+    return folder
 
 
 def collect_run_costs(folders: list[Path], check_pattern: re.Pattern[str] | None = None) -> RunCosts:

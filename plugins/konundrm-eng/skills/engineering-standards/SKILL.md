@@ -47,8 +47,11 @@ implementation and no boundary is speculative complexity.
 
 A task is done only when every item holds **with evidence** (command output), not belief:
 
-1. A test that failed before the change passes now, five runs in a row (§3), and traces to a
-   requirement ID when a spec exists. For a bug, that test reproduces the bug.
+1. Each behavior the change adds or changes has a test that failed before its code and passes
+   now, five runs in a row (§3), and traces to a requirement ID when a spec exists; a behavior
+   that already existed has its characterization test. For a bug, that test reproduces the bug. A
+   change that adds or changes no behavior (a chore, a refactor, a change to text) needs no new
+   test: the tests it touches stay green.
 2. The project's check command passes: format, lint, types, architecture rules, full test suite.
 3. Branch coverage ≥ 80 % on changed code (CI enforces it with diff-cover on the pull request;
    run diff-cover locally when a task touches little-tested code).
@@ -153,6 +156,10 @@ Reviewers classify every finding with exactly one label:
 Approve a change once it improves the overall health of the code, even if it is not perfect
 (Google Engineering Practices). Do not invent findings to have something to report.
 
+A change made after a review passed goes again only through the reviews it concerns, and
+high-risk work repeats every review after any change (`develop-feature` → Reviews after a
+change, which holds the table).
+
 ## 8. Errors and logging
 
 - Validate input at the boundary (HTTP handler, CLI, message consumer) and fail fast with a
@@ -210,6 +217,11 @@ check without rerunning anything. An AI's statement that something works is neve
 | **Low** | Presentation, wiring, configuration, internal refactors with full test coverage | Nothing more |
 | **Medium** | Business rules, data transformation, anything with an invariant | Property tests for each invariant (§3) |
 | **High** | Money, authentication and authorization, personal data, deleting or migrating data, security boundaries, concurrency, public API contracts, external integrations | Property tests; mutation testing on the changed code with every surviving mutant killed or justified (CI repeats it on pull requests labelled `risk:high`); a security review; an end-to-end check of the real application with its evidence saved in `specs/NNN-slug/evidence/`; adversarial verification of every Critical review finding; a human reads the diff before push |
+
+Related low-risk behaviors may share one task and one cycle of reviews, each with its own test
+(`writing-plans`, step 5). A medium task holds one behavior unless the plan's `Consolidation:`
+line says `low and medium`, which lets up to three cases of one rule share a task. A high task
+always holds one behavior.
 
 A surviving mutant is justified when it is equivalent (no test could tell it apart from the
 original): mark its line with the mutation tool's exclusion and the reason (§11).
