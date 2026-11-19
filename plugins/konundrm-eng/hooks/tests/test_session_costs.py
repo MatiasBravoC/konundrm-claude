@@ -789,6 +789,8 @@ def number(row: dict[str, str], key: str) -> float:
 EXTENDED_PATH_PREFIX = chr(92) * 2 + "?" + chr(92)
 # Windows' limit, which the fixture's long paths must reach.
 WINDOWS_PATH_LIMIT = 260
+# Two nested folders with names this long pass that limit by themselves, whatever the temporary folder's own path.
+LONG_FOLDER_NAME = 130
 
 
 def extended_path(path: Path) -> Path:
@@ -812,9 +814,9 @@ def build_long_path_transcripts(root: Path) -> tuple[Path, Path, Path]:
         but whose implementer subagent (70 + 7) and its meta.json pass 260; and a folder past 260
         holding only a directory named like a session transcript, which cannot be read.
     """
-    long_folder = root / ("p" * 110) / ("q" * 110)
+    long_folder = root / ("p" * LONG_FOLDER_NAME) / ("q" * LONG_FOLDER_NAME)
     short_folder = root / "short"
-    long_bad_folder = root / ("b" * 110) / ("c" * 110)
+    long_bad_folder = root / ("b" * LONG_FOLDER_NAME) / ("c" * LONG_FOLDER_NAME)
     long_session = "sess-long"
     write_jsonl(
         extended_path(long_folder / f"{long_session}.jsonl"),
@@ -1185,6 +1187,10 @@ class SessionCostsTest(unittest.TestCase):
 
         for name, path in long_paths.items():
             self.assertGreater(len(str(path)), WINDOWS_PATH_LIMIT, name)
+        # The two long folders pass the limit by their own part, so also under a temporary folder
+        # whose path is short (/tmp on Linux).
+        for folder in (long_folder, long_bad_folder):
+            self.assertGreater(len(str(folder.relative_to(root))), WINDOWS_PATH_LIMIT, folder.name[:1])
         self.assertLess(len(str(short_folder / f"{'s' * 120}.jsonl")), WINDOWS_PATH_LIMIT)
         context = f"exit {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
         self.assertEqual(completed.returncode, 0, context)

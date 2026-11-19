@@ -41,6 +41,7 @@ from project_paths import project_root, relative_path
 from working_tree import AddedLine, added_lines, head_tree, run_git, snapshot_tree
 
 DEFAULT_MIN_LINES = 6
+DEFAULT_BASE = "HEAD"
 MAX_FILE_BYTES = 512 * 1024
 READ_THREADS = 8
 
@@ -495,13 +496,17 @@ def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
         help=f"smallest block to report, in lines that count (default {DEFAULT_MIN_LINES})",
     )
     scope = parser.add_mutually_exclusive_group()
-    scope.add_argument("--base", default="HEAD", metavar="REV", help="revision to compare with (default HEAD)")
+    # No default here: before Python 3.13 argparse takes a value that is its default for "not given", so
+    # `--all --base HEAD` passed the check of this group.
+    scope.add_argument("--base", metavar="REV", help=f"revision to compare with (default {DEFAULT_BASE})")
     scope.add_argument("--all", action="store_true", help="report every duplicated block in the project")
     parser.add_argument("--include-tests", action="store_true", help="compare test files too")
     arguments = parser.parse_args(argv)
     if arguments.min_lines < 2:
         parser.error("--min-lines must be at least 2")
-    if arguments.base.startswith("-"):
+    if arguments.base is None:
+        arguments.base = DEFAULT_BASE
+    elif arguments.base.startswith("-"):
         parser.error(f"--base must name a revision, not {arguments.base!r}")
     return arguments
 

@@ -80,6 +80,8 @@ gets its failing test first, the implementer and its reviews.
   Rounds text quoted in another field of the task (a `Test:` description, a change the user
   asked for), or wrapped onto a line of its own, was read as the task's rounds and miscounted
   the impact report, and `close-slice` could write the rounds over that line.
+- `find_duplicates.py` refuses `--all` together with `--base` whatever value `--base` has. On
+  Python 3.10 a `--base` equal to its default was taken for not given.
 
 ## [0.8.0] - 2026-11-01
 
