@@ -5,7 +5,7 @@ Run on 2026-11-18 on Windows 11 (Git Bash, Git 2.53, Python 3.14), on the branch
 
 ## 1. The check and the plugin validation
 
-`npm run check`, run alone right before commit `71f21a5`, the last one that changes the plugin:
+`npm run check`, run alone right before commit `71f21a5`, the last one that changes the skills:
 
 ```text
 --- Format: uvx --from ruff==0.17.0 ruff format --check .
@@ -207,4 +207,29 @@ sleep, and ran again from the start.
   38, about one task in five fewer. On two small features a reviewer wrote for the purpose, the
   plan went from 14 tasks and 55 dispatches to 5 and 19, and from 13 and 52 to 8 and 32.
 - Nine sentences that a single edit can still remove with every test green (section 2).
-- GitHub CI on Linux and macOS: nothing was pushed.
+- The GitHub CI run of this branch's last commit: its result is on the pull request (section 8).
+
+## 8. GitHub CI
+
+The branch was pushed and its pull request opened after this file was first closed. The first
+run, on `e22fc0d`, ran the 518 tests on Windows, macOS and Linux with Python 3.10 and 3.13. Five
+of its eight jobs failed: the same five that fail on `main` at `4dc55e3`, for the same three
+reasons, none of them in this feature.
+
+- `lint`, on Linux: mypy reported `session_costs.py:502: error: Statement is unreachable`, in a
+  function that only does something on Windows. Reproduced here with `mypy --platform linux`. The
+  function now keeps its Windows part inside the platform check, and mypy passes for `linux`,
+  `darwin` and `win32`, for Python 3.10 and 3.13.
+- The tests on Python 3.10: `test_usage_errors_exit_2_with_a_message` got exit 0 for
+  `--all --base HEAD`. Before Python 3.13, argparse takes a value that is its default for "not
+  given", so the two options did not conflict. `--base` has no argparse default now and the
+  script fills it in afterwards.
+- The tests on Linux: `test_reads_transcripts_past_the_windows_path_limit` failed its own fixture
+  check (`238 not greater than 260`), because its long folder passed the limit only under a
+  temporary folder whose own path is long. With a check that leaves the temporary folder out,
+  the test failed here first (`221 not greater than 260`) and passes with longer folder names.
+
+They are fixed in the commit
+`fix(hooks): pass the three checks GitHub CI was failing on main`. That commit's own CI run is on
+the pull request, not in this file: the Python 3.10 case cannot be run on this machine, which has
+Python 3.13 and 3.14.

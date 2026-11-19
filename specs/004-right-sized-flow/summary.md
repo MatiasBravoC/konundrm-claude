@@ -54,6 +54,7 @@ A consolidated task is one task for `task_ledger.py`, `session_doctor.py`, `run_
 | 6 | Final review, round 2: 7 reviewers that checked the fixes of round 1, the tests and what the user asked for, and 5 skeptics | 58 findings, none a blocker; 13 major, of which 9 confirmed and 4 partly; applied in `64ece65`, `1b36602`, `a2e6017` and `6049730` |
 | 7 | Mutation check of the contract tests: one rule removed or inverted at a time, 462 edits in four sets | 453 fail a test; the nine left are explanations or repeated sentences ([evidence/final.md](evidence/final.md), section 2) |
 | 8 | Regression review of the fixes of round 2: 3 reviewers that followed the changed paths, ran their commands and compared every copy of a changed rule, and 5 skeptics | 15 findings that were 10 distinct residues, none a blocker; 3 major, all confirmed; applied in `71f21a5` |
+| 9 | GitHub CI on the pull request | the same five jobs that fail on `main`, for three reasons outside this feature; fixed in `fix(hooks): pass the three checks GitHub CI was failing on main` ([evidence/final.md](evidence/final.md), section 8) |
 
 ## Decisions
 
